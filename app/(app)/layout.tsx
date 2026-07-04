@@ -10,6 +10,10 @@ const NAV_ITEMS = [
   { href: "/lager", label: "Lager" },
   { href: "/verkauf", label: "Verkauf" },
   { href: "/versand", label: "Versand" },
+  { href: "/retouren", label: "Retouren" },
+  { href: "/konsignation", label: "Konsignation" },
+  { href: "/schulden", label: "Schulden" },
+  { href: "/aufgaben", label: "Aufgaben" },
   { href: "/team", label: "Team" },
   { href: "/einstellungen", label: "Einstellungen" },
 ];

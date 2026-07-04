@@ -72,6 +72,42 @@ export function resolveTaxRatePercent(
 }
 
 // ---------------------------------------------------------------------------
+// Retouren
+// ---------------------------------------------------------------------------
+
+export interface ReturnLossInput {
+  refundGrossCents: number; // Erstattung an den Käufer (brutto)
+  taxRatePercent: number; // USt-Satz des ursprünglichen Verkaufs
+  saleGrossCents: number; // ursprünglicher VK brutto (für den Anteil)
+  platformFeeCents: number;
+  paymentFeeCents: number;
+  shippingCostCents: number; // eigener Versand des Verkaufs
+  extraCostCents: number; // Zusatzkosten der Retoure (z.B. Rückversand)
+}
+
+/**
+ * Tatsächlicher finanzieller Verlust einer Retoure:
+ *   Erstattung netto (enthaltene USt kommt vom Finanzamt zurück)
+ *   − anteilig zurückerstattete Gebühren/Versand (Anteil = Erstattung/VK,
+ *     Plattformen schreiben Gebühren bei Erstattungen anteilig gut)
+ *   + Zusatzkosten (z.B. Rückversandlabel)
+ * Bei Teilerstattungen wird der Anteil entsprechend kleiner.
+ */
+export function calcReturnLoss(input: ReturnLossInput): number {
+  if (input.refundGrossCents < 0) throw new Error("Erstattung darf nicht negativ sein.");
+  const share =
+    input.saleGrossCents > 0
+      ? Math.min(1, input.refundGrossCents / input.saleGrossCents)
+      : 0;
+  const refundNet = grossToNetCents(input.refundGrossCents, input.taxRatePercent);
+  const recovered = Math.round(
+    share *
+      (input.platformFeeCents + input.paymentFeeCents + input.shippingCostCents)
+  );
+  return refundNet - recovered + input.extraCostCents;
+}
+
+// ---------------------------------------------------------------------------
 // Order-ID
 // ---------------------------------------------------------------------------
 

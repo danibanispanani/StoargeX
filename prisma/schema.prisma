@@ -399,12 +399,16 @@ model Sale {
 model Return {
   id                String       @id @default(cuid())
   organizationId    String       @map("organization_id")
-  saleId            String       @map("sale_id")
-  requestedAt       DateTime     @default(now()) @map("requested_at")
+  saleId            String       @map("sale_id") // harter FK auf den Verkauf
+  requestedAt       DateTime     @default(now()) @map("requested_at") // Meldedatum
   receivedAt        DateTime?    @map("received_at")
   reason            String?
-  refundAmountCents Int          @default(0) @map("refund_amount_cents")
-  returnShippingCents Int        @default(0) @map("return_shipping_cents") // Kosten Rückversand
+  refundAmountCents Int          @default(0) @map("refund_amount_cents") // Erstattung brutto
+  returnShippingCents Int        @default(0) @map("return_shipping_cents") // Zusatzkosten (z.B. Rückversand)
+  // Tatsächlicher finanzieller Verlust, server-seitig berechnet
+  // (lib/calculations.ts calcReturnLoss): Erstattung abzüglich enthaltener
+  // USt und anteiliger Gebühren/Versand, plus Zusatzkosten.
+  lossCents         Int          @default(0) @map("loss_cents")
   status            ReturnStatus @default(REQUESTED)
   restocked         Boolean      @default(false) // wieder in den Bestand aufgenommen?
   notes             String?
@@ -422,11 +426,21 @@ model Return {
 model ConsignmentInventory {
   id                String            @id @default(cuid())
   organizationId    String            @map("organization_id")
+  sku               String // eigene SKU/ID für Fremdfirmen-Ware
   stockItemId       String?           @map("stock_item_id") // optional mit Lagerartikel verknüpft
-  saleId            String?           @map("sale_id") // Verkauf, falls verkauft
-  consignorName     String            @map("consignor_name") // Einlieferer
+  saleId            String?           @map("sale_id") // (Alt-Feld) einzelner Verkauf
+  consignorName     String            @map("consignor_name") // Partnerfirma / Einlieferer
   consignorContact  String?           @map("consignor_contact")
   itemTitle         String            @map("item_title")
+  // Bestandszähler
+  quantity          Int               @default(0) // aktueller Bestand
+  soldQuantity      Int               @default(0) @map("sold_quantity")
+  returnedQuantity  Int               @default(0) @map("returned_quantity")
+  defectiveQuantity Int               @default(0) @map("defective_quantity")
+  // Mehrere Preisebenen als JSON: [{ "label": "VK Standard", "cents": 4999 }, ...]
+  priceTiers        Json              @default("[]") @map("price_tiers")
+  // Verknüpfung zu echten Sale-Einträgen für separate Umsatz-/Margen-Auswertung
+  linkedSaleIds     String[]          @default([]) @map("linked_sale_ids")
   commissionPercent Decimal?          @map("commission_percent") @db.Decimal(5, 2) // unsere Provision
   agreedPayoutCents Int?              @map("agreed_payout_cents") // alternativ: fester Auszahlungsbetrag
   receivedAt        DateTime          @default(now()) @map("received_at")
@@ -442,6 +456,7 @@ model ConsignmentInventory {
   stockItem    StockItem?   @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
   sale         Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
 
+  @@unique([organizationId, sku])
   @@index([organizationId])
   @@index([organizationId, status])
   @@map("consignment_inventory")
@@ -450,6 +465,7 @@ model ConsignmentInventory {
 model Debt {
   id             String     @id @default(cuid())
   organizationId String     @map("organization_id")
+  debtDate       DateTime   @default(now()) @map("debt_date") // Datum der Forderung
   creditorName   String     @map("creditor_name") // Gläubiger (auch Gesellschafter)
   debtorName     String     @map("debtor_name") // Schuldner
   amountCents    Int        @map("amount_cents")
@@ -474,8 +490,11 @@ model Task {
   organizationId String       @map("organization_id")
   title          String
   description    String?
+  area           String? // Bereich, z.B. "Einkauf", "Versand", "Buchhaltung"
   status         TaskStatus   @default(OPEN)
   priority       TaskPriority @default(MEDIUM)
+  // Erledigte Aufgaben werden archiviert statt gelöscht (Filter im Board)
+  archived       Boolean      @default(false)
   dueDate        DateTime?    @map("due_date")
   assigneeId     String?      @map("assignee_id")
   createdById    String       @map("created_by_id")

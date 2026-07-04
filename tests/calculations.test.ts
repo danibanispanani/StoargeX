@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calcPurchaseNetCents,
+  calcReturnLoss,
   euroToCents,
   calcSale,
   calcShippingBaseCents,
@@ -87,6 +88,83 @@ describe("calcSale", () => {
     });
     expect(result.saleNetCents).toBe(5000);
     expect(result.profitCents).toBe(2000);
+  });
+});
+
+describe("calcReturnLoss", () => {
+  it("Vollerstattung: Erstattung netto minus voll gutgeschriebene Gebühren/Versand plus Zusatzkosten", () => {
+    // Verkauf: 119,00 € brutto (19%), Gebühren 11,00 € + 2,50 €, Versand 5,49 €
+    // Vollerstattung 119,00 € -> netto 100,00 €, Anteil 1.0
+    // Verlust = 100,00 - (11,00 + 2,50 + 5,49) + 4,50 Rückversand = 85,51 €
+    expect(
+      calcReturnLoss({
+        refundGrossCents: 11900,
+        taxRatePercent: 19,
+        saleGrossCents: 11900,
+        platformFeeCents: 1100,
+        paymentFeeCents: 250,
+        shippingCostCents: 549,
+        extraCostCents: 450,
+      })
+    ).toBe(8551);
+  });
+
+  it("Teilerstattung: Gebühren/Versand nur anteilig gegengerechnet", () => {
+    // 50%-Erstattung von 100,00 € (0% USt): 50,00 € netto
+    // anteilige Gebühren 0.5 x 10,00 € = 5,00 € -> Verlust 45,00 €
+    expect(
+      calcReturnLoss({
+        refundGrossCents: 5000,
+        taxRatePercent: 0,
+        saleGrossCents: 10000,
+        platformFeeCents: 1000,
+        paymentFeeCents: 0,
+        shippingCostCents: 0,
+        extraCostCents: 0,
+      })
+    ).toBe(4500);
+  });
+
+  it("0%-USt (§25a): Erstattung bleibt brutto = netto", () => {
+    expect(
+      calcReturnLoss({
+        refundGrossCents: 5000,
+        taxRatePercent: 0,
+        saleGrossCents: 5000,
+        platformFeeCents: 0,
+        paymentFeeCents: 0,
+        shippingCostCents: 0,
+        extraCostCents: 0,
+      })
+    ).toBe(5000);
+  });
+
+  it("Erstattung über VK wird beim Anteil auf 100% gekappt", () => {
+    expect(
+      calcReturnLoss({
+        refundGrossCents: 12000,
+        taxRatePercent: 0,
+        saleGrossCents: 10000,
+        platformFeeCents: 1000,
+        paymentFeeCents: 0,
+        shippingCostCents: 0,
+        extraCostCents: 0,
+      })
+    ).toBe(11000); // 12000 - 1.0*1000
+  });
+
+  it("wirft bei negativer Erstattung", () => {
+    expect(() =>
+      calcReturnLoss({
+        refundGrossCents: -1,
+        taxRatePercent: 19,
+        saleGrossCents: 100,
+        platformFeeCents: 0,
+        paymentFeeCents: 0,
+        shippingCostCents: 0,
+        extraCostCents: 0,
+      })
+    ).toThrow();
   });
 });
 
