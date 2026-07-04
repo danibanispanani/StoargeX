@@ -15,21 +15,34 @@ Security.
 
 ### 1. Datenbank starten
 
-Mit Docker (empfohlen):
+**Portable PostgreSQL (ohne Docker, eingerichtet):** Auf diesem Rechner läuft
+eine portable PostgreSQL-17-Instanz unter `%LOCALAPPDATA%\StoargeX`
+(Binaries in `pgsql\`, Daten in `pgdata\` – bewusst außerhalb von OneDrive).
+Starten/Stoppen:
 
 ```bash
-docker compose up -d
+npm run db:up     # startet Postgres auf localhost:5432 (nach jedem Neustart nötig)
+npm run db:down   # stoppt Postgres
 ```
 
-Das legt automatisch die Rolle `storagex` (Nicht-Superuser!) und die Datenbank
-`storagex` an – passend zur `DATABASE_URL` in `.env`.
+Einmalige Neu-Einrichtung auf einem anderen Rechner (ZIP von
+https://www.enterprisedb.com/download-postgresql-binaries nach
+`%LOCALAPPDATA%\StoargeX\pgsql` entpacken, dann):
 
-**Ohne Docker** (native PostgreSQL-Installation) einmalig als `postgres` ausführen:
-
-```sql
-CREATE ROLE storagex LOGIN PASSWORD 'storagex' NOSUPERUSER CREATEDB;
-CREATE DATABASE storagex OWNER storagex;
+```powershell
+$dir = "$env:LOCALAPPDATA\StoargeX"
+Set-Content "$dir\pgpass.txt" "postgres" -Encoding ascii -NoNewline
+& "$dir\pgsql\bin\initdb.exe" -D "$dir\pgdata" -U postgres --pwfile="$dir\pgpass.txt" -E UTF8 -A scram-sha-256 --locale=C
+npm run db:up
+$env:PGPASSWORD = "postgres"
+& "$dir\pgsql\bin\psql.exe" -h localhost -U postgres -d postgres -f scripts\init-db.sql
 ```
+
+**Alternativ mit Docker** (`npm run db:up:docker`): legt Rolle + Datenbank
+automatisch über `scripts/init-db.sql` an.
+
+In beiden Fällen entsteht die Rolle `storagex` (Nicht-Superuser!) und die
+Datenbank `storagex` – passend zur `DATABASE_URL` in `.env`.
 
 > ⚠️ **Wichtig:** Die App darf **nicht** als Superuser verbinden.
 > Postgres-Superuser umgehen Row Level Security immer – die Mandantentrennung
