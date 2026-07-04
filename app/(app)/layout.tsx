@@ -7,6 +7,9 @@ import { ROLE_LABELS } from "@/lib/roles";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/lager", label: "Lager" },
+  { href: "/verkauf", label: "Verkauf" },
+  { href: "/versand", label: "Versand" },
   { href: "/team", label: "Team" },
   { href: "/einstellungen", label: "Einstellungen" },
 ];

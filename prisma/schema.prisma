@@ -37,6 +37,8 @@ enum StockItemStatus {
   RESERVED      // reserviert / Zahlung ausstehend
   SOLD          // verkauft
   RETURNED      // zurückgekommen (Retoure)
+  CANCELLED     // Einkauf storniert
+  IN_TRANSIT    // unterwegs (vom Händler zu uns)
   WRITTEN_OFF   // abgeschrieben / entsorgt
 }
 
@@ -103,6 +105,9 @@ model Organization {
   legalForm LegalForm @default(GBR)
   vatId     String?   @map("vat_id") // USt-IdNr.
   taxNumber String?   @map("tax_number")
+  // Format für lesbare Order-IDs; Tokens: {JJJJ} {JJ} {MM} {TT} {NR:n}
+  orderIdFormat  String @default("SX-{JJJJ}-{NR:4}") @map("order_id_format")
+  orderIdCounter Int    @default(0) @map("order_id_counter")
   street    String?
   zipCode   String?   @map("zip_code")
   city      String?
@@ -110,19 +115,21 @@ model Organization {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  memberships  Membership[]
-  invitations  Invitation[]
-  platforms    Platform[]
-  carriers     Carrier[]
-  taxRates     TaxRate[]
-  stockItems   StockItem[]
-  sales        Sale[]
-  returns      Return[]
-  consignments ConsignmentInventory[]
-  debts        Debt[]
-  tasks        Task[]
-  credentials  Credential[]
-  auditLogs    AuditLog[]
+  memberships   Membership[]
+  invitations   Invitation[]
+  platforms     Platform[]
+  carriers      Carrier[]
+  taxRates      TaxRate[]
+  stockItems    StockItem[]
+  sales         Sale[]
+  returns       Return[]
+  consignments  ConsignmentInventory[]
+  debts         Debt[]
+  tasks         Task[]
+  credentials   Credential[]
+  auditLogs     AuditLog[]
+  listings      StockItemListing[]
+  shippingRates ShippingRate[]
 
   @@map("organizations")
 }
@@ -203,13 +210,39 @@ model Platform {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sales        Sale[]
   credentials  Credential[]
+  listings     StockItemListing[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
   @@map("platforms")
+}
+
+// Konfigurierbare Versandtarife (ersetzt feste DHL-Tabelle):
+// Zielland + Gewicht -> Grundpreis + Kilopreis + Zuschläge (lib/calculations.ts)
+model ShippingRate {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  carrierName    String   @map("carrier_name") // z.B. DHL, DPD, Hermes, GLS, UPS
+  name           String // Tarifname, z.B. "Paket M national"
+  zone           String // Zonenlabel, z.B. "DE", "EU", "Welt"
+  countries      String[] @default([]) // ISO-2-Länder der Zone; leer = alle
+  baseCents      Int      @map("base_cents") // Grundpreis
+  perKgCents     Int      @default(0) @map("per_kg_cents") // Kilopreis
+  maxWeightKg    Decimal? @map("max_weight_kg") @db.Decimal(6, 2) // optionales Tarif-Limit
+  // Zuschläge als JSON: [{ "label": "Sperrgut", "cents": 500 }, ...]
+  surcharges     Json     @default("[]")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, active])
+  @@map("shipping_rates")
 }
 
 model Carrier {
@@ -234,6 +267,9 @@ model TaxRate {
   organizationId String   @map("organization_id")
   name           String // z.B. "Differenzbesteuerung §25a", "Regelsteuersatz 19%"
   ratePercent    Decimal  @map("rate_percent") @db.Decimal(5, 2)
+  // ISO-2-Länderkürzel (z.B. "DE", "AT"); null = Fallback für alle Länder.
+  // Verkäufe nutzen den Satz des Käuferlands, sonst den Default.
+  country        String?
   isDefault      Boolean  @default(false) @map("is_default")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -256,13 +292,21 @@ model StockItem {
   organizationId     String          @map("organization_id")
   sku                String // interne Artikelnummer
   title              String
+  model              String? // Modell (z.B. "Air Jordan 1 Mid")
+  variant            String? // Variante/Colorway
   description        String?
   category           String?
   brand              String?
   size               String?
   condition          String? // z.B. "Neu mit Etikett", "Sehr gut"
+  ean                String? // EAN/GTIN
   quantity           Int             @default(1)
-  purchasePriceCents Int             @map("purchase_price_cents") // EK in Cent
+  supplier           String? // Händler / Bezugsquelle
+  purchasePriceCents Int             @map("purchase_price_cents") // EK brutto in Cent
+  // EK netto: bei Vorsteuerabzug = brutto / (1 + Satz), sonst = brutto
+  purchaseNetCents   Int?            @map("purchase_net_cents")
+  inputTaxDeductible Boolean         @default(false) @map("input_tax_deductible")
+  paymentMethod      String?         @map("payment_method") // z.B. PayPal, Bar, Überweisung
   purchaseDate       DateTime?       @map("purchase_date")
   purchaseChannel    String?         @map("purchase_channel") // wo eingekauft
   location           String? // Lagerplatz
@@ -270,6 +314,8 @@ model StockItem {
   imageUrls          String[]        @default([]) @map("image_urls")
   notes              String?
   taxRateId          String?         @map("tax_rate_id")
+  // Verweis auf spätere Konsignationsware (frei belegbar, kein FK)
+  consignmentRefId   String?         @map("consignment_ref_id")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
@@ -277,11 +323,29 @@ model StockItem {
   taxRate      TaxRate?               @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   sales        Sale[]
   consignments ConsignmentInventory[]
+  listings     StockItemListing[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
   @@index([organizationId, status])
   @@map("stock_items")
+}
+
+// "Gelistet auf": n:m zwischen StockItem und Platform (nicht hartcodiert)
+model StockItemListing {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  stockItemId    String   @map("stock_item_id")
+  platformId     String   @map("platform_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stockItem    StockItem    @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  platform     Platform     @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@unique([stockItemId, platformId])
+  @@index([organizationId])
+  @@map("stock_item_listings")
 }
 
 model Sale {
@@ -293,13 +357,25 @@ model Sale {
   taxRateId            String?    @map("tax_rate_id")
   soldAt               DateTime   @default(now()) @map("sold_at")
   quantity             Int        @default(1)
-  salePriceCents       Int        @map("sale_price_cents") // VK in Cent
+  salePriceCents       Int        @map("sale_price_cents") // VK brutto in Cent
+  // Server-seitig berechnet (lib/calculations.ts) und als Snapshot gespeichert:
+  saleNetCents         Int        @default(0) @map("sale_net_cents") // VK netto
+  taxRatePercent       Decimal    @default(0) @map("tax_rate_percent") @db.Decimal(5, 2)
+  marginCents          Int        @default(0) @map("margin_cents") // VK netto - EK netto
+  profitCents          Int        @default(0) @map("profit_cents") // Marge - Versand - Gebühren
+  buyerCountry         String     @default("DE") @map("buyer_country") // ISO-2
+  shippingMethod       String?    @map("shipping_method")
+  payoutRecipient      String?    @map("payout_recipient") // Auszahlungsempfänger
   shippingChargedCents Int        @default(0) @map("shipping_charged_cents") // Versand vom Käufer
   shippingCostCents    Int        @default(0) @map("shipping_cost_cents") // eigene Versandkosten
   platformFeeCents     Int        @default(0) @map("platform_fee_cents")
   paymentFeeCents      Int        @default(0) @map("payment_fee_cents") // z.B. PayPal
+  // Informative Checkbox-Status:
+  invoiceCreated       Boolean    @default(false) @map("invoice_created")
+  postageBooked        Boolean    @default(false) @map("postage_booked")
+  feesBooked           Boolean    @default(false) @map("fees_booked")
   buyerUsername        String?    @map("buyer_username")
-  orderNumber          String?    @map("order_number")
+  orderNumber          String?    @map("order_number") // lesbare Order-ID (Format konfigurierbar)
   trackingNumber       String?    @map("tracking_number")
   status               SaleStatus @default(PENDING)
   notes                String?

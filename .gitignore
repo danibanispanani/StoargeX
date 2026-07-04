@@ -37,6 +37,9 @@ yarn-error.log*
 # claude code (user-local)
 .claude/settings.local.json
 
+# hochgeladene Artikelbilder (Laufzeitdaten)
+/public/uploads/
+
 # vercel
 .vercel
 

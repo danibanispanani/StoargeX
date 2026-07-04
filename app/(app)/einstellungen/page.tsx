@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireOrg } from "@/lib/org";
 import { hasMinRole } from "@/lib/roles";
 import { OrganizationForm } from "@/components/settings/organization-form";
+import { TaxRatesCard } from "@/components/settings/tax-rates-card";
+import { OrderFormatForm } from "@/components/settings/order-format-form";
 import {
   Card,
   CardContent,
@@ -12,8 +14,12 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default async function SettingsPage() {
-  const { organization, membership } = await requireOrg();
+  const { organization, membership, db } = await requireOrg();
   const canEdit = hasMinRole(membership.role, "ADMIN");
+
+  const taxRates = await db.taxRate.findMany({
+    orderBy: [{ country: "asc" }, { name: "asc" }],
+  });
 
   return (
     <div className="space-y-6">
@@ -44,6 +50,43 @@ export default async function SettingsPage() {
               zipCode: organization.zipCode ?? "",
               city: organization.city ?? "",
             }}
+            readOnly={!canEdit}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Umsatzsteuersätze</CardTitle>
+          <CardDescription>
+            USt-Satz je Käuferland für die VK-netto-Berechnung im Verkauf.
+            Ohne Länder-Treffer greift der Default-Satz.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TaxRatesCard
+            rates={taxRates.map((rate) => ({
+              id: rate.id,
+              name: rate.name,
+              ratePercent: Number(rate.ratePercent),
+              country: rate.country,
+              isDefault: rate.isDefault,
+            }))}
+            readOnly={!canEdit}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Order-IDs</CardTitle>
+          <CardDescription>
+            Format der automatisch vergebenen, lesbaren Order-IDs für Verkäufe.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OrderFormatForm
+            currentFormat={organization.orderIdFormat}
             readOnly={!canEdit}
           />
         </CardContent>
