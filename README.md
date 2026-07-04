@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StoargeX
 
-## Getting Started
+Multi-Tenant SaaS für Handels-GbRs: Ein- und Verkauf über eBay, Vinted,
+Kleinanzeigen & Co. – mit harter Mandantentrennung per Postgres Row Level
+Security.
 
-First, run the development server:
+## Stack
+
+- **Next.js 15** (App Router, Turbopack), TypeScript, Tailwind CSS v4, shadcn/ui
+- **Prisma 6** + PostgreSQL, Multi-Tenancy über `organization_id` + **RLS**
+- **Auth.js v5** (Credentials + optional Google), JWT-Session (httpOnly/secure),
+  Passwörter mit **argon2id**, **TOTP-2FA** (Pflicht für OWNER/ADMIN)
+
+## Lokales Setup
+
+### 1. Datenbank starten
+
+Mit Docker (empfohlen):
+
+```bash
+docker compose up -d
+```
+
+Das legt automatisch die Rolle `storagex` (Nicht-Superuser!) und die Datenbank
+`storagex` an – passend zur `DATABASE_URL` in `.env`.
+
+**Ohne Docker** (native PostgreSQL-Installation) einmalig als `postgres` ausführen:
+
+```sql
+CREATE ROLE storagex LOGIN PASSWORD 'storagex' NOSUPERUSER CREATEDB;
+CREATE DATABASE storagex OWNER storagex;
+```
+
+> ⚠️ **Wichtig:** Die App darf **nicht** als Superuser verbinden.
+> Postgres-Superuser umgehen Row Level Security immer – die Mandantentrennung
+> wäre dann wirkungslos. Deshalb `NOSUPERUSER`; `FORCE ROW LEVEL SECURITY`
+> in der Migration sorgt dafür, dass auch der Tabellen-Owner den Policies
+> unterliegt. `CREATEDB` braucht die Rolle nur für Prismas Shadow-Database
+> bei `prisma migrate dev`.
+
+### 2. Environment
+
+`.env` existiert bereits mit lokalen Defaults (bzw. `.env.example` kopieren).
+Secrets neu erzeugen:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"  # AUTH_SECRET
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"     # APP_ENCRYPTION_KEY
+```
+
+### 3. Migration ausführen
+
+Die initiale Migration liegt in `prisma/migrations/20260704000000_init/`
+(Tabellen + Indizes + RLS-Policies). Anwenden mit:
+
+```bash
+npx prisma migrate dev
+```
+
+(oder `npm run db:migrate`; in CI/Produktion: `npx prisma migrate deploy`)
+
+### 4. App starten
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+→ http://localhost:3000 · Registrierung unter `/registrieren` gründet die
+erste Organisation (du wirst automatisch OWNER; danach fordert die App das
+verpflichtende 2FA-Setup an).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+E-Mail-Versand: ohne `SMTP_HOST` werden Einladungslinks in die Server-Konsole
+geloggt (praktisch für lokale Tests). Für echte Mails z.B.
+[Mailpit](https://mailpit.axllent.org/) lokal laufen lassen.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Mandantentrennung (RLS)
 
-## Learn More
+- Jede mandantenspezifische Tabelle hat `organization_id` (Pflicht + Index).
+- Die Policies filtern hart auf `current_setting('app.current_org_id')`.
+- `lib/tenant-db.ts` → `tenantDb(orgId)` setzt den Kontext pro Transaktion.
+  **Alle Geschäftsdaten-Queries laufen ausschließlich über diesen Client.**
+- `lib/prisma.ts` → `bypassDb()` (Policy `app.bypass_rls = 'on'`) nur für
+  Systemflows vor dem Org-Kontext: Login, Registrierung, Einladung annehmen.
+- `lib/org.ts` → `requireOrg(minRole)` prüft pro Request Session +
+  Mitgliedschaft frisch aus der DB und liefert den Tenant-Client.
 
-To learn more about Next.js, take a look at the following resources:
+## Struktur
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+app/
+  (auth)/login, (auth)/registrieren   Öffentliche Auth-Seiten
+  einladung/[token]                   Einladungsflow
+  (app)/dashboard, /team, /einstellungen(/sicherheit)   Geschützter Bereich
+  api/auth/[...nextauth]              Auth.js-Handler
+auth.ts / auth.config.ts              Auth.js (voll / edge-tauglich)
+middleware.ts                         Login-, Org- und 2FA-Erzwingung
+lib/                                  prisma, tenant-db, org, crypto, totp, mail, audit, actions/
+components/                           ui/ (shadcn), auth/, team/, settings/
+prisma/schema.prisma                  Datenmodell (13 Domänen-Modelle + Auth)
+prisma/migrations/..._init/           Initiale Migration inkl. RLS-Policies
+```

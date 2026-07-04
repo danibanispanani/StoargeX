@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16
+    container_name: storagex-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Legt beim ersten Start den Nicht-Superuser "storagex" + Datenbank an.
+      # WICHTIG: Die App darf NICHT als Superuser verbinden, sonst greift
+      # Row Level Security nicht (Superuser umgehen RLS immer).
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:
