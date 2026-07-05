@@ -26,9 +26,11 @@ export const authConfig = {
       session.user.totpEnabled = token.totpEnabled ?? false;
       session.memberships = token.memberships ?? [];
       session.activeOrgId = token.activeOrgId ?? null;
-      session.activeRole =
-        session.memberships.find((m) => m.orgId === session.activeOrgId)
-          ?.role ?? null;
+      const active = session.memberships.find(
+        (m) => m.orgId === session.activeOrgId
+      );
+      session.activeRole = active?.role ?? null;
+      session.activeTier = active?.tier ?? null;
       return session;
     },
   },

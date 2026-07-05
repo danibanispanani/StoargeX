@@ -3,73 +3,91 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ==========================================================================
+   StoargeX Design-Tokens
+   Marke: ink, fog, slate, cargo-amber, transit-teal, customs-red
+   Typografie: Space Grotesk (Display), Inter (UI), JetBrains Mono (Zahlen)
+   Dark Mode komplett über CSS-Variablen (Klasse .dark auf <html>)
+   ========================================================================== */
+
 :root {
+  /* Markenfarben (Rohwerte) */
+  --ink: #14171c;
+  --fog: #edede7;
+  --slate: #545b66;
+  --cargo-amber: #d98e2b;
+  --transit-teal: #1b8f86;
+  --customs-red: #c0483b;
+
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Semantische Tokens – Light */
+  --background: #f6f6f1;
+  --foreground: var(--ink);
+  --card: #ffffff;
+  --card-foreground: var(--ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--ink);
+  --primary: var(--transit-teal);
+  --primary-foreground: #ffffff;
+  --secondary: var(--fog);
+  --secondary-foreground: var(--ink);
+  --muted: #e4e4dc;
+  --muted-foreground: var(--slate);
+  --accent: #e0eceb;
+  --accent-foreground: var(--ink);
+  --destructive: var(--customs-red);
+  --border: #d8d8cf;
+  --input: #d8d8cf;
+  --ring: var(--transit-teal);
+  --chart-1: var(--transit-teal);
+  --chart-2: var(--cargo-amber);
+  --chart-3: var(--slate);
+  --chart-4: var(--ink);
+  --chart-5: var(--customs-red);
+  --sidebar: var(--fog);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--transit-teal);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e0eceb;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: #d8d8cf;
+  --sidebar-ring: var(--transit-teal);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Semantische Tokens – Dark */
+  --background: var(--ink);
+  --foreground: var(--fog);
+  --card: #1c2028;
+  --card-foreground: var(--fog);
+  --popover: #1c2028;
+  --popover-foreground: var(--fog);
+  --primary: #2bb3a8; /* transit-teal, für Kontrast auf dunklem Grund angehoben */
+  --primary-foreground: var(--ink);
+  --secondary: #232830;
+  --secondary-foreground: var(--fog);
+  --muted: #232830;
+  --muted-foreground: #9aa1ac;
+  --accent: #223734;
+  --accent-foreground: var(--fog);
+  --destructive: #d65d4f; /* customs-red, angehoben */
+  --border: rgba(237, 237, 231, 0.12);
+  --input: rgba(237, 237, 231, 0.16);
+  --ring: #2bb3a8;
+  --chart-1: #2bb3a8;
+  --chart-2: #e6a34d;
+  --chart-3: #8a93a0;
+  --chart-4: var(--fog);
+  --chart-5: #d65d4f;
+  --sidebar: #1c2028;
+  --sidebar-foreground: var(--fog);
+  --sidebar-primary: #2bb3a8;
+  --sidebar-primary-foreground: var(--ink);
+  --sidebar-accent: #223734;
+  --sidebar-accent-foreground: var(--fog);
+  --sidebar-border: rgba(237, 237, 231, 0.12);
+  --sidebar-ring: #2bb3a8;
 }
 
 @theme inline {
@@ -108,8 +126,17 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Markenfarben als Utilities (text-cargo-amber, bg-transit-teal, …) */
+  --color-ink: var(--ink);
+  --color-fog: var(--fog);
+  --color-slate: var(--slate);
+  --color-cargo-amber: var(--cargo-amber);
+  --color-transit-teal: var(--transit-teal);
+  --color-customs-red: var(--customs-red);
+  /* Typografie */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
 @layer base {
@@ -118,5 +145,98 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display), sans-serif;
+  }
+  /* Sichtbarer Tastatur-Fokus überall */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* ==========================================================================
+   Motion: dezent, respektiert prefers-reduced-motion
+   ========================================================================== */
+
+@layer utilities {
+  /* Mikrointeraktion: 2–4px Anhebung auf Karten/Zeilen/Buttons */
+  .hover-lift {
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      opacity 0.18s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px -12px rgba(20, 23, 28, 0.35);
+  }
+}
+
+@keyframes sx-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sx-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sx-route-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Scroll-Reveals: sichtbar erst mit .is-visible (IntersectionObserver) */
+.sx-reveal {
+  opacity: 0;
+}
+.sx-reveal.is-visible {
+  animation: sx-fade-up 0.6s ease forwards;
+}
+
+/* Routenlinie: zeichnet sich beim Laden selbst */
+.sx-route-path {
+  stroke-dasharray: var(--route-length, 1200);
+  stroke-dashoffset: var(--route-length, 1200);
+  animation: sx-route-draw 1.8s ease-out 0.2s forwards;
+}
+.sx-route-station {
+  opacity: 0;
+  animation: sx-fade 0.5s ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-lift,
+  .hover-lift:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  /* Nur Opacity-Übergänge, keine Bewegung */
+  .sx-reveal.is-visible {
+    animation: sx-fade 0.4s ease forwards;
+  }
+  .sx-route-path {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+  .sx-route-station {
+    animation: sx-fade 0.3s ease forwards;
   }
 }

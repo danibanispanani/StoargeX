@@ -1,4 +1,4 @@
-import type { Role } from "@prisma/client";
+import type { Role, SubscriptionTier } from "@prisma/client";
 import type { DefaultSession } from "next-auth";
 import "next-auth/jwt";
 
@@ -7,6 +7,7 @@ export interface SessionMembership {
   orgName: string;
   orgSlug: string;
   role: Role;
+  tier: SubscriptionTier;
 }
 
 declare module "next-auth" {
@@ -18,6 +19,7 @@ declare module "next-auth" {
     memberships: SessionMembership[];
     activeOrgId: string | null;
     activeRole: Role | null;
+    activeTier: SubscriptionTier | null;
   }
 }
 

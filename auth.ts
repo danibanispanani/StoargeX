@@ -26,7 +26,11 @@ const loginSchema = z.object({
 async function loadMemberships(userId: string): Promise<SessionMembership[]> {
   const memberships = await bypassDb().membership.findMany({
     where: { userId },
-    include: { organization: { select: { name: true, slug: true } } },
+    include: {
+      organization: {
+        select: { name: true, slug: true, subscriptionTier: true },
+      },
+    },
     orderBy: { createdAt: "asc" },
   });
   return memberships.map((m) => ({
@@ -34,6 +38,7 @@ async function loadMemberships(userId: string): Promise<SessionMembership[]> {
     orgName: m.organization.name,
     orgSlug: m.organization.slug,
     role: m.role,
+    tier: m.organization.subscriptionTier,
   }));
 }
 
@@ -64,6 +69,32 @@ export const {
 } = NextAuth({
   adapter: PrismaAdapter(prisma),
   ...authConfig,
+  events: {
+    // Sensible Aktion: erfolgreicher Login -> Audit-Log in jeder Organisation
+    async signIn({ user }) {
+      if (!user?.id) return;
+      try {
+        const { writeAuditLog } = await import("@/lib/audit");
+        const memberships = await bypassDb().membership.findMany({
+          where: { userId: user.id },
+          select: { organizationId: true },
+        });
+        await Promise.all(
+          memberships.map((m) =>
+            writeAuditLog({
+              organizationId: m.organizationId,
+              userId: user.id,
+              action: "user.login",
+              entityType: "User",
+              entityId: user.id,
+            })
+          )
+        );
+      } catch (error) {
+        console.error("[audit] Login-Event fehlgeschlagen:", error);
+      }
+    },
+  },
   providers: [
     ...authConfig.providers,
     Credentials({

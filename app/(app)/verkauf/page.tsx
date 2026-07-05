@@ -3,6 +3,7 @@ import { formatEuro } from "@/lib/calculations";
 import { CreateSaleDialog } from "@/components/sales/create-sale-dialog";
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
 import { SaleFlagCheckbox } from "@/components/sales/sale-flag-checkbox";
+import { SaleRouteStepper } from "@/components/sales/sale-route-stepper";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -100,6 +101,7 @@ export default async function SalesPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Order-ID</TableHead>
+                <TableHead>Route</TableHead>
                 <TableHead>Artikel</TableHead>
                 <TableHead>Datum</TableHead>
                 <TableHead>Plattform</TableHead>
@@ -123,6 +125,9 @@ export default async function SalesPage({
                 <TableRow key={sale.id}>
                   <TableCell className="font-mono text-xs">
                     {sale.orderNumber ?? "–"}
+                  </TableCell>
+                  <TableCell>
+                    <SaleRouteStepper status={sale.status} />
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{sale.stockItem.title}</div>
@@ -181,7 +186,7 @@ export default async function SalesPage({
               ))}
               {sales.length > 0 && (
                 <TableRow className="bg-muted/50 font-medium">
-                  <TableCell colSpan={5}>Summe ({sales.length} Verkäufe)</TableCell>
+                  <TableCell colSpan={6}>Summe ({sales.length} Verkäufe)</TableCell>
                   <TableCell className="text-right">
                     {formatEuro(sum.salePriceCents ?? 0)}
                   </TableCell>

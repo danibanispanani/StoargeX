@@ -4,6 +4,9 @@ import { hasMinRole } from "@/lib/roles";
 import { OrganizationForm } from "@/components/settings/organization-form";
 import { TaxRatesCard } from "@/components/settings/tax-rates-card";
 import { OrderFormatForm } from "@/components/settings/order-format-form";
+import { GdprCard } from "@/components/settings/gdpr-card";
+import { BillingCard } from "@/components/settings/billing-card";
+import { ThemeSelector } from "@/components/theme/theme-selector";
 import {
   Card,
   CardContent,
@@ -51,6 +54,36 @@ export default async function SettingsPage() {
               city: organization.city ?? "",
             }}
             readOnly={!canEdit}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Darstellung</CardTitle>
+          <CardDescription>
+            Hell, dunkel oder Systemeinstellung – wird an deinem Konto
+            gespeichert und gilt auf allen Geräten.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemeSelector />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Abo &amp; Abrechnung</CardTitle>
+          <CardDescription>
+            Plan der Organisation – Upgrades schalten Berichte, Versand,
+            Konsignation und den Zugangsdaten-Tresor frei.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BillingCard
+            tier={organization.subscriptionTier}
+            hasSubscription={Boolean(organization.stripeCustomerId)}
+            isOwner={membership.role === "OWNER"}
           />
         </CardContent>
       </Card>
@@ -106,6 +139,21 @@ export default async function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {membership.role === "OWNER" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Daten &amp; DSGVO</CardTitle>
+            <CardDescription>
+              Datenexport und vollständige Löschung der Organisation (nur
+              Inhaber).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <GdprCard organizationName={organization.name} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

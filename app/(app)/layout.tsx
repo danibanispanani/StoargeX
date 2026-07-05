@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { ThemeSync } from "@/components/theme/theme-sync";
 import { ROLE_LABELS } from "@/lib/roles";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/berichte", label: "Berichte" },
   { href: "/lager", label: "Lager" },
   { href: "/verkauf", label: "Verkauf" },
   { href: "/versand", label: "Versand" },
@@ -14,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/konsignation", label: "Konsignation" },
   { href: "/schulden", label: "Schulden" },
   { href: "/aufgaben", label: "Aufgaben" },
+  { href: "/zugangsdaten", label: "Zugangsdaten" },
   { href: "/team", label: "Team" },
   { href: "/einstellungen", label: "Einstellungen" },
 ];
@@ -31,15 +36,22 @@ export default async function AppLayout({
   );
   if (!activeMembership) redirect("/registrieren?schritt=organisation");
 
+  // Dark-Mode-Präferenz aus der DB (überschreibt lokale Einstellung einmalig)
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { theme: true },
+  });
+
   return (
     <div className="min-h-screen">
+      <ThemeSync dbTheme={dbUser?.theme ?? null} />
       <header className="border-b">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
-          <div className="flex items-center gap-6">
+        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <Link href="/dashboard" className="font-semibold">
               StoargeX
             </Link>
-            <nav className="flex items-center gap-4 text-sm text-muted-foreground">
+            <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
               {NAV_ITEMS.map((item) => (
                 <Link
                   key={item.href}
@@ -61,6 +73,7 @@ export default async function AppLayout({
             <Badge variant="secondary">
               {ROLE_LABELS[activeMembership.role]}
             </Badge>
+            <ThemeToggle persist />
             <form
               action={async () => {
                 "use server";
@@ -74,7 +87,7 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl p-4 sm:p-6">{children}</main>
+      <main className="mx-auto max-w-6xl p-4 sm:p-6">{children}</main>
     </div>
   );
 }
