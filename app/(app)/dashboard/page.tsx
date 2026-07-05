@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { requireOrg } from "@/lib/org";
 import { formatEuro } from "@/lib/calculations";
-import { loadKpis, periodToFrom } from "@/lib/reporting";
+import { loadKpis, loadSaleBreakdowns, periodToFrom } from "@/lib/reporting";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
+import { BreakdownTable } from "@/components/reports/breakdown-table";
 import {
   Card,
   CardDescription,
@@ -20,9 +21,14 @@ export default async function DashboardPage({
   const params = await searchParams;
   const zeitraum = params.zeitraum ?? "30";
   const platformId = params.plattform ?? "";
+  const filter = {
+    from: periodToFrom(zeitraum),
+    platformId: platformId || undefined,
+  };
 
-  const [kpis, platforms] = await Promise.all([
-    loadKpis(db, { from: periodToFrom(zeitraum), platformId: platformId || undefined }),
+  const [kpis, breakdowns, platforms] = await Promise.all([
+    loadKpis(db, filter),
+    loadSaleBreakdowns(db, filter),
     db.platform.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -63,10 +69,14 @@ export default async function DashboardPage({
         <div>
           <h1 className="text-2xl font-semibold">{organization.name}</h1>
           <p className="text-sm text-muted-foreground">
-            KPI-Übersicht · Details unter{" "}
-            <Link href="/berichte" className="underline">
-              Berichte
-            </Link>
+            KPIs und Auswertungen – Gewinn nach Retouren:{" "}
+            <strong
+              className={cn(
+                kpis.profitCents - kpis.returnLossCents < 0 && "text-destructive"
+              )}
+            >
+              {formatEuro(kpis.profitCents - kpis.returnLossCents)}
+            </strong>
           </p>
         </div>
         <ReportFilterBar
@@ -77,10 +87,10 @@ export default async function DashboardPage({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => {
           const inner = (
-            <Card key={card.label} className={cn(card.href && "transition-colors hover:bg-muted/40")}>
+            <Card key={card.label} className={cn("h-full", card.href && "hover-lift")}>
               <CardHeader>
                 <CardDescription>{card.label}</CardDescription>
                 <CardTitle
@@ -100,6 +110,21 @@ export default async function DashboardPage({
             inner
           );
         })}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <BreakdownTable
+          title="Nach Plattform"
+          description="Umsatz, Gebühren und Gewinn je Verkaufsplattform"
+          keyHeader="Plattform"
+          rows={breakdowns.byPlatform}
+        />
+        <BreakdownTable
+          title="Nach Monat"
+          description="Monatliche Entwicklung im gewählten Zeitraum"
+          keyHeader="Monat"
+          rows={breakdowns.byMonth}
+        />
       </div>
     </div>
   );

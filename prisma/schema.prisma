@@ -32,14 +32,33 @@ enum LegalForm {
 }
 
 enum StockItemStatus {
-  IN_STOCK      // eingekauft, liegt im Lager
-  LISTED        // auf mind. einer Plattform inseriert
-  RESERVED      // reserviert / Zahlung ausstehend
-  SOLD          // verkauft
-  RETURNED      // zurückgekommen (Retoure)
-  CANCELLED     // Einkauf storniert
-  IN_TRANSIT    // unterwegs (vom Händler zu uns)
-  WRITTEN_OFF   // abgeschrieben / entsorgt
+  IN_STOCK      // "gelagert" (neutral)
+  STORED_R      // "gelagert - R"
+  STORED_D      // "gelagert - D"
+  SOLD          // "Verkauft"
+  RETURNED      // "Retoure"
+  CANCELLED     // "Storniert"
+  IN_TRANSIT    // "Unterwegs"
+  OTHER         // "Sonstiges"
+  LISTED        // Altbestand (UI bietet den Wert nicht mehr an)
+  RESERVED      // Altbestand
+  WRITTEN_OFF   // Altbestand
+}
+
+// Kauf-/Retoure-Buchungsstatus wie im Excel-Original:
+// E = eingetragen, O = offen/ausstehend, NN = nicht nötig, S = Sonstiges
+enum EntryStatus {
+  E
+  O
+  NN
+  S
+}
+
+// Konfigurierbare Auswahllisten (Einstellungen), z.B. Zahlungsmethoden (ZM)
+// und Auszahlungsempfänger
+enum OptionKind {
+  PAYMENT_METHOD
+  PAYOUT_RECIPIENT
 }
 
 enum SaleStatus {
@@ -114,6 +133,8 @@ model Organization {
   // Format für lesbare Order-IDs; Tokens: {JJJJ} {JJ} {MM} {TT} {NR:n}
   orderIdFormat  String @default("SX-{JJJJ}-{NR:4}") @map("order_id_format")
   orderIdCounter Int    @default(0) @map("order_id_counter")
+  // Fortlaufende LagerIDs (Format L-{JJ}-{NNN})
+  stockIdCounter Int @default(0) @map("stock_id_counter")
   // Billing (Stripe): Tier wird vom Webhook aktualisiert
   subscriptionTier     SubscriptionTier @default(FREE) @map("subscription_tier")
   stripeCustomerId     String?          @unique @map("stripe_customer_id")
@@ -140,6 +161,9 @@ model Organization {
   auditLogs     AuditLog[]
   listings      StockItemListing[]
   shippingRates ShippingRate[]
+  saleItems     SaleItem[]
+  selectOptions SelectOption[]
+  products      Product[]
 
   @@map("organizations")
 }
@@ -323,17 +347,19 @@ model StockItem {
   purchaseChannel    String?         @map("purchase_channel") // wo eingekauft
   location           String? // Lagerplatz
   status             StockItemStatus @default(IN_STOCK)
+  // Buchungsstatus wie im Excel: Kauf (E/O/NN) und Retoure (E/O/NN/S)
+  kaufStatus         EntryStatus     @default(O) @map("kauf_status")
+  retoureStatus      EntryStatus     @default(NN) @map("retoure_status")
   imageUrls          String[]        @default([]) @map("image_urls")
   notes              String?
   taxRateId          String?         @map("tax_rate_id")
-  // Verweis auf spätere Konsignationsware (frei belegbar, kein FK)
-  consignmentRefId   String?         @map("consignment_ref_id")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   taxRate      TaxRate?               @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   sales        Sale[]
+  saleItems    SaleItem[]
   consignments ConsignmentInventory[]
   listings     StockItemListing[]
 
@@ -360,10 +386,67 @@ model StockItemListing {
   @@map("stock_item_listings")
 }
 
+// Verkaufsposition: verknüpft einen Verkauf mit genau einer Einheit aus dem
+// Lager ODER dem Konsignationsbestand (Mehrartikel-Verkäufe = mehrere Zeilen)
+model SaleItem {
+  id             String  @id @default(cuid())
+  organizationId String  @map("organization_id")
+  saleId         String  @map("sale_id")
+  stockItemId    String? @map("stock_item_id")
+  consignmentId  String? @map("consignment_id")
+  ekNetCents     Int     @default(0) @map("ek_net_cents") // EK-Netto-Snapshot
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sale         Sale                  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  stockItem    StockItem?            @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
+  consignment  ConsignmentInventory? @relation(fields: [consignmentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+// Konfigurierbare Dropdown-Werte (ZM, Auszahlungsempfänger)
+model SelectOption {
+  id             String     @id @default(cuid())
+  organizationId String     @map("organization_id")
+  kind           OptionKind
+  label          String
+  sortOrder      Int        @default(0) @map("sort_order")
+  active         Boolean    @default(true)
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind, label])
+  @@index([organizationId])
+  @@map("select_options")
+}
+
+// Produktkatalog: wiederkehrende Produkte für schnelles Eintragen
+model Product {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  name              String
+  variant           String? // Variante/Version
+  category          String?
+  ean               String?
+  defaultPriceCents Int?     @map("default_price_cents") // Standard-EK brutto
+  imageUrls         String[] @default([]) @map("image_urls")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name, variant])
+  @@index([organizationId])
+  @@map("products")
+}
+
 model Sale {
   id                   String     @id @default(cuid())
   organizationId       String     @map("organization_id")
-  stockItemId          String     @map("stock_item_id")
+  stockItemId          String?    @map("stock_item_id") // Alt-Feld; neue Verkäufe nutzen SaleItem
   platformId           String     @map("platform_id")
   carrierId            String?    @map("carrier_id")
   taxRateId            String?    @map("tax_rate_id")
@@ -379,9 +462,11 @@ model Sale {
   shippingMethod       String?    @map("shipping_method")
   payoutRecipient      String?    @map("payout_recipient") // Auszahlungsempfänger
   shippingChargedCents Int        @default(0) @map("shipping_charged_cents") // Versand vom Käufer
-  shippingCostCents    Int        @default(0) @map("shipping_cost_cents") // eigene Versandkosten
-  platformFeeCents     Int        @default(0) @map("platform_fee_cents")
-  paymentFeeCents      Int        @default(0) @map("payment_fee_cents") // z.B. PayPal
+  shippingCostCents    Int        @default(0) @map("shipping_cost_cents") // Versand netto
+  platformFeeCents     Int        @default(0) @map("platform_fee_cents") // Plattformgebühren brutto
+  platformFeeNetCents  Int        @default(0) @map("platform_fee_net_cents") // berechnet oder manuell
+  feeInclVat           Boolean    @default(true) @map("fee_incl_vat") // Gebühren inkl. MwSt?
+  paymentFeeCents      Int        @default(0) @map("payment_fee_cents") // Alt-Feld (in Plattformgebühren aufgegangen)
   // Informative Checkbox-Status:
   invoiceCreated       Boolean    @default(false) @map("invoice_created")
   postageBooked        Boolean    @default(false) @map("postage_booked")
@@ -395,10 +480,11 @@ model Sale {
   updatedAt            DateTime   @updatedAt @map("updated_at")
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  stockItem    StockItem              @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+  stockItem    StockItem?             @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
   platform     Platform               @relation(fields: [platformId], references: [id], onDelete: Restrict)
   carrier      Carrier?               @relation(fields: [carrierId], references: [id], onDelete: SetNull)
   taxRate      TaxRate?               @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  items        SaleItem[]
   returns      Return[]
   consignments ConsignmentInventory[]
 
@@ -467,6 +553,7 @@ model ConsignmentInventory {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stockItem    StockItem?   @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
   sale         Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  saleItems    SaleItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])

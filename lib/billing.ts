@@ -74,7 +74,6 @@ export const TIERS: TierInfo[] = [
 
 /** Routen, die ein Mindest-Tier erfordern (Feature-Gating in der Middleware). */
 export const GATED_ROUTES: Array<{ prefix: string; tier: SubscriptionTier; label: string }> = [
-  { prefix: "/berichte", tier: "PRO", label: "Berichte" },
   { prefix: "/versand", tier: "PRO", label: "Versandtarife" },
   { prefix: "/konsignation", tier: "BUSINESS", label: "Konsignation" },
   { prefix: "/zugangsdaten", tier: "BUSINESS", label: "Zugangsdaten-Tresor" },

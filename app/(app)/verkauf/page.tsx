@@ -1,10 +1,13 @@
+import type { Prisma } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
+import { getOptions } from "@/lib/options";
 import { formatEuro } from "@/lib/calculations";
-import { CreateSaleDialog } from "@/components/sales/create-sale-dialog";
+import { SaleDialog, type EditableSale, type SellableItem } from "@/components/sales/sale-dialog";
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
-import { SaleFlagCheckbox } from "@/components/sales/sale-flag-checkbox";
-import { SaleRouteStepper } from "@/components/sales/sale-route-stepper";
+import { InvoiceSelect, SaleStatusSelect } from "@/components/sales/sale-inline-selects";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -13,201 +16,391 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export default async function SalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; platform?: string; land?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    rechnung?: string;
+    platform?: string;
+    versandart?: string;
+    von?: string;
+    bis?: string;
+  }>;
 }) {
-  const { db } = await requireOrg();
-  const { q, platform, land } = await searchParams;
+  const { db, organization } = await requireOrg();
+  const params = await searchParams;
 
-  const where = {
-    ...(platform ? { platformId: platform } : {}),
-    ...(land ? { buyerCountry: land.toUpperCase() } : {}),
-    ...(q
+  const where: Prisma.SaleWhereInput = {
+    ...(params.status === "PENDING"
+      ? { status: { in: ["PENDING", "PAID", "SHIPPED"] } }
+      : params.status === "COMPLETED"
+        ? { status: "COMPLETED" as const }
+        : {}),
+    ...(params.rechnung === "offen"
+      ? { invoiceCreated: false }
+      : params.rechnung === "erledigt"
+        ? { invoiceCreated: true }
+        : {}),
+    ...(params.platform ? { platformId: params.platform } : {}),
+    ...(params.versandart ? { shippingMethod: params.versandart } : {}),
+    ...(params.von || params.bis
+      ? {
+          soldAt: {
+            ...(params.von ? { gte: new Date(params.von) } : {}),
+            ...(params.bis ? { lte: new Date(`${params.bis}T23:59:59`) } : {}),
+          },
+        }
+      : {}),
+    ...(params.q
       ? {
           OR: [
-            { orderNumber: { contains: q, mode: "insensitive" as const } },
-            { buyerUsername: { contains: q, mode: "insensitive" as const } },
-            { stockItem: { title: { contains: q, mode: "insensitive" as const } } },
-            { stockItem: { sku: { contains: q, mode: "insensitive" as const } } },
+            { orderNumber: { contains: params.q, mode: "insensitive" as const } },
+            { notes: { contains: params.q, mode: "insensitive" as const } },
+            {
+              items: {
+                some: {
+                  stockItem: {
+                    OR: [
+                      { title: { contains: params.q, mode: "insensitive" as const } },
+                      { sku: { contains: params.q, mode: "insensitive" as const } },
+                    ],
+                  },
+                },
+              },
+            },
+            {
+              items: {
+                some: {
+                  consignment: {
+                    OR: [
+                      { itemTitle: { contains: params.q, mode: "insensitive" as const } },
+                      { sku: { contains: params.q, mode: "insensitive" as const } },
+                    ],
+                  },
+                },
+              },
+            },
           ],
         }
       : {}),
   };
 
-  const [sales, platforms, availableItems, totals] = await Promise.all([
-    db.sale.findMany({
-      where,
-      include: {
-        stockItem: { select: { title: true, sku: true } },
-        platform: { select: { name: true } },
-      },
-      orderBy: { soldAt: "desc" },
-      take: 200,
-    }),
-    db.platform.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    db.stockItem.findMany({
-      where: { quantity: { gt: 0 }, status: { notIn: ["SOLD", "CANCELLED", "WRITTEN_OFF"] } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, sku: true, title: true, size: true },
-      take: 500,
-    }),
-    db.sale.aggregate({
-      where,
-      _sum: {
-        salePriceCents: true,
-        saleNetCents: true,
-        marginCents: true,
-        profitCents: true,
-        shippingCostCents: true,
-        platformFeeCents: true,
-        paymentFeeCents: true,
-      },
-    }),
-  ]);
+  const [sales, platforms, payoutOptions, rates, stockItems, consignments] =
+    await Promise.all([
+      db.sale.findMany({
+        where,
+        include: {
+          platform: { select: { name: true } },
+          items: {
+            include: {
+              stockItem: { select: { sku: true, title: true, variant: true, size: true } },
+              consignment: { select: { sku: true, itemTitle: true } },
+            },
+          },
+        },
+        orderBy: { soldAt: "desc" },
+        take: 300,
+      }),
+      db.platform.findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+      getOptions(db, organization.id, "PAYOUT_RECIPIENT"),
+      db.shippingRate.findMany({
+        where: { active: true },
+        orderBy: [{ carrierName: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          carrierName: true,
+          name: true,
+          countries: true,
+          baseCents: true,
+        },
+      }),
+      db.stockItem.findMany({
+        where: { status: { notIn: ["SOLD", "CANCELLED", "WRITTEN_OFF"] } },
+        orderBy: { sku: "desc" },
+        select: { id: true, sku: true, title: true, variant: true, size: true },
+        take: 500,
+      }),
+      db.consignmentInventory.findMany({
+        where: { quantity: { gt: 0 } },
+        orderBy: { sku: "desc" },
+        select: { id: true, sku: true, itemTitle: true },
+        take: 500,
+      }),
+    ]);
 
-  const sum = totals._sum;
+  const sellable: SellableItem[] = [
+    ...stockItems.map((item) => ({
+      ref: `stock:${item.id}`,
+      label: [item.sku, item.title, item.variant, item.size]
+        .filter(Boolean)
+        .join(" · "),
+      source: "Lager" as const,
+    })),
+    ...consignments.map((c) => ({
+      ref: `consignment:${c.id}`,
+      label: `${c.sku} · ${c.itemTitle}`,
+      source: "Konsignation" as const,
+    })),
+  ];
+
+  const rows = sales.map((sale) => {
+    const itemInfos = sale.items.map((item) =>
+      item.stockItem
+        ? {
+            sku: item.stockItem.sku,
+            model: item.stockItem.title,
+            variant: item.stockItem.variant ?? "",
+            size: item.stockItem.size ?? "",
+          }
+        : {
+            sku: item.consignment?.sku ?? "?",
+            model: item.consignment?.itemTitle ?? "?",
+            variant: "",
+            size: "",
+          }
+    );
+    const ekNetCents = sale.items.reduce((sum, i) => sum + i.ekNetCents, 0);
+    const taxCents = sale.salePriceCents - sale.saleNetCents;
+    const marginPercent =
+      sale.saleNetCents > 0 ? (sale.profitCents / sale.saleNetCents) * 100 : 0;
+    return { sale, itemInfos, ekNetCents, taxCents, marginPercent };
+  });
+
+  const sum = rows.reduce(
+    (acc, r) => ({
+      gross: acc.gross + r.sale.salePriceCents,
+      tax: acc.tax + r.taxCents,
+      net: acc.net + r.sale.saleNetCents,
+      ek: acc.ek + r.ekNetCents,
+      feeGross: acc.feeGross + r.sale.platformFeeCents,
+      feeNet: acc.feeNet + r.sale.platformFeeNetCents,
+      shipping: acc.shipping + r.sale.shippingCostCents,
+      profit: acc.profit + r.sale.profitCents,
+      qty: acc.qty + r.sale.quantity,
+    }),
+    { gross: 0, tax: 0, net: 0, ek: 0, feeGross: 0, feeNet: 0, shipping: 0, profit: 0, qty: 0 }
+  );
+
+  const shippingMethodOptions = [
+    ...new Set([
+      ...rates.map((r) => `${r.carrierName} ${r.name}`),
+      "Abholung",
+      "Vinted",
+      "Sonstiges",
+    ]),
+  ];
+
+  function toEditable(row: (typeof rows)[number]): EditableSale {
+    const { sale } = row;
+    return {
+      id: sale.id,
+      orderNumber: sale.orderNumber ?? sale.id.slice(0, 8),
+      soldAt: sale.soldAt.toISOString().slice(0, 10),
+      itemLabels: row.itemInfos.map((i) => `${i.sku} ${i.model}`),
+      platformId: sale.platformId,
+      saleGross: (sale.salePriceCents / 100).toFixed(2).replace(".", ","),
+      buyerCountry: sale.buyerCountry,
+      shippingMethod: sale.shippingMethod ?? "",
+      shippingCost: (sale.shippingCostCents / 100).toFixed(2).replace(".", ","),
+      platformFeeGross: (sale.platformFeeCents / 100).toFixed(2).replace(".", ","),
+      feeInclVat: sale.feeInclVat,
+      platformFeeNet: "",
+      payoutRecipient: sale.payoutRecipient ?? "",
+      status: sale.status === "COMPLETED" ? "COMPLETED" : "PENDING",
+      invoiceDone: sale.invoiceCreated,
+      notes: sale.notes ?? "",
+    };
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">Verkauf</h1>
           <p className="text-sm text-muted-foreground">
-            {sales.length} Verkäufe {q || platform || land ? "(gefiltert)" : ""}
+            {rows.length} Verkäufe {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
           </p>
         </div>
-        <CreateSaleDialog platforms={platforms} stockItems={availableItems} />
+        <SaleDialog
+          items={sellable}
+          platforms={platforms}
+          payoutOptions={payoutOptions}
+          shippingRates={rates}
+        />
       </div>
 
       <SaleFilterBar
-        q={q ?? ""}
-        platform={platform ?? ""}
-        land={land ?? ""}
+        filters={{
+          q: params.q ?? "",
+          status: params.status ?? "",
+          rechnung: params.rechnung ?? "",
+          platform: params.platform ?? "",
+          versandart: params.versandart ?? "",
+          von: params.von ?? "",
+          bis: params.bis ?? "",
+        }}
         platforms={platforms}
+        shippingMethods={shippingMethodOptions}
       />
 
       <Card>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Order-ID</TableHead>
-                <TableHead>Route</TableHead>
-                <TableHead>Artikel</TableHead>
+                <TableHead>OrderID</TableHead>
                 <TableHead>Datum</TableHead>
-                <TableHead>Plattform</TableHead>
-                <TableHead>Land</TableHead>
+                <TableHead>LagerID(s)</TableHead>
+                <TableHead>Model</TableHead>
+                <TableHead>Colorway/Version</TableHead>
+                <TableHead>Größe</TableHead>
+                <TableHead className="text-right">Menge</TableHead>
                 <TableHead className="text-right">VK brutto</TableHead>
+                <TableHead className="text-right">Steuern</TableHead>
                 <TableHead className="text-right">VK netto</TableHead>
+                <TableHead className="text-right">EK netto</TableHead>
+                <TableHead className="text-right">PF-Geb. brutto</TableHead>
+                <TableHead className="text-right">PF-Geb. netto</TableHead>
+                <TableHead className="text-right">Versand netto</TableHead>
                 <TableHead className="text-right">Marge</TableHead>
                 <TableHead className="text-right">Gewinn</TableHead>
-                <TableHead className="text-center">RG / Porto / Geb.</TableHead>
+                <TableHead>Gesamtstatus</TableHead>
+                <TableHead>Rechnung</TableHead>
+                <TableHead>Plattform</TableHead>
+                <TableHead>Versandart</TableHead>
+                <TableHead>Land</TableHead>
+                <TableHead>Auszahlung</TableHead>
+                <TableHead>Kommentar</TableHead>
+                <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales.length === 0 && (
+              {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground">
-                    Keine Verkäufe gefunden.
+                  <TableCell colSpan={24} className="py-8 text-center text-muted-foreground">
+                    Keine Verkäufe gefunden. Über „Verkauf erfassen&ldquo;
+                    verknüpfst du einen oder mehrere Artikel aus Lager und
+                    Konsignation mit einem Verkauf.
                   </TableCell>
                 </TableRow>
               )}
-              {sales.map((sale) => (
-                <TableRow key={sale.id}>
+              {rows.map((row) => (
+                <TableRow key={row.sale.id} className="hover-lift">
                   <TableCell className="font-mono text-xs">
-                    {sale.orderNumber ?? "–"}
+                    {row.sale.orderNumber ?? "–"}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {row.sale.soldAt.toLocaleDateString("de-DE")}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {row.itemInfos.map((i) => i.sku).join(", ")}
+                  </TableCell>
+                  <TableCell className="max-w-44 truncate font-medium">
+                    {[...new Set(row.itemInfos.map((i) => i.model))].join(", ")}
+                  </TableCell>
+                  <TableCell className="max-w-32 truncate">
+                    {[...new Set(row.itemInfos.map((i) => i.variant).filter(Boolean))].join(", ") || "–"}
                   </TableCell>
                   <TableCell>
-                    <SaleRouteStepper status={sale.status} />
+                    {[...new Set(row.itemInfos.map((i) => i.size).filter(Boolean))].join(", ") || "–"}
                   </TableCell>
-                  <TableCell>
-                    <div className="font-medium">{sale.stockItem.title}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {sale.stockItem.sku}
-                    </div>
+                  <TableCell className="text-right">{row.sale.quantity}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatEuro(row.sale.salePriceCents)}
                   </TableCell>
-                  <TableCell>{sale.soldAt.toLocaleDateString("de-DE")}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{sale.platform.name}</Badge>
+                  <TableCell className="text-right font-mono">
+                    {formatEuro(row.taxCents)}
                   </TableCell>
-                  <TableCell>{sale.buyerCountry}</TableCell>
-                  <TableCell className="text-right">
-                    {formatEuro(sale.salePriceCents)}
+                  <TableCell className="text-right font-mono">
+                    {formatEuro(row.sale.saleNetCents)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {formatEuro(sale.saleNetCents)}
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      ({Number(sale.taxRatePercent)}%)
-                    </span>
+                  <TableCell className="text-right font-mono">
+                    {formatEuro(row.ekNetCents)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {formatEuro(sale.marginCents)}
+                  <TableCell className="text-right font-mono">
+                    {formatEuro(row.sale.platformFeeCents)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatEuro(row.sale.platformFeeNetCents)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatEuro(row.sale.shippingCostCents)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {row.marginPercent.toFixed(1).replace(".", ",")} %
                   </TableCell>
                   <TableCell
                     className={cn(
-                      "text-right font-medium",
-                      sale.profitCents < 0 ? "text-destructive" : "text-green-700"
+                      "text-right font-mono font-medium",
+                      row.sale.profitCents < 0
+                        ? "text-destructive"
+                        : "text-green-700 dark:text-green-400"
                     )}
                   >
-                    {formatEuro(sale.profitCents)}
+                    {formatEuro(row.sale.profitCents)}
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-center gap-2">
-                      <SaleFlagCheckbox
-                        saleId={sale.id}
-                        field="invoiceCreated"
-                        checked={sale.invoiceCreated}
-                        title="Rechnung erstellt"
-                      />
-                      <SaleFlagCheckbox
-                        saleId={sale.id}
-                        field="postageBooked"
-                        checked={sale.postageBooked}
-                        title="Porto gebucht"
-                      />
-                      <SaleFlagCheckbox
-                        saleId={sale.id}
-                        field="feesBooked"
-                        checked={sale.feesBooked}
-                        title="Gebühren gebucht"
-                      />
-                    </div>
+                    <SaleStatusSelect saleId={row.sale.id} status={row.sale.status} />
+                  </TableCell>
+                  <TableCell>
+                    <InvoiceSelect saleId={row.sale.id} done={row.sale.invoiceCreated} />
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{row.sale.platform.name}</Badge>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {row.sale.shippingMethod ?? "–"}
+                  </TableCell>
+                  <TableCell>{row.sale.buyerCountry}</TableCell>
+                  <TableCell>{row.sale.payoutRecipient ?? "–"}</TableCell>
+                  <TableCell className="max-w-36 truncate">
+                    {row.sale.notes ?? "–"}
+                  </TableCell>
+                  <TableCell>
+                    <SaleDialog
+                      sale={toEditable(row)}
+                      items={sellable}
+                      platforms={platforms}
+                      payoutOptions={payoutOptions}
+                      shippingRates={rates}
+                      trigger={
+                        <Button variant="ghost" size="sm">
+                          Bearbeiten
+                        </Button>
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               ))}
-              {sales.length > 0 && (
+              {rows.length > 0 && (
                 <TableRow className="bg-muted/50 font-medium">
-                  <TableCell colSpan={6}>Summe ({sales.length} Verkäufe)</TableCell>
-                  <TableCell className="text-right">
-                    {formatEuro(sum.salePriceCents ?? 0)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatEuro(sum.saleNetCents ?? 0)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatEuro(sum.marginCents ?? 0)}
-                  </TableCell>
+                  <TableCell colSpan={6}>Summe ({rows.length} Verkäufe)</TableCell>
+                  <TableCell className="text-right">{sum.qty}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEuro(sum.gross)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEuro(sum.tax)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEuro(sum.net)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEuro(sum.ek)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEuro(sum.feeGross)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEuro(sum.feeNet)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEuro(sum.shipping)}</TableCell>
+                  <TableCell />
                   <TableCell
                     className={cn(
-                      "text-right",
-                      (sum.profitCents ?? 0) < 0 ? "text-destructive" : "text-green-700"
+                      "text-right font-mono",
+                      sum.profit < 0 ? "text-destructive" : "text-green-700 dark:text-green-400"
                     )}
                   >
-                    {formatEuro(sum.profitCents ?? 0)}
+                    {formatEuro(sum.profit)}
                   </TableCell>
-                  <TableCell className="text-center text-xs text-muted-foreground">
-                    Versand {formatEuro(sum.shippingCostCents ?? 0)} · Geb.{" "}
-                    {formatEuro((sum.platformFeeCents ?? 0) + (sum.paymentFeeCents ?? 0))}
-                  </TableCell>
+                  <TableCell colSpan={8} />
                 </TableRow>
               )}
             </TableBody>

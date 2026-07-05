@@ -8,6 +8,10 @@ import { GdprCard } from "@/components/settings/gdpr-card";
 import { BillingCard } from "@/components/settings/billing-card";
 import { ThemeSelector } from "@/components/theme/theme-selector";
 import {
+  OptionListCard,
+  PlatformsCard,
+} from "@/components/settings/dropdown-options-card";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -20,9 +24,18 @@ export default async function SettingsPage() {
   const { organization, membership, db } = await requireOrg();
   const canEdit = hasMinRole(membership.role, "ADMIN");
 
-  const taxRates = await db.taxRate.findMany({
-    orderBy: [{ country: "asc" }, { name: "asc" }],
-  });
+  const [taxRates, platforms, zmOptions, payoutOptions] = await Promise.all([
+    db.taxRate.findMany({ orderBy: [{ country: "asc" }, { name: "asc" }] }),
+    db.platform.findMany({ orderBy: { name: "asc" } }),
+    db.selectOption.findMany({
+      where: { kind: "PAYMENT_METHOD", active: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    db.selectOption.findMany({
+      where: { kind: "PAYOUT_RECIPIENT", active: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -84,6 +97,61 @@ export default async function SettingsPage() {
             tier={organization.subscriptionTier}
             hasSubscription={Boolean(organization.stripeCustomerId)}
             isOwner={membership.role === "OWNER"}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Plattformen &amp; Accounts</CardTitle>
+          <CardDescription>
+            Verkaufsplattformen bzw. Accounts (z.B. eBay R / eBay D) – erscheinen
+            als Listing-Spalten im Lager und als Plattform-Auswahl im Verkauf.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PlatformsCard
+            platforms={platforms.map((p) => ({
+              id: p.id,
+              name: p.name,
+              active: p.active,
+            }))}
+            readOnly={!canEdit}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Zahlungsmethoden (ZM)</CardTitle>
+          <CardDescription>
+            Auswahlwerte im Lager. Werte außerhalb „Firma…&ldquo; erzeugen beim
+            Wareneingang automatisch einen Schulden-Eintrag.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OptionListCard
+            kind="PAYMENT_METHOD"
+            options={zmOptions.map((o) => ({ id: o.id, label: o.label }))}
+            readOnly={!canEdit}
+            placeholder="z.B. Firma Konto 2"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Auszahlungsempfänger</CardTitle>
+          <CardDescription>
+            Auswahlwerte im Verkauf (freie Eingabe bleibt zusätzlich möglich).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OptionListCard
+            kind="PAYOUT_RECIPIENT"
+            options={payoutOptions.map((o) => ({ id: o.id, label: o.label }))}
+            readOnly={!canEdit}
+            placeholder="z.B. PayPal D"
           />
         </CardContent>
       </Card>

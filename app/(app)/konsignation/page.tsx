@@ -52,7 +52,7 @@ export default async function ConsignmentPage() {
 
   const saleOptions = recentSales.map((s) => ({
     id: s.id,
-    label: `${s.orderNumber ?? s.id.slice(0, 8)} – ${s.stockItem.title} (${formatEuro(s.salePriceCents)})`,
+    label: `${s.orderNumber ?? s.id.slice(0, 8)} – ${s.stockItem?.title ?? "Mehrartikel-Verkauf"} (${formatEuro(s.salePriceCents)})`,
   }));
 
   return (

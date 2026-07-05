@@ -63,7 +63,7 @@ export async function createReturnAction(
 
       const sale = await tx.sale.findFirst({
         where: { id: data.saleId },
-        include: { stockItem: true },
+        include: { items: true },
       });
       if (!sale) throw new Error("Verkauf nicht gefunden.");
 
@@ -100,13 +100,20 @@ export async function createReturnAction(
       }
 
       if (data.restock) {
-        await tx.stockItem.update({
-          where: { id: sale.stockItemId },
-          data: {
-            quantity: { increment: sale.quantity },
-            status: "RETURNED",
-          },
-        });
+        // Alle Lager-Positionen des Verkaufs wieder einlagern
+        const stockItemIds = sale.items
+          .map((item) => item.stockItemId)
+          .filter((id): id is string => Boolean(id));
+        // Alt-Verkäufe ohne Positionen: Fallback auf das Legacy-Feld
+        if (stockItemIds.length === 0 && sale.stockItemId) {
+          stockItemIds.push(sale.stockItemId);
+        }
+        if (stockItemIds.length > 0) {
+          await tx.stockItem.updateMany({
+            where: { id: { in: stockItemIds } },
+            data: { quantity: 1, status: "RETURNED", retoureStatus: "O" },
+          });
+        }
       }
 
       return ret;

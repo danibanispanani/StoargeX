@@ -1,48 +1,62 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { COUNTRIES } from "@/lib/constants";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-export function SaleFilterBar({
-  q,
-  platform,
-  land,
-  platforms,
-}: {
+export interface SaleFilters {
   q: string;
+  status: string;
+  rechnung: string;
   platform: string;
-  land: string;
+  versandart: string;
+  von: string;
+  bis: string;
+}
+
+export function SaleFilterBar({
+  filters,
+  platforms,
+  shippingMethods,
+}: {
+  filters: SaleFilters;
   platforms: Array<{ id: string; name: string }>;
+  shippingMethods: string[];
 }) {
   const router = useRouter();
+  const hasFilters = Object.values(filters).some(Boolean);
 
   function apply(formData: FormData) {
     const params = new URLSearchParams();
-    const query = String(formData.get("q") ?? "").trim();
-    const p = String(formData.get("platform") ?? "");
-    const country = String(formData.get("land") ?? "");
-    if (query) params.set("q", query);
-    if (p) params.set("platform", p);
-    if (country) params.set("land", country);
+    for (const key of ["q", "status", "rechnung", "platform", "versandart", "von", "bis"]) {
+      const value = String(formData.get(key) ?? "").trim();
+      if (value) params.set(key, value);
+    }
     router.push(`/verkauf${params.size ? `?${params}` : ""}`);
   }
 
+  const selectClass =
+    "border-input h-9 rounded-md border bg-background px-2 text-sm";
+
   return (
     <form action={apply} className="flex flex-wrap items-end gap-2">
-      <div className="w-64">
-        <Input
-          name="q"
-          defaultValue={q}
-          placeholder="Suche: Order-ID, Artikel, Käufer…"
-        />
-      </div>
-      <select
-        name="platform"
-        defaultValue={platform}
-        className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
-      >
+      <Input
+        name="q"
+        defaultValue={filters.q}
+        placeholder="Suche: Order-ID, Model, LagerID…"
+        className="w-56"
+      />
+      <select name="status" defaultValue={filters.status} className={selectClass}>
+        <option value="">Gesamtstatus: alle</option>
+        <option value="PENDING">in Bearbeitung</option>
+        <option value="COMPLETED">Abgeschlossen</option>
+      </select>
+      <select name="rechnung" defaultValue={filters.rechnung} className={selectClass}>
+        <option value="">Rechnung: alle</option>
+        <option value="offen">Rechnung: Offen</option>
+        <option value="erledigt">Rechnung: Erledigt</option>
+      </select>
+      <select name="platform" defaultValue={filters.platform} className={selectClass}>
         <option value="">Alle Plattformen</option>
         {platforms.map((p) => (
           <option key={p.id} value={p.id}>
@@ -50,22 +64,26 @@ export function SaleFilterBar({
           </option>
         ))}
       </select>
-      <select
-        name="land"
-        defaultValue={land}
-        className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
-      >
-        <option value="">Alle Länder</option>
-        {COUNTRIES.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.name}
+      <select name="versandart" defaultValue={filters.versandart} className={selectClass}>
+        <option value="">Versandart: alle</option>
+        {shippingMethods.map((method) => (
+          <option key={method} value={method}>
+            {method}
           </option>
         ))}
       </select>
+      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+        Von
+        <Input name="von" type="date" defaultValue={filters.von} className="w-36" />
+      </label>
+      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+        Bis
+        <Input name="bis" type="date" defaultValue={filters.bis} className="w-36" />
+      </label>
       <Button type="submit" variant="secondary">
         Filtern
       </Button>
-      {(q || platform || land) && (
+      {hasFilters && (
         <Button type="button" variant="ghost" onClick={() => router.push("/verkauf")}>
           Zurücksetzen
         </Button>

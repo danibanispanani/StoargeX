@@ -21,7 +21,12 @@ export default async function ReturnsPage() {
       include: {
         sale: {
           include: {
-            stockItem: { select: { title: true, sku: true } },
+            items: {
+              include: {
+                stockItem: { select: { title: true, sku: true } },
+                consignment: { select: { itemTitle: true, sku: true } },
+              },
+            },
           },
         },
       },
@@ -31,11 +36,24 @@ export default async function ReturnsPage() {
     // Verkäufe für den FK-Select im Dialog (nur nicht bereits erstattete)
     db.sale.findMany({
       where: { status: { not: "REFUNDED" } },
-      include: { stockItem: { select: { title: true } } },
+      include: {
+        items: {
+          include: {
+            stockItem: { select: { title: true } },
+            consignment: { select: { itemTitle: true } },
+          },
+        },
+      },
       orderBy: { soldAt: "desc" },
       take: 500,
     }),
   ]);
+
+  const saleTitle = (items: Array<{ stockItem: { title: string } | null; consignment: { itemTitle: string } | null }>) =>
+    items
+      .map((i) => i.stockItem?.title ?? i.consignment?.itemTitle)
+      .filter(Boolean)
+      .join(", ") || "–";
 
   const totalLoss = returns.reduce((sum, r) => sum + r.lossCents, 0);
 
@@ -52,7 +70,7 @@ export default async function ReturnsPage() {
         <CreateReturnDialog
           sales={sales.map((s) => ({
             id: s.id,
-            label: `${s.orderNumber ?? s.id.slice(0, 8)} – ${s.stockItem.title} (${formatEuro(s.salePriceCents)})`,
+            label: `${s.orderNumber ?? s.id.slice(0, 8)} – ${saleTitle(s.items)} (${formatEuro(s.salePriceCents)})`,
           }))}
         />
       </div>
@@ -87,7 +105,7 @@ export default async function ReturnsPage() {
                   <TableCell>
                     <div className="font-mono text-xs">{ret.sale.orderNumber ?? "–"}</div>
                     <div className="text-xs text-muted-foreground">
-                      {ret.sale.stockItem.title}
+                      {saleTitle(ret.sale.items)}
                     </div>
                   </TableCell>
                   <TableCell className="max-w-48 truncate">{ret.reason ?? "–"}</TableCell>

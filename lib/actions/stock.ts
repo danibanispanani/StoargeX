@@ -1,97 +1,86 @@
 "use server";
 
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { StockItemStatus } from "@prisma/client";
+import { EntryStatus, StockItemStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
+import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { calcPurchaseNetCents, euroToCents } from "@/lib/calculations";
+import { paymentMethodCreatesDebt } from "@/lib/constants";
+import { saveImage } from "@/lib/uploads";
 import type { ActionState } from "@/lib/actions/team";
 
-const euroString = z
-  .string()
-  .min(1, "Betrag fehlt.")
-  .refine((v) => {
-    try {
-      euroToCents(v);
-      return true;
-    } catch {
-      return false;
-    }
-  }, "Ungültiger Betrag.");
-
 const stockItemSchema = z.object({
-  title: z.string().min(1, "Bezeichnung fehlt.").max(300),
-  model: z.string().max(200).optional().or(z.literal("")),
-  variant: z.string().max(200).optional().or(z.literal("")),
-  size: z.string().max(50).optional().or(z.literal("")),
-  ean: z.string().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional().or(z.literal("")),
-  supplier: z.string().max(200).optional().or(z.literal("")),
   purchaseDate: z.string().optional().or(z.literal("")),
-  priceGross: euroString,
-  inputTaxDeductible: z.coerce.boolean(),
+  supplier: z.string().max(200).optional().or(z.literal("")), // Händler
+  title: z.string().min(1, "Model fehlt.").max(300), // Model
+  variant: z.string().max(200).optional().or(z.literal("")), // Colorway/Version
+  size: z.string().max(50).optional().or(z.literal("")),
+  priceGross: z.string().min(1, "Brutto-Preis fehlt."),
+  inputTaxDeductible: z.coerce.boolean(), // VST
   inputTaxRatePercent: z.coerce.number().min(0).max(100).default(19),
-  paymentMethod: z.string().max(100).optional().or(z.literal("")),
+  paymentMethod: z.string().min(1, "Zahlungsmethode (ZM) fehlt.").max(100),
+  kaufStatus: z.nativeEnum(EntryStatus).default("O"),
+  retoureStatus: z.nativeEnum(EntryStatus).default("NN"),
   status: z.nativeEnum(StockItemStatus).default("IN_STOCK"),
-  quantity: z.coerce.number().int().min(1).max(100000).default(1),
-  consignmentRefId: z.string().max(100).optional().or(z.literal("")),
+  ean: z.string().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional().or(z.literal("")),
+  quantity: z.coerce.number().int().min(1).max(500).default(1),
   notes: z.string().max(2000).optional().or(z.literal("")),
   platformIds: z.array(z.string().min(1)).default([]),
 });
 
-const IMAGE_TYPES: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/webp": ".webp",
-};
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
-async function saveImage(file: File, orgId: string): Promise<string> {
-  const ext = IMAGE_TYPES[file.type];
-  if (!ext) throw new Error("Nur JPG, PNG oder WebP erlaubt.");
-  if (file.size > MAX_IMAGE_BYTES) throw new Error("Bild ist größer als 5 MB.");
-
-  const dir = path.join(process.cwd(), "public", "uploads", orgId);
-  await mkdir(dir, { recursive: true });
-  const filename = `${randomUUID()}${ext}`;
-  await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
-  return `/uploads/${orgId}/${filename}`;
+function parseStockForm(formData: FormData) {
+  const parsed = stockItemSchema.safeParse({
+    purchaseDate: formData.get("purchaseDate"),
+    supplier: formData.get("supplier"),
+    title: formData.get("title"),
+    variant: formData.get("variant"),
+    size: formData.get("size"),
+    priceGross: formData.get("priceGross"),
+    inputTaxDeductible: formData.get("inputTaxDeductible") === "on",
+    inputTaxRatePercent: formData.get("inputTaxRatePercent") || 19,
+    paymentMethod: formData.get("paymentMethod"),
+    kaufStatus: formData.get("kaufStatus") || "O",
+    retoureStatus: formData.get("retoureStatus") || "NN",
+    status: formData.get("status") || "IN_STOCK",
+    ean: formData.get("ean"),
+    quantity: formData.get("quantity") || 1,
+    notes: formData.get("notes"),
+    platformIds: formData.getAll("platformIds").map(String),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Eingaben." } as const;
+  }
+  let grossCents: number;
+  try {
+    grossCents = euroToCents(parsed.data.priceGross);
+  } catch {
+    return { error: "Ungültiger Brutto-Preis." } as const;
+  }
+  return { data: parsed.data, grossCents } as const;
 }
 
-/** Wareneingang erfassen. */
+/** LagerID im Format L-{JJ}-{NNN}. */
+function formatLagerId(counter: number, date: Date): string {
+  return `L-${String(date.getFullYear()).slice(-2)}-${String(counter).padStart(3, "0")}`;
+}
+
+/**
+ * Wareneingang erfassen. Menge > 1 erzeugt separate Einträge mit
+ * fortlaufenden LagerIDs (jede Einheit hat eigenen Status/Listing/Verkauf).
+ * ZM außerhalb "Firma…" legt automatisch einen Schulden-Eintrag an.
+ */
 export async function createStockItemAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
   const { db, organization, userId } = await requireOrg("MEMBER");
 
-  const parsed = stockItemSchema.safeParse({
-    title: formData.get("title"),
-    model: formData.get("model"),
-    variant: formData.get("variant"),
-    size: formData.get("size"),
-    ean: formData.get("ean"),
-    supplier: formData.get("supplier"),
-    purchaseDate: formData.get("purchaseDate"),
-    priceGross: formData.get("priceGross"),
-    inputTaxDeductible: formData.get("inputTaxDeductible") === "on",
-    inputTaxRatePercent: formData.get("inputTaxRatePercent") || 19,
-    paymentMethod: formData.get("paymentMethod"),
-    status: formData.get("status") || "IN_STOCK",
-    quantity: formData.get("quantity") || 1,
-    consignmentRefId: formData.get("consignmentRefId"),
-    notes: formData.get("notes"),
-    platformIds: formData.getAll("platformIds").map(String),
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Ungültige Eingaben." };
-  }
-  const data = parsed.data;
+  const result = parseStockForm(formData);
+  if ("error" in result) return { error: result.error };
+  const { data, grossCents } = result;
 
-  // Bild-Upload (optional)
   let imageUrls: string[] = [];
   const image = formData.get("image");
   if (image instanceof File && image.size > 0) {
@@ -102,7 +91,6 @@ export async function createStockItemAction(
     }
   }
 
-  // "Gelistet auf": nur Plattformen der eigenen Organisation zulassen
   const platforms = data.platformIds.length
     ? await db.platform.findMany({ where: { id: { in: data.platformIds } } })
     : [];
@@ -110,59 +98,188 @@ export async function createStockItemAction(
     return { error: "Mindestens eine gewählte Plattform ist ungültig." };
   }
 
-  const grossCents = euroToCents(data.priceGross);
+  const netCents = calcPurchaseNetCents(
+    grossCents,
+    data.inputTaxDeductible,
+    data.inputTaxRatePercent
+  );
+  const purchaseDate = data.purchaseDate ? new Date(data.purchaseDate) : new Date();
+
+  try {
+    const skus = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
+
+      // Fortlaufende LagerIDs atomar reservieren
+      const org = await tx.organization.update({
+        where: { id: organization.id },
+        data: { stockIdCounter: { increment: data.quantity } },
+      });
+      const firstCounter = org.stockIdCounter - data.quantity + 1;
+
+      const created: string[] = [];
+      for (let i = 0; i < data.quantity; i++) {
+        const sku = formatLagerId(firstCounter + i, purchaseDate);
+        await tx.stockItem.create({
+          data: {
+            organizationId: organization.id,
+            sku,
+            title: data.title,
+            variant: data.variant || null,
+            size: data.size || null,
+            ean: data.ean || null,
+            supplier: data.supplier || null,
+            purchaseDate,
+            purchasePriceCents: grossCents,
+            purchaseNetCents: netCents,
+            inputTaxDeductible: data.inputTaxDeductible,
+            paymentMethod: data.paymentMethod,
+            kaufStatus: data.kaufStatus,
+            retoureStatus: data.retoureStatus,
+            status: data.status,
+            quantity: 1,
+            notes: data.notes || null,
+            imageUrls,
+            listings: {
+              create: platforms.map((p) => ({
+                organizationId: organization.id,
+                platformId: p.id,
+              })),
+            },
+          },
+        });
+        created.push(sku);
+      }
+
+      // Automatik: ZM Richard/Daniel -> Schulden-Eintrag (Firma schuldet Person)
+      if (paymentMethodCreatesDebt(data.paymentMethod)) {
+        await tx.debt.create({
+          data: {
+            organizationId: organization.id,
+            debtDate: purchaseDate,
+            creditorName: data.paymentMethod,
+            debtorName: "Firma",
+            amountCents: grossCents * data.quantity,
+            description: `Auslage Wareneinkauf ${created.join(", ")} – ${data.title}`,
+          },
+        });
+      }
+
+      return created;
+    });
+
+    await writeAuditLog({
+      organizationId: organization.id,
+      userId,
+      action: "stock_item.create",
+      entityType: "StockItem",
+      after: { skus, title: data.title, grossCents, zm: data.paymentMethod },
+    });
+
+    revalidatePath("/lager");
+    revalidatePath("/schulden");
+    const skuText = skus.length === 1 ? skus[0] : `${skus[0]} – ${skus[skus.length - 1]}`;
+    const debtHint = paymentMethodCreatesDebt(data.paymentMethod)
+      ? " · Schulden-Eintrag angelegt"
+      : "";
+    return {
+      success: `Artikel ${skuText} eingetragen ✓ (${skus.length} Einheit(en))${debtHint}`,
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Artikel konnte nicht gespeichert werden.",
+    };
+  }
+}
+
+/** Einzelnen Lagereintrag vollständig bearbeiten. */
+export async function updateStockItemAction(
+  stockItemId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+
+  const existing = await db.stockItem.findFirst({
+    where: { id: stockItemId },
+    include: { listings: true },
+  });
+  if (!existing) return { error: "Artikel nicht gefunden." };
+
+  const result = parseStockForm(formData);
+  if ("error" in result) return { error: result.error };
+  const { data, grossCents } = result;
+
+  let imageUrls = existing.imageUrls;
+  const image = formData.get("image");
+  if (image instanceof File && image.size > 0) {
+    try {
+      imageUrls = [await saveImage(image, organization.id)];
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Bild-Upload fehlgeschlagen." };
+    }
+  }
+
+  const platforms = data.platformIds.length
+    ? await db.platform.findMany({ where: { id: { in: data.platformIds } } })
+    : [];
+  if (platforms.length !== data.platformIds.length) {
+    return { error: "Mindestens eine gewählte Plattform ist ungültig." };
+  }
+
   const netCents = calcPurchaseNetCents(
     grossCents,
     data.inputTaxDeductible,
     data.inputTaxRatePercent
   );
 
-  // Automatische SKU: A-<Base36-Zeitstempel> (eindeutig je Organisation)
-  const sku = `A-${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 36).toString(36).toUpperCase()}`;
-
-  const item = await db.stockItem.create({
+  await db.stockItem.update({
+    where: { id: stockItemId },
     data: {
-      organizationId: organization.id,
-      sku,
+      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : existing.purchaseDate,
+      supplier: data.supplier || null,
       title: data.title,
-      model: data.model || null,
       variant: data.variant || null,
       size: data.size || null,
       ean: data.ean || null,
-      supplier: data.supplier || null,
-      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       purchasePriceCents: grossCents,
       purchaseNetCents: netCents,
       inputTaxDeductible: data.inputTaxDeductible,
-      paymentMethod: data.paymentMethod || null,
-      quantity: data.quantity,
-      status: platforms.length > 0 && data.status === "IN_STOCK" ? "LISTED" : data.status,
-      consignmentRefId: data.consignmentRefId || null,
+      paymentMethod: data.paymentMethod,
+      kaufStatus: data.kaufStatus,
+      retoureStatus: data.retoureStatus,
+      status: data.status,
       notes: data.notes || null,
       imageUrls,
-      listings: {
-        create: platforms.map((p) => ({
-          organizationId: organization.id,
-          platformId: p.id,
-        })),
-      },
     },
   });
+
+  // Listings synchronisieren
+  await db.stockItemListing.deleteMany({ where: { stockItemId } });
+  if (platforms.length > 0) {
+    await db.stockItemListing.createMany({
+      data: platforms.map((p) => ({
+        organizationId: organization.id,
+        stockItemId,
+        platformId: p.id,
+      })),
+    });
+  }
 
   await writeAuditLog({
     organizationId: organization.id,
     userId,
-    action: "stock_item.create",
+    action: "stock_item.update",
     entityType: "StockItem",
-    entityId: item.id,
-    after: { sku: item.sku, title: item.title, grossCents },
+    entityId: stockItemId,
+    before: { title: existing.title, status: existing.status },
+    after: { title: data.title, status: data.status },
   });
 
   revalidatePath("/lager");
-  return { success: `Artikel ${item.sku} erfasst.` };
+  return { success: `Artikel ${existing.sku} gespeichert ✓` };
 }
 
-/** Status eines Artikels ändern. */
+/** Status eines Artikels ändern (Inline-Dropdown). */
 export async function updateStockItemStatusAction(
   stockItemId: string,
   status: StockItemStatus
@@ -172,7 +289,6 @@ export async function updateStockItemStatusAction(
   const parsed = z.nativeEnum(StockItemStatus).safeParse(status);
   if (!parsed.success) return { error: "Ungültiger Status." };
 
-  // findFirst im Tenant-Kontext stellt sicher, dass der Artikel zur Org gehört
   const item = await db.stockItem.findFirst({ where: { id: stockItemId } });
   if (!item) return { error: "Artikel nicht gefunden." };
 
@@ -192,40 +308,132 @@ export async function updateStockItemStatusAction(
   });
 
   revalidatePath("/lager");
-  return { success: "Status aktualisiert." };
+  return { success: `Status von ${item.sku} geändert ✓` };
 }
 
-/** "Gelistet auf" eines Artikels aktualisieren. */
-export async function updateStockItemListingsAction(
+/** Kauf-/Retoure-Buchungsstatus ändern (Inline-Dropdown). */
+export async function updateEntryStatusAction(
   stockItemId: string,
-  platformIds: string[]
+  field: "kaufStatus" | "retoureStatus",
+  value: EntryStatus
 ): Promise<ActionState> {
-  const { db, organization } = await requireOrg("MEMBER");
+  const { db } = await requireOrg("MEMBER");
 
-  const parsed = z.array(z.string().min(1)).max(50).safeParse(platformIds);
-  if (!parsed.success) return { error: "Ungültige Plattform-Auswahl." };
+  const parsed = z.nativeEnum(EntryStatus).safeParse(value);
+  if (!parsed.success || !["kaufStatus", "retoureStatus"].includes(field)) {
+    return { error: "Ungültiger Wert." };
+  }
 
   const item = await db.stockItem.findFirst({ where: { id: stockItemId } });
   if (!item) return { error: "Artikel nicht gefunden." };
 
-  const platforms = parsed.data.length
-    ? await db.platform.findMany({ where: { id: { in: parsed.data } } })
-    : [];
-  if (platforms.length !== parsed.data.length) {
-    return { error: "Mindestens eine gewählte Plattform ist ungültig." };
-  }
+  await db.stockItem.update({
+    where: { id: stockItemId },
+    data: { [field]: parsed.data },
+  });
 
-  await db.stockItemListing.deleteMany({ where: { stockItemId } });
-  if (platforms.length > 0) {
-    await db.stockItemListing.createMany({
-      data: platforms.map((p) => ({
-        organizationId: organization.id,
-        stockItemId,
-        platformId: p.id,
-      })),
+  revalidatePath("/lager");
+  return {
+    success: `${field === "kaufStatus" ? "Kauf" : "Retoure"}-Status von ${item.sku} geändert ✓`,
+  };
+}
+
+/** Listing-Marker (Plattform-Checkbox) einzeln umschalten. */
+export async function toggleListingAction(
+  stockItemId: string,
+  platformId: string,
+  listed: boolean
+): Promise<ActionState> {
+  const { db, organization } = await requireOrg("MEMBER");
+
+  const [item, platform] = await Promise.all([
+    db.stockItem.findFirst({ where: { id: stockItemId } }),
+    db.platform.findFirst({ where: { id: platformId } }),
+  ]);
+  if (!item || !platform) return { error: "Artikel oder Plattform nicht gefunden." };
+
+  if (listed) {
+    await db.stockItemListing.upsert({
+      where: { stockItemId_platformId: { stockItemId, platformId } },
+      create: { organizationId: organization.id, stockItemId, platformId },
+      update: {},
     });
+  } else {
+    await db.stockItemListing.deleteMany({ where: { stockItemId, platformId } });
   }
 
   revalidatePath("/lager");
-  return { success: "Listings aktualisiert." };
+  return {
+    success: `${item.sku}: ${platform.name} ${listed ? "gelistet" : "entfernt"} ✓`,
+  };
+}
+
+const bulkPatchSchema = z.object({
+  status: z.nativeEnum(StockItemStatus).optional(),
+  kaufStatus: z.nativeEnum(EntryStatus).optional(),
+  retoureStatus: z.nativeEnum(EntryStatus).optional(),
+  platformId: z.string().optional(),
+  platformListed: z.boolean().optional(),
+});
+
+export type BulkStockPatch = z.infer<typeof bulkPatchSchema>;
+
+/** Mehrfachbearbeitung: Patch auf alle markierten Zeilen anwenden. */
+export async function bulkUpdateStockAction(
+  stockItemIds: string[],
+  patch: BulkStockPatch
+): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+
+  const ids = z.array(z.string().min(1)).min(1).max(500).safeParse(stockItemIds);
+  const parsedPatch = bulkPatchSchema.safeParse(patch);
+  if (!ids.success || !parsedPatch.success) return { error: "Ungültige Auswahl." };
+  const p = parsedPatch.data;
+
+  // Nur Artikel der eigenen Organisation (Tenant-Kontext + Existenzprüfung)
+  const items = await db.stockItem.findMany({ where: { id: { in: ids.data } } });
+  if (items.length === 0) return { error: "Keine passenden Artikel gefunden." };
+  const itemIds = items.map((i) => i.id);
+
+  const fieldPatch: Record<string, unknown> = {};
+  if (p.status) fieldPatch.status = p.status;
+  if (p.kaufStatus) fieldPatch.kaufStatus = p.kaufStatus;
+  if (p.retoureStatus) fieldPatch.retoureStatus = p.retoureStatus;
+
+  if (Object.keys(fieldPatch).length > 0) {
+    await db.stockItem.updateMany({
+      where: { id: { in: itemIds } },
+      data: fieldPatch,
+    });
+  }
+
+  if (p.platformId && p.platformListed !== undefined) {
+    const platform = await db.platform.findFirst({ where: { id: p.platformId } });
+    if (!platform) return { error: "Plattform nicht gefunden." };
+    if (p.platformListed) {
+      await db.stockItemListing.createMany({
+        data: itemIds.map((stockItemId) => ({
+          organizationId: organization.id,
+          stockItemId,
+          platformId: platform.id,
+        })),
+        skipDuplicates: true,
+      });
+    } else {
+      await db.stockItemListing.deleteMany({
+        where: { stockItemId: { in: itemIds }, platformId: platform.id },
+      });
+    }
+  }
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId,
+    action: "stock_item.bulk_update",
+    entityType: "StockItem",
+    after: { count: itemIds.length, patch: p },
+  });
+
+  revalidatePath("/lager");
+  return { success: `${itemIds.length} Artikel aktualisiert ✓` };
 }

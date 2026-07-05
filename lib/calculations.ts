@@ -30,6 +30,14 @@ export function calcPurchaseNetCents(
 // Verkauf
 // ---------------------------------------------------------------------------
 
+/**
+ * Plattformgebühren netto: bei "inkl. MwSt" wird die USt (19%) herausgerechnet,
+ * sonst entspricht netto dem eingegebenen Betrag.
+ */
+export function feeNetCents(grossCents: number, inclVat: boolean): number {
+  return inclVat ? grossToNetCents(grossCents, 19) : grossCents;
+}
+
 export interface SaleCalcInput {
   saleGrossCents: number; // VK brutto
   taxRatePercent: number; // USt-Satz des Käuferlands

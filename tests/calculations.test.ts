@@ -3,6 +3,7 @@ import {
   calcPurchaseNetCents,
   calcReturnLoss,
   euroToCents,
+  feeNetCents,
   calcSale,
   calcShippingBaseCents,
   formatEuro,
@@ -165,6 +166,16 @@ describe("calcReturnLoss", () => {
         extraCostCents: 0,
       })
     ).toThrow();
+  });
+});
+
+describe("feeNetCents", () => {
+  it("rechnet 19% USt heraus, wenn Gebühren inkl. MwSt sind", () => {
+    expect(feeNetCents(1190, true)).toBe(1000);
+  });
+
+  it("lässt den Betrag unverändert ohne MwSt-Toggle", () => {
+    expect(feeNetCents(1190, false)).toBe(1190);
   });
 });
 

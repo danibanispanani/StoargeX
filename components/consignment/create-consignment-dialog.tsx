@@ -54,7 +54,7 @@ export function CreateConsignmentDialog() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="con-partner">Partnerfirma *</Label>
-              <Input id="con-partner" name="consignorName" required placeholder="Sneaker Store GmbH" />
+              <Input id="con-partner" name="consignorName" required placeholder="z.B. Elektro Müller GmbH" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="con-contact">Kontakt</Label>
@@ -62,7 +62,7 @@ export function CreateConsignmentDialog() {
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="con-title">Artikelbezeichnung *</Label>
-              <Input id="con-title" name="itemTitle" required placeholder="Adidas Samba OG" />
+              <Input id="con-title" name="itemTitle" required placeholder="z.B. Bosch Akkuschrauber 18V" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="con-sku">SKU (leer = automatisch)</Label>

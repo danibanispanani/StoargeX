@@ -65,12 +65,35 @@ async function createOrganizationWithOwner(params: {
       data: { organizationId: org.id, userId: params.userId, role: "OWNER" },
     });
 
-    // Sinnvolle Stammdaten für den Start
+    // Sinnvolle Stammdaten für den Start (Plattform-Accounts wie im Original)
     await tx.platform.createMany({
       data: [
-        { organizationId: org.id, name: "eBay", url: "https://www.ebay.de", defaultFeePercent: 11 },
+        { organizationId: org.id, name: "eBay R", url: "https://www.ebay.de", defaultFeePercent: 11 },
+        { organizationId: org.id, name: "eBay D", url: "https://www.ebay.de", defaultFeePercent: 11 },
         { organizationId: org.id, name: "Vinted", url: "https://www.vinted.de", defaultFeePercent: 0 },
-        { organizationId: org.id, name: "Kleinanzeigen", url: "https://www.kleinanzeigen.de", defaultFeePercent: 0 },
+        { organizationId: org.id, name: "KA", url: "https://www.kleinanzeigen.de", defaultFeePercent: 0 },
+        { organizationId: org.id, name: "StockX", url: "https://stockx.com", defaultFeePercent: 9 },
+        { organizationId: org.id, name: "Discord", defaultFeePercent: 0 },
+        { organizationId: org.id, name: "Sonstiges", defaultFeePercent: 0 },
+      ],
+    });
+    // Konfigurierbare Auswahllisten: ZM & Auszahlungsempfänger
+    await tx.selectOption.createMany({
+      data: [
+        ...["Firma", "Firma D", "Firma R", "Richard", "Daniel"].map((label, i) => ({
+          organizationId: org.id,
+          kind: "PAYMENT_METHOD" as const,
+          label,
+          sortOrder: i,
+        })),
+        ...["Firma", "Richard", "Daniel", "PayPal R", "Bar D", "Bar R"].map(
+          (label, i) => ({
+            organizationId: org.id,
+            kind: "PAYOUT_RECIPIENT" as const,
+            label,
+            sortOrder: i,
+          })
+        ),
       ],
     });
     await tx.carrier.createMany({

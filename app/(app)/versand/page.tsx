@@ -1,46 +1,66 @@
 import { requireOrg } from "@/lib/org";
-import { parseSurcharges, type ShippingRateLike } from "@/lib/calculations";
-import { ShippingCalculator } from "@/components/shipping/shipping-calculator";
-import { ShippingRatesTable } from "@/components/shipping/shipping-rates-table";
-import { CreateShippingRateDialog } from "@/components/shipping/create-shipping-rate-dialog";
+import { parseSurcharges } from "@/lib/calculations";
+import {
+  CarrierRateTable,
+  type CarrierRate,
+} from "@/components/shipping/carrier-rate-table";
+import { ShippingRateDialog } from "@/components/shipping/shipping-rate-dialog";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default async function ShippingPage() {
   const { db } = await requireOrg();
 
   const rates = await db.shippingRate.findMany({
-    orderBy: [{ carrierName: "asc" }, { name: "asc" }],
+    orderBy: [{ carrierName: "asc" }, { zone: "asc" }, { maxWeightKg: "asc" }],
   });
 
-  // Für Client-Komponenten serialisieren (Decimal -> number, Json -> Surcharge[])
-  const plainRates: Array<ShippingRateLike & { id: string; active: boolean }> =
-    rates.map((rate) => ({
-      id: rate.id,
-      carrierName: rate.carrierName,
-      name: rate.name,
-      zone: rate.zone,
-      countries: rate.countries,
-      baseCents: rate.baseCents,
-      perKgCents: rate.perKgCents,
-      maxWeightKg: rate.maxWeightKg === null ? null : Number(rate.maxWeightKg),
-      surcharges: parseSurcharges(rate.surcharges),
-      active: rate.active,
-    }));
+  const plainRates: CarrierRate[] = rates.map((rate) => ({
+    id: rate.id,
+    carrierName: rate.carrierName,
+    name: rate.name,
+    zone: rate.zone,
+    countries: rate.countries,
+    baseCents: rate.baseCents,
+    perKgCents: rate.perKgCents,
+    maxWeightKg: rate.maxWeightKg === null ? null : Number(rate.maxWeightKg),
+    surcharges: parseSurcharges(rate.surcharges),
+    active: rate.active,
+  }));
+
+  // Eine Tariftabelle je Dienstleister
+  const byCarrier = new Map<string, CarrierRate[]>();
+  for (const rate of plainRates) {
+    const list = byCarrier.get(rate.carrierName) ?? [];
+    list.push(rate);
+    byCarrier.set(rate.carrierName, list);
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">Versand</h1>
           <p className="text-sm text-muted-foreground">
-            Editierbare Tarife für DHL, DPD, Hermes, GLS, UPS &amp; Co. – der
-            Kalkulator schlägt aus Zielland und Gewicht passende Tarife vor.
+            Tarif-Verwaltung je Dienstleister – die Tarife erscheinen im
+            Verkauf-Formular, gefiltert nach Zielland.
           </p>
         </div>
-        <CreateShippingRateDialog />
+        <ShippingRateDialog />
       </div>
 
-      <ShippingCalculator rates={plainRates} />
-      <ShippingRatesTable rates={plainRates} />
+      {byCarrier.size === 0 && (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">
+            Noch keine Tarife angelegt. Lege je Dienstleister (DHL, DPD,
+            Hermes, GLS, UPS …) Zonen und Gewichtsklassen mit Preisen an –
+            wie im bisherigen Excel-Sheet.
+          </CardContent>
+        </Card>
+      )}
+
+      {[...byCarrier.entries()].map(([carrier, carrierRates]) => (
+        <CarrierRateTable key={carrier} carrier={carrier} rates={carrierRates} />
+      ))}
     </div>
   );
 }

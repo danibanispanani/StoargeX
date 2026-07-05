@@ -1,146 +1,152 @@
 import { requireOrg } from "@/lib/org";
-import { StockItemStatus } from "@prisma/client";
-import { formatEuro } from "@/lib/calculations";
-import { STOCK_STATUS_LABELS } from "@/lib/constants";
-import { CreateStockItemDialog } from "@/components/stock/create-stock-item-dialog";
+import { getOptions } from "@/lib/options";
+import { EntryStatus, StockItemStatus } from "@prisma/client";
+import { StockItemDialog } from "@/components/stock/stock-item-dialog";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
-import { StockStatusSelect } from "@/components/stock/stock-status-select";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
+import { StockTable, type StockRow } from "@/components/stock/stock-table";
 
 export default async function StockPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    kauf?: string;
+    retoure?: string;
+    zm?: string;
+    plattform?: string;
+    von?: string;
+    bis?: string;
+  }>;
 }) {
-  const { db } = await requireOrg();
-  const { q, status } = await searchParams;
+  const { db, organization } = await requireOrg();
+  const params = await searchParams;
 
   const statusFilter =
-    status && status in STOCK_STATUS_LABELS
-      ? (status as StockItemStatus)
+    params.status && params.status in StockItemStatus
+      ? (params.status as StockItemStatus)
+      : undefined;
+  const kaufFilter =
+    params.kauf && params.kauf in EntryStatus ? (params.kauf as EntryStatus) : undefined;
+  const retoureFilter =
+    params.retoure && params.retoure in EntryStatus
+      ? (params.retoure as EntryStatus)
       : undefined;
 
-  const [items, platforms] = await Promise.all([
+  const [items, platforms, zmOptions, products] = await Promise.all([
     db.stockItem.findMany({
       where: {
         ...(statusFilter ? { status: statusFilter } : {}),
-        ...(q
+        ...(kaufFilter ? { kaufStatus: kaufFilter } : {}),
+        ...(retoureFilter ? { retoureStatus: retoureFilter } : {}),
+        ...(params.zm ? { paymentMethod: params.zm } : {}),
+        ...(params.plattform
+          ? { listings: { some: { platformId: params.plattform } } }
+          : {}),
+        ...(params.von || params.bis
+          ? {
+              purchaseDate: {
+                ...(params.von ? { gte: new Date(params.von) } : {}),
+                ...(params.bis ? { lte: new Date(`${params.bis}T23:59:59`) } : {}),
+              },
+            }
+          : {}),
+        ...(params.q
           ? {
               OR: [
-                { title: { contains: q, mode: "insensitive" } },
-                { model: { contains: q, mode: "insensitive" } },
-                { variant: { contains: q, mode: "insensitive" } },
-                { sku: { contains: q, mode: "insensitive" } },
-                { ean: { contains: q } },
-                { supplier: { contains: q, mode: "insensitive" } },
+                { title: { contains: params.q, mode: "insensitive" } },
+                { variant: { contains: params.q, mode: "insensitive" } },
+                { sku: { contains: params.q, mode: "insensitive" } },
+                { ean: { contains: params.q } },
+                { supplier: { contains: params.q, mode: "insensitive" } },
               ],
             }
           : {}),
       },
-      include: { listings: { include: { platform: { select: { name: true } } } } },
-      orderBy: { createdAt: "desc" },
-      take: 200,
+      include: { listings: { select: { platformId: true } } },
+      orderBy: { sku: "desc" },
+      take: 500,
     }),
     db.platform.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    getOptions(db, organization.id, "PAYMENT_METHOD"),
+    db.product.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        variant: true,
+        ean: true,
+        category: true,
+        defaultPriceCents: true,
+      },
+      take: 500,
+    }),
   ]);
 
+  const rows: StockRow[] = items.map((item) => ({
+    id: item.id,
+    sku: item.sku,
+    date: item.purchaseDate?.toLocaleDateString("de-DE") ?? "–",
+    dateIso: item.purchaseDate?.toISOString().slice(0, 10) ?? "",
+    supplier: item.supplier ?? "",
+    title: item.title,
+    variant: item.variant ?? "",
+    size: item.size ?? "",
+    grossCents: item.purchasePriceCents,
+    netCents: item.purchaseNetCents,
+    inputTaxDeductible: item.inputTaxDeductible,
+    zm: item.paymentMethod ?? "",
+    kaufStatus: item.kaufStatus,
+    retoureStatus: item.retoureStatus,
+    status: item.status,
+    ean: item.ean ?? "",
+    imageUrl: item.imageUrls[0] ?? null,
+    listings: item.listings.map((l) => l.platformId),
+    notes: item.notes ?? "",
+  }));
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">Lager</h1>
           <p className="text-sm text-muted-foreground">
-            {items.length} Artikel {q || statusFilter ? "(gefiltert)" : ""}
+            {rows.length} Einheit(en){" "}
+            {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
           </p>
         </div>
-        <CreateStockItemDialog platforms={platforms} />
+        <StockItemDialog
+          platforms={platforms}
+          zmOptions={zmOptions}
+          products={products}
+        />
       </div>
 
-      <StockFilterBar q={q ?? ""} status={status ?? ""} />
+      <StockFilterBar
+        filters={{
+          q: params.q ?? "",
+          status: params.status ?? "",
+          kauf: params.kauf ?? "",
+          retoure: params.retoure ?? "",
+          zm: params.zm ?? "",
+          plattform: params.plattform ?? "",
+          von: params.von ?? "",
+          bis: params.bis ?? "",
+        }}
+        platforms={platforms}
+        zmOptions={zmOptions}
+      />
 
-      <Card>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Artikel</TableHead>
-                <TableHead>Größe</TableHead>
-                <TableHead>Händler</TableHead>
-                <TableHead className="text-right">EK brutto</TableHead>
-                <TableHead className="text-right">EK netto</TableHead>
-                <TableHead>Gelistet auf</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground">
-                    Keine Artikel gefunden.
-                  </TableCell>
-                </TableRow>
-              )}
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-mono text-xs">{item.sku}</TableCell>
-                  <TableCell>
-                    <div className="font-medium">{item.title}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {[item.model, item.variant].filter(Boolean).join(" · ")}
-                      {item.quantity > 1 && ` · ${item.quantity} Stk.`}
-                    </div>
-                  </TableCell>
-                  <TableCell>{item.size ?? "–"}</TableCell>
-                  <TableCell>{item.supplier ?? "–"}</TableCell>
-                  <TableCell className="text-right">
-                    {formatEuro(item.purchasePriceCents)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {item.purchaseNetCents !== null
-                      ? formatEuro(item.purchaseNetCents)
-                      : "–"}
-                    {item.inputTaxDeductible && (
-                      <span className="ml-1 text-xs text-muted-foreground">(VSt)</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {item.listings.length === 0 && (
-                        <span className="text-xs text-muted-foreground">–</span>
-                      )}
-                      {item.listings.map((listing) => (
-                        <Badge key={listing.id} variant="outline">
-                          {listing.platform.name}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <StockStatusSelect
-                      stockItemId={item.id}
-                      currentStatus={item.status}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <StockTable
+        rows={rows}
+        platforms={platforms}
+        zmOptions={zmOptions}
+        products={products}
+      />
     </div>
   );
 }
