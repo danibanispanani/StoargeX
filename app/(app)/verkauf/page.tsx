@@ -3,6 +3,7 @@ import { requireOrg } from "@/lib/org";
 import { getOptions } from "@/lib/options";
 import { formatEuro } from "@/lib/calculations";
 import { SaleDialog, type EditableSale, type SellableItem } from "@/components/sales/sale-dialog";
+import { DeleteSaleButton } from "@/components/sales/delete-sale-button";
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
 import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { InvoiceSelect, SaleStatusSelect } from "@/components/sales/sale-inline-selects";
@@ -256,7 +257,7 @@ export default async function SalesPage({
       />
 
       <Card>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="sx-table-shell p-0">
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
@@ -283,7 +284,7 @@ export default async function SalesPage({
                 <TableHead>Land</TableHead>
                 <TableHead>Auszahlung</TableHead>
                 <TableHead>Kommentar</TableHead>
-                <TableHead className="w-20" />
+                <TableHead className="w-36" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -369,18 +370,24 @@ export default async function SalesPage({
                     {row.sale.notes ?? "–"}
                   </TableCell>
                   <TableCell>
-                    <SaleDialog
-                      sale={toEditable(row)}
-                      items={sellable}
-                      platforms={platforms}
-                      payoutOptions={payoutOptions}
-                      shippingRates={rates}
-                      trigger={
-                        <Button variant="ghost" size="sm">
-                          Bearbeiten
-                        </Button>
-                      }
-                    />
+                    <div className="flex items-center gap-1">
+                      <SaleDialog
+                        sale={toEditable(row)}
+                        items={sellable}
+                        platforms={platforms}
+                        payoutOptions={payoutOptions}
+                        shippingRates={rates}
+                        trigger={
+                          <Button variant="ghost" size="sm">
+                            Bearbeiten
+                          </Button>
+                        }
+                      />
+                      <DeleteSaleButton
+                        saleId={row.sale.id}
+                        orderNumber={row.sale.orderNumber ?? ""}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

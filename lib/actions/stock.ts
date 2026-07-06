@@ -284,6 +284,43 @@ export async function updateStockItemAction(
   return { success: `Artikel ${existing.sku} gespeichert ✓` };
 }
 
+/** Lagereintrag loeschen, solange er noch nicht in einem Verkauf verwendet wird. */
+export async function deleteStockItemAction(stockItemId: string): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+
+  const existing = await db.stockItem.findFirst({
+    where: { id: stockItemId },
+    select: { id: true, sku: true, title: true, status: true },
+  });
+  if (!existing) return { error: "Artikel nicht gefunden." };
+
+  const [saleItems, legacySales] = await Promise.all([
+    db.saleItem.count({ where: { stockItemId } }),
+    db.sale.count({ where: { stockItemId } }),
+  ]);
+  if (saleItems > 0 || legacySales > 0 || existing.status === "SOLD") {
+    return {
+      error:
+        "Dieser Artikel ist mit einem Verkauf verknuepft und kann nicht geloescht werden.",
+    };
+  }
+
+  await db.stockItem.delete({ where: { id: stockItemId } });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId,
+    action: "stock_item.delete",
+    entityType: "StockItem",
+    entityId: stockItemId,
+    before: { sku: existing.sku, title: existing.title, status: existing.status },
+  });
+
+  revalidatePath("/lager");
+  revalidatePath("/dashboard");
+  return { success: `Artikel ${existing.sku} geloescht.` };
+}
+
 /** Status eines Artikels ändern (Inline-Dropdown). */
 export async function updateStockItemStatusAction(
   stockItemId: string,
