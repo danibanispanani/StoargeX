@@ -4,6 +4,7 @@ import { getOptions } from "@/lib/options";
 import { formatEuro } from "@/lib/calculations";
 import { SaleDialog, type EditableSale, type SellableItem } from "@/components/sales/sale-dialog";
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
+import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { InvoiceSelect, SaleStatusSelect } from "@/components/sales/sale-inline-selects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -229,12 +230,15 @@ export default async function SalesPage({
             {rows.length} Verkäufe {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
           </p>
         </div>
-        <SaleDialog
-          items={sellable}
-          platforms={platforms}
-          payoutOptions={payoutOptions}
-          shippingRates={rates}
-        />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ImportExportBar table="verkauf" />
+          <SaleDialog
+            items={sellable}
+            platforms={platforms}
+            payoutOptions={payoutOptions}
+            shippingRates={rates}
+          />
+        </div>
       </div>
 
       <SaleFilterBar
@@ -253,10 +257,10 @@ export default async function SalesPage({
 
       <Card>
         <CardContent className="overflow-x-auto">
-          <Table>
+          <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead>OrderID</TableHead>
+                <TableHead className="sx-sticky-0">OrderID</TableHead>
                 <TableHead>Datum</TableHead>
                 <TableHead>LagerID(s)</TableHead>
                 <TableHead>Model</TableHead>
@@ -293,8 +297,8 @@ export default async function SalesPage({
                 </TableRow>
               )}
               {rows.map((row) => (
-                <TableRow key={row.sale.id} className="hover-lift">
-                  <TableCell className="font-mono text-xs">
+                <TableRow key={row.sale.id}>
+                  <TableCell className="sx-sticky-0 font-mono text-xs">
                     {row.sale.orderNumber ?? "–"}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
@@ -341,8 +345,8 @@ export default async function SalesPage({
                     className={cn(
                       "text-right font-mono font-medium",
                       row.sale.profitCents < 0
-                        ? "text-destructive"
-                        : "text-green-700 dark:text-green-400"
+                        ? "text-customs-red"
+                        : "text-transit-teal"
                     )}
                   >
                     {formatEuro(row.sale.profitCents)}
@@ -395,7 +399,7 @@ export default async function SalesPage({
                   <TableCell
                     className={cn(
                       "text-right font-mono",
-                      sum.profit < 0 ? "text-destructive" : "text-green-700 dark:text-green-400"
+                      sum.profit < 0 ? "text-customs-red" : "text-transit-teal"
                     )}
                   >
                     {formatEuro(sum.profit)}

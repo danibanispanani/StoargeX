@@ -71,8 +71,8 @@ export async function createReturnAction(
         refundGrossCents: data.refundAmount,
         taxRatePercent: Number(sale.taxRatePercent),
         saleGrossCents: sale.salePriceCents,
-        platformFeeCents: sale.platformFeeCents,
-        paymentFeeCents: sale.paymentFeeCents,
+        platformFeeCents: sale.platformFeeNetCents, // Gebühren netto
+        paymentFeeCents: 0,
         shippingCostCents: sale.shippingCostCents,
         extraCostCents: data.extraCost,
       });
@@ -143,30 +143,139 @@ export async function createReturnAction(
   }
 }
 
-/** Status einer Retoure ändern. */
+/**
+ * Status einer Retoure ändern. Automatik: bei "Gelagert" (RESTOCKED) bekommt
+ * der verknüpfte Artikel im Lager den Status RETOURE – er ist physisch wieder
+ * da, muss aber ggf. geprüft werden (bewusst nicht "gelagert").
+ */
 export async function updateReturnStatusAction(
   returnId: string,
   status: ReturnStatus
 ): Promise<ActionState> {
-  const { db } = await requireOrg("MEMBER");
+  const { organization } = await requireOrg("MEMBER");
 
   const parsed = z.nativeEnum(ReturnStatus).safeParse(status);
   if (!parsed.success) return { error: "Ungültiger Status." };
 
-  const existing = await db.return.findFirst({ where: { id: returnId } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
+
+      const existing = await tx.return.findFirst({
+        where: { id: returnId },
+        include: { sale: { include: { items: true } } },
+      });
+      if (!existing) throw new Error("Retoure nicht gefunden.");
+
+      await tx.return.update({
+        where: { id: returnId },
+        data: {
+          status: parsed.data,
+          restocked: parsed.data === "RESTOCKED" ? true : existing.restocked,
+          receivedAt:
+            parsed.data === "RESTOCKED" && !existing.receivedAt
+              ? new Date()
+              : existing.receivedAt,
+        },
+      });
+
+      if (parsed.data === "RESTOCKED") {
+        const stockItemIds = existing.sale.items
+          .map((item) => item.stockItemId)
+          .filter((id): id is string => Boolean(id));
+        if (stockItemIds.length === 0 && existing.sale.stockItemId) {
+          stockItemIds.push(existing.sale.stockItemId);
+        }
+        if (stockItemIds.length > 0) {
+          await tx.stockItem.updateMany({
+            where: { id: { in: stockItemIds } },
+            data: { quantity: 1, status: "RETURNED" },
+          });
+        }
+      }
+    });
+
+    revalidatePath("/retouren");
+    revalidatePath("/lager");
+    return {
+      success:
+        parsed.data === "RESTOCKED"
+          ? "Retoure auf Gelagert gesetzt – Artikel im Lager als Retoure markiert ✓"
+          : "Retoure-Status geändert ✓",
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Status konnte nicht geändert werden.",
+    };
+  }
+}
+
+const editReturnSchema = z.object({
+  requestedAt: z.string().optional().or(z.literal("")),
+  reason: z.string().max(500).optional().or(z.literal("")),
+  refundAmount: optionalEuro,
+  extraCost: optionalEuro,
+  notes: z.string().max(2000).optional().or(z.literal("")),
+});
+
+/** Retoure nachträglich bearbeiten – der Verlust wird neu berechnet. */
+export async function updateReturnAction(
+  returnId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+
+  const existing = await db.return.findFirst({
+    where: { id: returnId },
+    include: { sale: true },
+  });
   if (!existing) return { error: "Retoure nicht gefunden." };
+
+  const parsed = editReturnSchema.safeParse({
+    requestedAt: formData.get("requestedAt"),
+    reason: formData.get("reason"),
+    refundAmount: formData.get("refundAmount") ?? "",
+    extraCost: formData.get("extraCost") ?? "",
+    notes: formData.get("notes"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Eingaben." };
+  }
+  const data = parsed.data;
+
+  const lossCents = calcReturnLoss({
+    refundGrossCents: data.refundAmount,
+    taxRatePercent: Number(existing.sale.taxRatePercent),
+    saleGrossCents: existing.sale.salePriceCents,
+    platformFeeCents: existing.sale.platformFeeNetCents,
+    paymentFeeCents: 0,
+    shippingCostCents: existing.sale.shippingCostCents,
+    extraCostCents: data.extraCost,
+  });
 
   await db.return.update({
     where: { id: returnId },
     data: {
-      status: parsed.data,
-      receivedAt:
-        parsed.data === "RECEIVED" && !existing.receivedAt
-          ? new Date()
-          : existing.receivedAt,
+      requestedAt: data.requestedAt ? new Date(data.requestedAt) : existing.requestedAt,
+      reason: data.reason || null,
+      refundAmountCents: data.refundAmount,
+      returnShippingCents: data.extraCost,
+      lossCents,
+      notes: data.notes || null,
     },
   });
 
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId,
+    action: "return.update",
+    entityType: "Return",
+    entityId: returnId,
+    before: { refundCents: existing.refundAmountCents, lossCents: existing.lossCents },
+    after: { refundCents: data.refundAmount, lossCents },
+  });
+
   revalidatePath("/retouren");
-  return { success: "Status aktualisiert." };
+  return { success: "Retoure gespeichert ✓" };
 }

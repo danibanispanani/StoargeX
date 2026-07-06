@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { createTaskAction } from "@/lib/actions/tasks";
 import type { ActionState } from "@/lib/actions/team";
-import { TASK_PRIORITY_LABELS } from "@/lib/constants";
+import { TASK_PRIORITY_LABELS, TASK_PRIORITY_OPTIONS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,8 +20,10 @@ import {
 
 export function CreateTaskDialog({
   members,
+  areaOptions,
 }: {
   members: Array<{ userId: string; name: string }>;
+  areaOptions: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -56,11 +58,11 @@ export function CreateTaskDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="task-title">Titel *</Label>
-            <Input id="task-title" name="title" required placeholder="Pakete zur Post bringen" />
+            <Label htmlFor="task-title">Aufgabe *</Label>
+            <Input id="task-title" name="title" required placeholder="z.B. Pakete zur Post bringen" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="task-desc">Beschreibung</Label>
+            <Label htmlFor="task-desc">Anmerkung</Label>
             <Input id="task-desc" name="description" placeholder="optional" />
           </div>
 
@@ -71,15 +73,12 @@ export function CreateTaskDialog({
                 id="task-area"
                 name="area"
                 list="task-areas"
-                placeholder="Versand"
+                placeholder="wählen oder frei eintippen"
               />
               <datalist id="task-areas">
-                <option value="Einkauf" />
-                <option value="Verkauf" />
-                <option value="Versand" />
-                <option value="Buchhaltung" />
-                <option value="Retouren" />
-                <option value="Sonstiges" />
+                {areaOptions.map((area) => (
+                  <option key={area} value={area} />
+                ))}
               </datalist>
             </div>
             <div className="space-y-2">
@@ -88,11 +87,11 @@ export function CreateTaskDialog({
                 id="task-priority"
                 name="priority"
                 defaultValue="MEDIUM"
-                className="border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
-                {Object.entries(TASK_PRIORITY_LABELS).map(([value, label]) => (
+                {TASK_PRIORITY_OPTIONS.map((value) => (
                   <option key={value} value={value}>
-                    {label}
+                    {TASK_PRIORITY_LABELS[value]}
                   </option>
                 ))}
               </select>
@@ -107,9 +106,9 @@ export function CreateTaskDialog({
                 id="task-assignee"
                 name="assigneeId"
                 defaultValue=""
-                className="border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">Niemand</option>
+                <option value="">Alle (gemeinsame Aufgabe)</option>
                 {members.map((member) => (
                   <option key={member.userId} value={member.userId}>
                     {member.name}

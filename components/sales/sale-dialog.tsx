@@ -12,13 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 export interface SellableItem {
   ref: string; // "stock:<id>" | "consignment:<id>"
@@ -144,21 +144,21 @@ export function SaleDialog({
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
         {trigger ?? <Button>Verkauf erfassen</Button>}
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
+      </SheetTrigger>
+      <SheetContent className="sm:max-w-2xl">
+        <SheetHeader>
+          <SheetTitle>
             {sale ? `Verkauf ${sale.orderNumber} bearbeiten` : "Verkauf erfassen"}
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription>
             {sale
               ? "Beträge, Status und Details sind änderbar; die Positionen bleiben fix."
               : "Ein Verkauf kann mehrere Artikel aus Lager und Konsignation enthalten. Steuern, Netto und Gewinn werden automatisch berechnet."}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
         <form action={formAction} className="space-y-4">
           {state?.error && (
             <Alert variant="destructive">
@@ -268,22 +268,12 @@ export function SaleDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="sale-platform">Plattform *</Label>
-              <select
+              <SearchablePlatformSelect
                 id="sale-platform"
                 name="platformId"
-                required
+                platforms={platforms}
                 defaultValue={sale?.platformId ?? ""}
-                className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="" disabled>
-                  Plattform wählen…
-                </option>
-                {platforms.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="sale-country">Land *</Label>
@@ -443,7 +433,78 @@ export function SaleDialog({
             {pending ? "Speichert…" : sale ? "Änderungen speichern" : "Verkauf speichern"}
           </Button>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function SearchablePlatformSelect({
+  id,
+  name,
+  platforms,
+  defaultValue,
+}: {
+  id: string;
+  name: string;
+  platforms: Array<{ id: string; name: string }>;
+  defaultValue: string;
+}) {
+  const initial = platforms.find((platform) => platform.id === defaultValue);
+  const [selectedId, setSelectedId] = useState(defaultValue);
+  const [query, setQuery] = useState(initial?.name ?? "");
+  const [open, setOpen] = useState(false);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return platforms.slice(0, 8);
+    return platforms
+      .filter((platform) => platform.name.toLowerCase().includes(needle))
+      .slice(0, 8);
+  }, [platforms, query]);
+
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        value={query}
+        placeholder="Plattform suchen..."
+        autoComplete="off"
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setSelectedId("");
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          blurTimer.current = setTimeout(() => setOpen(false), 150);
+        }}
+      />
+      <input type="hidden" name={name} value={selectedId} />
+      {open && matches.length > 0 && (
+        <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+          {matches.map((platform) => (
+            <li key={platform.id}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-accent"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  if (blurTimer.current) clearTimeout(blurTimer.current);
+                  setSelectedId(platform.id);
+                  setQuery(platform.name);
+                  setOpen(false);
+                }}
+              >
+                {platform.name}
+                {selectedId === platform.id && (
+                  <span className="text-xs text-muted-foreground">ausgewählt</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

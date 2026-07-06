@@ -1,8 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/auth";
+import type { SubscriptionTier } from "@prisma/client";
+import { auth, updateSession } from "@/auth";
 import { requireOrg } from "@/lib/org";
 import { prisma } from "@/lib/prisma";
 import { getStripe, priceIdFor } from "@/lib/stripe";
@@ -12,6 +14,10 @@ import type { ActionState } from "@/lib/actions/team";
 const checkoutSchema = z.object({
   tier: z.enum(["PRO", "BUSINESS"]),
   interval: z.enum(["monthly", "yearly"]),
+});
+
+const planCodeSchema = z.object({
+  code: z.string().trim().min(1, "Code fehlt."),
 });
 
 function baseUrl(): string {
@@ -111,4 +117,67 @@ export async function createPortalAction(): Promise<ActionState> {
   });
 
   redirect(portal.url);
+}
+
+/** Demo-/Lizenzcode einloesen und den Organisationsplan setzen (nur OWNER). */
+export async function redeemPlanCodeAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { organization, userId } = await requireOrg("OWNER");
+
+  const configuredCode = process.env.DEMO_UPGRADE_CODE?.trim();
+  if (!configuredCode) {
+    return { error: "Plan-Code-Funktion ist in dieser Umgebung nicht konfiguriert." };
+  }
+
+  const parsed = planCodeSchema.safeParse({ code: formData.get("code") });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ungueltiger Code." };
+  }
+
+  if (parsed.data.code !== configuredCode) {
+    await writeAuditLog({
+      organizationId: organization.id,
+      userId,
+      action: "billing.code_invalid",
+      entityType: "Organization",
+      entityId: organization.id,
+    });
+    return { error: "Code ist ungueltig." };
+  }
+
+  const targetTier = parseDemoTier(process.env.DEMO_UPGRADE_TIER);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
+    await tx.organization.update({
+      where: { id: organization.id },
+      data: {
+        subscriptionTier: targetTier,
+        stripeSubscriptionId: null,
+      },
+    });
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId,
+    action: "billing.code_redeem",
+    entityType: "Organization",
+    entityId: organization.id,
+    before: { tier: organization.subscriptionTier },
+    after: { tier: targetTier },
+  });
+
+  await updateSession({});
+  revalidatePath("/einstellungen");
+  revalidatePath("/pricing");
+
+  return { success: `Plan wurde auf ${targetTier} gesetzt.` };
+}
+
+function parseDemoTier(value: string | undefined): SubscriptionTier {
+  if (value === "PRO" || value === "BUSINESS") return value;
+  return "BUSINESS";
 }

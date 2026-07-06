@@ -1,7 +1,9 @@
 import { requireOrg } from "@/lib/org";
 import { getOptions } from "@/lib/options";
+import { loadLowStockAlerts, lowStockKey } from "@/lib/reporting";
 import { EntryStatus, StockItemStatus } from "@prisma/client";
 import { StockItemDialog } from "@/components/stock/stock-item-dialog";
+import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
 import { StockTable, type StockRow } from "@/components/stock/stock-table";
 
@@ -33,7 +35,7 @@ export default async function StockPage({
       ? (params.retoure as EntryStatus)
       : undefined;
 
-  const [items, platforms, zmOptions, products] = await Promise.all([
+  const [items, platforms, zmOptions, products, lowAlerts] = await Promise.all([
     db.stockItem.findMany({
       where: {
         ...(statusFilter ? { status: statusFilter } : {}),
@@ -85,7 +87,10 @@ export default async function StockPage({
       },
       take: 500,
     }),
+    loadLowStockAlerts(db, organization.lowStockThreshold),
   ]);
+
+  const lowKeys = new Set(lowAlerts.map((a) => a.key));
 
   const rows: StockRow[] = items.map((item) => ({
     id: item.id,
@@ -107,6 +112,7 @@ export default async function StockPage({
     imageUrl: item.imageUrls[0] ?? null,
     listings: item.listings.map((l) => l.platformId),
     notes: item.notes ?? "",
+    low: lowKeys.has(lowStockKey(item.title, item.variant)),
   }));
 
   return (
@@ -119,11 +125,14 @@ export default async function StockPage({
             {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
           </p>
         </div>
-        <StockItemDialog
-          platforms={platforms}
-          zmOptions={zmOptions}
-          products={products}
-        />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ImportExportBar table="lager" />
+          <StockItemDialog
+            platforms={platforms}
+            zmOptions={zmOptions}
+            products={products}
+          />
+        </div>
       </div>
 
       <StockFilterBar

@@ -20,13 +20,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 export interface EditableStockItem {
   id: string;
@@ -102,21 +102,21 @@ export function StockItemDialog({
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
         {trigger ?? <Button>Wareneingang erfassen</Button>}
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
+      </SheetTrigger>
+      <SheetContent className="sm:max-w-2xl">
+        <SheetHeader>
+          <SheetTitle>
             {item ? `Artikel ${item.sku} bearbeiten` : "Wareneingang erfassen"}
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription>
             {item
               ? "Alle Felder sind nachträglich änderbar."
               : "Netto wird bei Vorsteuerabzug automatisch berechnet. Menge > 1 erzeugt separate Einträge mit fortlaufenden LagerIDs."}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
         <form action={formAction} className="space-y-4">
           {state?.error && (
             <Alert variant="destructive">
@@ -337,7 +337,7 @@ export function StockItemDialog({
             {pending ? "Speichert…" : item ? "Änderungen speichern" : "Artikel eintragen"}
           </Button>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }

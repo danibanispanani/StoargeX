@@ -150,16 +150,21 @@ export async function createStockItemAction(
         created.push(sku);
       }
 
-      // Automatik: ZM Richard/Daniel -> Schulden-Eintrag (Firma schuldet Person)
+      // Automatik: ZM Richard/Daniel -> Schulden-Eintrag (GbR schuldet Person)
       if (paymentMethodCreatesDebt(data.paymentMethod)) {
         await tx.debt.create({
           data: {
             organizationId: organization.id,
             debtDate: purchaseDate,
-            creditorName: data.paymentMethod,
-            debtorName: "Firma",
+            refId: created.join(", "), // LagerID(s)
+            description: [data.title, data.variant].filter(Boolean).join(" "),
+            kind: "KAUF",
+            quantity: data.quantity,
             amountCents: grossCents * data.quantity,
-            description: `Auslage Wareneinkauf ${created.join(", ")} – ${data.title}`,
+            debtorName: "GbR",
+            creditorName: data.paymentMethod,
+            status: "OPEN",
+            entryStatus: "IO",
           },
         });
       }

@@ -3,11 +3,13 @@ import type { TenantDb } from "@/lib/tenant-db";
 import {
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_PAYOUT_RECIPIENTS,
+  DEFAULT_TASK_AREAS,
 } from "@/lib/constants";
 
 const DEFAULTS: Record<OptionKind, string[]> = {
   PAYMENT_METHOD: DEFAULT_PAYMENT_METHODS,
   PAYOUT_RECIPIENT: DEFAULT_PAYOUT_RECIPIENTS,
+  TASK_AREA: DEFAULT_TASK_AREAS,
 };
 
 /**

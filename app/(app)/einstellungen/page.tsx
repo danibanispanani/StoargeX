@@ -5,6 +5,7 @@ import { OrganizationForm } from "@/components/settings/organization-form";
 import { TaxRatesCard } from "@/components/settings/tax-rates-card";
 import { OrderFormatForm } from "@/components/settings/order-format-form";
 import { GdprCard } from "@/components/settings/gdpr-card";
+import { LowStockCard } from "@/components/settings/low-stock-card";
 import { BillingCard } from "@/components/settings/billing-card";
 import { ThemeSelector } from "@/components/theme/theme-selector";
 import {
@@ -24,7 +25,7 @@ export default async function SettingsPage() {
   const { organization, membership, db } = await requireOrg();
   const canEdit = hasMinRole(membership.role, "ADMIN");
 
-  const [taxRates, platforms, zmOptions, payoutOptions] = await Promise.all([
+  const [taxRates, platforms, zmOptions, payoutOptions, taskAreaOptions] = await Promise.all([
     db.taxRate.findMany({ orderBy: [{ country: "asc" }, { name: "asc" }] }),
     db.platform.findMany({ orderBy: { name: "asc" } }),
     db.selectOption.findMany({
@@ -33,6 +34,10 @@ export default async function SettingsPage() {
     }),
     db.selectOption.findMany({
       where: { kind: "PAYOUT_RECIPIENT", active: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    db.selectOption.findMany({
+      where: { kind: "TASK_AREA", active: true },
       orderBy: { sortOrder: "asc" },
     }),
   ]);
@@ -153,6 +158,37 @@ export default async function SettingsPage() {
             readOnly={!canEdit}
             placeholder="z.B. PayPal D"
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Aufgaben-Bereiche</CardTitle>
+          <CardDescription>
+            Feste Bereichs-Optionen für Aufgaben – freie Eingabe im
+            Aufgaben-Dialog bleibt zusätzlich möglich.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OptionListCard
+            kind="TASK_AREA"
+            options={taskAreaOptions.map((o) => ({ id: o.id, label: o.label }))}
+            readOnly={!canEdit}
+            placeholder="z.B. Marketing"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lager-Warnschwelle</CardTitle>
+          <CardDescription>
+            Ab dieser Restmenge (nicht verkaufte Einheiten eines Modells) warnt
+            das Dashboard vor niedrigem Bestand. Standard: 1.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LowStockCard threshold={organization.lowStockThreshold} readOnly={!canEdit} />
         </CardContent>
       </Card>
 

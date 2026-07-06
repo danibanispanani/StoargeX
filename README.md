@@ -13,6 +13,11 @@ Security.
 
 ## Lokales Setup
 
+## Deployment
+
+Fuer Vercel Hobby + Supabase Free gibt es eine konkrete Schritt-fuer-Schritt-
+Checkliste in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
 ### 1. Datenbank starten
 
 **Portable PostgreSQL (ohne Docker, eingerichtet):** Auf diesem Rechner läuft

@@ -72,7 +72,7 @@ export async function addSelectOptionAction(
 ): Promise<ActionState> {
   const { db, organization, userId } = await requireOrg("ADMIN");
 
-  const parsed = z
+    const parsed = z
     .object({
       kind: z.nativeEnum(OptionKind),
       label: z.string().min(1, "Wert fehlt.").max(100),

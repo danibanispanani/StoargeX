@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { createDebtAction } from "@/lib/actions/debts";
+import { updateReturnAction } from "@/lib/actions/returns";
 import type { ActionState } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,10 +17,21 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export function CreateDebtDialog({ memberNames }: { memberNames: string[] }) {
+export interface EditableReturn {
+  id: string;
+  saleLabel: string;
+  requestedAt: string; // yyyy-mm-dd
+  reason: string;
+  refundAmount: string;
+  extraCost: string;
+  notes: string;
+}
+
+export function EditReturnDialog({ ret }: { ret: EditableReturn }) {
   const [open, setOpen] = useState(false);
+  const action = updateReturnAction.bind(null, ret.id);
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    createDebtAction,
+    action,
     null
   );
 
@@ -31,19 +42,18 @@ export function CreateDebtDialog({ memberNames }: { memberNames: string[] }) {
     }
   }, [state]);
 
-  const today = new Date().toISOString().slice(0, 10);
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Eintrag anlegen</Button>
+        <Button variant="ghost" size="sm">
+          Bearbeiten
+        </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Forderung / Verbindlichkeit anlegen</DialogTitle>
+          <DialogTitle>Retoure bearbeiten</DialogTitle>
           <DialogDescription>
-            Wer schuldet wem wie viel? Gesellschafter aus der Liste wählen
-            oder frei eintragen.
+            {ret.saleLabel} – der Verlust wird nach dem Speichern neu berechnet.
           </DialogDescription>
         </DialogHeader>
         <form action={formAction} className="space-y-4">
@@ -52,44 +62,30 @@ export function CreateDebtDialog({ memberNames }: { memberNames: string[] }) {
               <AlertDescription>{state.error}</AlertDescription>
             </Alert>
           )}
-
-          <datalist id="debt-members">
-            {memberNames.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="debt-date">Datum</Label>
-              <Input id="debt-date" name="debtDate" type="date" defaultValue={today} />
+              <Label htmlFor="ret-edit-date">Meldedatum</Label>
+              <Input id="ret-edit-date" name="requestedAt" type="date" defaultValue={ret.requestedAt} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="debt-amount">Betrag (€) *</Label>
-              <Input id="debt-amount" name="amount" required inputMode="decimal" placeholder="50,00" />
+              <Label htmlFor="ret-edit-reason">Grund</Label>
+              <Input id="ret-edit-reason" name="reason" defaultValue={ret.reason} placeholder="z.B. defekt geliefert" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="debt-debtor">Schuldner *</Label>
-              <Input id="debt-debtor" name="debtorName" required list="debt-members" placeholder="Max" />
+              <Label htmlFor="ret-edit-refund">Erstattungsbetrag (€)</Label>
+              <Input id="ret-edit-refund" name="refundAmount" inputMode="decimal" defaultValue={ret.refundAmount} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="debt-creditor">Gläubiger *</Label>
-              <Input id="debt-creditor" name="creditorName" required list="debt-members" placeholder="Moritz" />
+              <Label htmlFor="ret-edit-extra">Zusatzkosten (€)</Label>
+              <Input id="ret-edit-extra" name="extraCost" inputMode="decimal" defaultValue={ret.extraCost} />
             </div>
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="debt-desc">Beschreibung *</Label>
-            <Input
-              id="debt-desc"
-              name="description"
-              required
-              placeholder="Auslage Wareneinkauf Flohmarkt"
-            />
+            <Label htmlFor="ret-edit-notes">Notizen</Label>
+            <Input id="ret-edit-notes" name="notes" defaultValue={ret.notes} placeholder="optional" />
           </div>
-
           <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Wird gespeichert…" : "Eintrag anlegen"}
+            {pending ? "Speichert…" : "Änderungen speichern"}
           </Button>
         </form>
       </DialogContent>

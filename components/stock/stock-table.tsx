@@ -55,6 +55,7 @@ export interface StockRow {
   imageUrl: string | null;
   listings: string[]; // platformIds
   notes: string;
+  low: boolean; // niedriger Bestand (Zeilen-Markierung)
 }
 
 export function StockTable({
@@ -112,10 +113,10 @@ export function StockTable({
 
       <Card>
         <CardContent className="overflow-x-auto">
-          <Table>
+          <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-8">
+                <TableHead className="sx-sticky-0 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -124,7 +125,7 @@ export function StockTable({
                     className="size-4"
                   />
                 </TableHead>
-                <TableHead>LagerID</TableHead>
+                <TableHead className="sx-sticky-1">LagerID</TableHead>
                 <TableHead>Datum</TableHead>
                 <TableHead>Händler</TableHead>
                 <TableHead>Model</TableHead>
@@ -163,9 +164,10 @@ export function StockTable({
               {rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className={cn("hover-lift", selected.has(row.id) && "bg-accent/40")}
+                  data-selected={selected.has(row.id)}
+                  data-low={row.low}
                 >
-                  <TableCell>
+                  <TableCell className="sx-sticky-0">
                     <input
                       type="checkbox"
                       checked={selected.has(row.id)}
@@ -174,7 +176,7 @@ export function StockTable({
                       className="size-4"
                     />
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{row.sku}</TableCell>
+                  <TableCell className="sx-sticky-1 font-mono text-xs">{row.sku}</TableCell>
                   <TableCell className="whitespace-nowrap">{row.date}</TableCell>
                   <TableCell>{row.supplier || "–"}</TableCell>
                   <TableCell className="max-w-44 truncate font-medium">{row.title}</TableCell>

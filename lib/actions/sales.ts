@@ -14,6 +14,7 @@ import {
   formatOrderId,
   resolveTaxRatePercent,
 } from "@/lib/calculations";
+import { paymentMethodCreatesDebt } from "@/lib/constants";
 import type { ActionState } from "@/lib/actions/team";
 
 const optionalEuro = z
@@ -242,6 +243,30 @@ export async function createSaleAction(
         });
       }
 
+      // Automatik: Auszahlung an Richard/Daniel (nicht "Firma…") ->
+      // Schulden-Eintrag: Person schuldet der GbR den VK brutto
+      if (data.payoutRecipient && paymentMethodCreatesDebt(data.payoutRecipient)) {
+        const description = [
+          ...stockItems.map((i) => [i.title, i.variant].filter(Boolean).join(" ")),
+          ...consignments.map((c) => c.itemTitle),
+        ].join(", ");
+        await tx.debt.create({
+          data: {
+            organizationId: organization.id,
+            debtDate: soldAt,
+            refId: orderNumber,
+            description,
+            kind: "VERKAUF",
+            quantity: itemLines.length,
+            amountCents: saleGrossCents,
+            debtorName: data.payoutRecipient,
+            creditorName: "GbR",
+            status: "OPEN",
+            entryStatus: "IO",
+          },
+        });
+      }
+
       return created;
     });
 
@@ -257,7 +282,12 @@ export async function createSaleAction(
     revalidatePath("/verkauf");
     revalidatePath("/lager");
     revalidatePath("/konsignation");
-    return { success: `Verkauf ${sale.orderNumber} gespeichert ✓` };
+    revalidatePath("/schulden");
+    const debtHint =
+      data.payoutRecipient && paymentMethodCreatesDebt(data.payoutRecipient)
+        ? " · Schulden-Eintrag angelegt"
+        : "";
+    return { success: `Verkauf ${sale.orderNumber} gespeichert ✓${debtHint}` };
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Verkauf konnte nicht gespeichert werden.",

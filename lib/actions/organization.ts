@@ -17,6 +17,29 @@ const orgSchema = z.object({
   city: z.string().max(100).optional().or(z.literal("")),
 });
 
+/** Schwellenwert für die Niedrig-Bestand-Warnung setzen (nur OWNER/ADMIN). */
+export async function updateLowStockThresholdAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { db, organization } = await requireOrg("ADMIN");
+
+  const parsed = z.coerce.number().int().min(0).max(1000).safeParse(
+    formData.get("lowStockThreshold")
+  );
+  if (!parsed.success) return { error: "Ungültiger Schwellenwert (0–1000)." };
+
+  await db.organization.update({
+    where: { id: organization.id },
+    data: { lowStockThreshold: parsed.data },
+  });
+
+  revalidatePath("/einstellungen");
+  revalidatePath("/dashboard");
+  revalidatePath("/lager");
+  return { success: `Warnschwelle auf ${parsed.data} gesetzt ✓` };
+}
+
 /** Firmendaten aktualisieren (nur OWNER/ADMIN). */
 export async function updateOrganizationAction(
   _prev: ActionState,

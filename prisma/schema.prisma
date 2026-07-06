@@ -59,6 +59,7 @@ enum EntryStatus {
 enum OptionKind {
   PAYMENT_METHOD
   PAYOUT_RECIPIENT
+  TASK_AREA
 }
 
 enum SaleStatus {
@@ -71,11 +72,12 @@ enum SaleStatus {
 }
 
 enum ReturnStatus {
-  REQUESTED  // Käufer hat Retoure angemeldet
-  RECEIVED   // Ware zurückerhalten
-  REFUNDED   // Betrag erstattet
-  RESTOCKED  // wieder eingelagert
-  REJECTED   // Retoure abgelehnt
+  REQUESTED  // "Angekündigt"
+  REJECTED   // "Storniert"
+  RESTOCKED  // "Gelagert" (Artikel physisch zurück -> Lagerstatus RETOURE)
+  REFUNDED   // "Erstattet"
+  CONFLICT   // "Konflikt"
+  RECEIVED   // Altwert (UI bietet ihn nicht mehr an)
 }
 
 enum ConsignmentStatus {
@@ -87,9 +89,23 @@ enum ConsignmentStatus {
 }
 
 enum DebtStatus {
-  OPEN
-  PARTIALLY_PAID
-  SETTLED
+  OPEN           // "Offen"
+  SETTLED        // "Beglichen"
+  OTHER          // "Sonstiges"
+  PARTIALLY_PAID // Altwert
+}
+
+// Art des Schulden-Eintrags
+enum DebtKind {
+  KAUF
+  VERKAUF
+  SONSTIGES
+}
+
+// Buchhaltungs-Marker: I.O / Fehlt
+enum DebtEntry {
+  IO
+  FEHLT
 }
 
 enum TaskStatus {
@@ -135,6 +151,8 @@ model Organization {
   orderIdCounter Int    @default(0) @map("order_id_counter")
   // Fortlaufende LagerIDs (Format L-{JJ}-{NNN})
   stockIdCounter Int @default(0) @map("stock_id_counter")
+  // Schwellenwert für Niedrig-Bestand-Warnung (Dashboard/Lager)
+  lowStockThreshold Int @default(1) @map("low_stock_threshold")
   // Billing (Stripe): Tier wird vom Webhook aktualisiert
   subscriptionTier     SubscriptionTier @default(FREE) @map("subscription_tier")
   stripeCustomerId     String?          @unique @map("stripe_customer_id")
@@ -565,7 +583,11 @@ model Debt {
   id             String     @id @default(cuid())
   organizationId String     @map("organization_id")
   debtDate       DateTime   @default(now()) @map("debt_date") // Datum der Forderung
-  creditorName   String     @map("creditor_name") // Gläubiger (auch Gesellschafter)
+  refId          String?    @map("ref_id") // Lager- oder Order-ID
+  kind           DebtKind   @default(SONSTIGES) // Kauf / Verkauf / Sonstiges
+  quantity       Int        @default(1) // Menge
+  entryStatus    DebtEntry  @default(IO) @map("entry_status") // I.O / Fehlt
+  creditorName   String     @map("creditor_name") // Empfänger
   debtorName     String     @map("debtor_name") // Schuldner
   amountCents    Int        @map("amount_cents")
   paidCents      Int        @default(0) @map("paid_cents")

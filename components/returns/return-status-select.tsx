@@ -4,7 +4,8 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 import type { ReturnStatus } from "@prisma/client";
 import { updateReturnStatusAction } from "@/lib/actions/returns";
-import { RETURN_STATUS_LABELS } from "@/lib/constants";
+import { RETURN_STATUS, RETURN_STATUS_OPTIONS } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 export function ReturnStatusSelect({
   returnId,
@@ -26,13 +27,17 @@ export function ReturnStatusSelect({
             e.target.value as ReturnStatus
           );
           if (result?.error) toast.error(result.error);
+          else if (result?.success) toast.success(result.success);
         })
       }
-      className="border-input h-8 rounded-md border bg-transparent px-2 text-xs"
+      className={cn(
+        "h-7 rounded-md border-0 px-1.5 text-xs font-medium",
+        RETURN_STATUS[currentStatus].className
+      )}
     >
-      {Object.entries(RETURN_STATUS_LABELS).map(([value, label]) => (
+      {RETURN_STATUS_OPTIONS.map((value) => (
         <option key={value} value={value}>
-          {label}
+          {RETURN_STATUS[value].label}
         </option>
       ))}
     </select>

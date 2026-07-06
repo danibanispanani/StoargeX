@@ -1,6 +1,8 @@
 import { requireOrg } from "@/lib/org";
 import { formatEuro } from "@/lib/calculations";
 import { CreateReturnDialog } from "@/components/returns/create-return-dialog";
+import { ImportExportBar } from "@/components/import-export/import-export-bar";
+import { EditReturnDialog } from "@/components/returns/edit-return-dialog";
 import { ReturnStatusSelect } from "@/components/returns/return-status-select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -67,12 +69,15 @@ export default async function ReturnsPage() {
             {returns.length > 0 && <> · Gesamtverlust {formatEuro(totalLoss)}</>}
           </p>
         </div>
-        <CreateReturnDialog
-          sales={sales.map((s) => ({
-            id: s.id,
-            label: `${s.orderNumber ?? s.id.slice(0, 8)} – ${saleTitle(s.items)} (${formatEuro(s.salePriceCents)})`,
-          }))}
-        />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ImportExportBar table="retouren" />
+          <CreateReturnDialog
+            sales={sales.map((s) => ({
+              id: s.id,
+              label: `${s.orderNumber ?? s.id.slice(0, 8)} – ${saleTitle(s.items)} (${formatEuro(s.salePriceCents)})`,
+            }))}
+          />
+        </div>
       </div>
 
       <Card>
@@ -122,6 +127,17 @@ export default async function ReturnsPage() {
                     <div className="flex items-center gap-2">
                       <ReturnStatusSelect returnId={ret.id} currentStatus={ret.status} />
                       {ret.restocked && <Badge variant="outline">eingelagert</Badge>}
+                      <EditReturnDialog
+                        ret={{
+                          id: ret.id,
+                          saleLabel: `${ret.sale.orderNumber ?? ""} ${saleTitle(ret.sale.items)}`,
+                          requestedAt: ret.requestedAt.toISOString().slice(0, 10),
+                          reason: ret.reason ?? "",
+                          refundAmount: (ret.refundAmountCents / 100).toFixed(2).replace(".", ","),
+                          extraCost: (ret.returnShippingCents / 100).toFixed(2).replace(".", ","),
+                          notes: ret.notes ?? "",
+                        }}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

@@ -1,6 +1,7 @@
 import { requireOrg } from "@/lib/org";
 import { formatEuro, parseSurcharges } from "@/lib/calculations";
 import { CreateConsignmentDialog } from "@/components/consignment/create-consignment-dialog";
+import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { ConsignmentRowActions } from "@/components/consignment/consignment-row-actions";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -65,7 +66,10 @@ export default async function ConsignmentPage() {
             Verkäufe separat auswertbar.
           </p>
         </div>
-        <CreateConsignmentDialog />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ImportExportBar table="konsignation" />
+          <CreateConsignmentDialog />
+        </div>
       </div>
 
       <Card>

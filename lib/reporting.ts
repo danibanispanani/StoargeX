@@ -1,83 +1,9 @@
 import type { TenantDb } from "@/lib/tenant-db";
 
-// Aggregationen für Dashboard & Berichte – direkt aus Sale/Return/Task
+// Aggregationen fürs Dashboard-Cockpit – direkt aus Sale/Return/Task/StockItem
 // (ersetzt die manuellen SUMIFS-Auswertungen der Excel-Lösung).
 
-export const PERIOD_OPTIONS = [
-  { value: "7", label: "Letzte 7 Tage" },
-  { value: "30", label: "Letzte 30 Tage" },
-  { value: "90", label: "Letzte 90 Tage" },
-  { value: "365", label: "Letzte 12 Monate" },
-  { value: "alle", label: "Gesamter Zeitraum" },
-] as const;
-
-export function periodToFrom(zeitraum: string | undefined): Date | null {
-  const days: Record<string, number> = { "7": 7, "30": 30, "90": 90, "365": 365 };
-  const d = days[zeitraum ?? "30"];
-  return d ? new Date(Date.now() - d * 24 * 60 * 60 * 1000) : null;
-}
-
-export interface Kpis {
-  salesCount: number;
-  revenueCents: number; // Umsatz (VK brutto)
-  profitCents: number; // Gewinn aus Verkäufen
-  feesCents: number;
-  shippingCents: number;
-  openReturnsCount: number;
-  returnLossCents: number; // Verluste aus Retouren im Zeitraum
-  dueTasksCount: number; // fällige, nicht erledigte Aufgaben
-}
-
-export async function loadKpis(
-  db: TenantDb,
-  filter: { from: Date | null; platformId?: string }
-): Promise<Kpis> {
-  const saleWhere = {
-    ...(filter.from ? { soldAt: { gte: filter.from } } : {}),
-    ...(filter.platformId ? { platformId: filter.platformId } : {}),
-  };
-  const returnWhere = {
-    ...(filter.from ? { requestedAt: { gte: filter.from } } : {}),
-    ...(filter.platformId ? { sale: { platformId: filter.platformId } } : {}),
-  };
-
-  const [sales, openReturns, returnLoss, dueTasks] = await Promise.all([
-    db.sale.aggregate({
-      where: saleWhere,
-      _count: true,
-      _sum: {
-        salePriceCents: true,
-        profitCents: true,
-        platformFeeCents: true,
-        paymentFeeCents: true,
-        shippingCostCents: true,
-      },
-    }),
-    db.return.count({
-      where: { ...returnWhere, status: { in: ["REQUESTED", "RECEIVED"] } },
-    }),
-    db.return.aggregate({ where: returnWhere, _sum: { lossCents: true } }),
-    db.task.count({
-      where: {
-        archived: false,
-        status: { in: ["OPEN", "IN_PROGRESS"] },
-        dueDate: { lte: new Date() },
-      },
-    }),
-  ]);
-
-  return {
-    salesCount: sales._count,
-    revenueCents: sales._sum.salePriceCents ?? 0,
-    profitCents: sales._sum.profitCents ?? 0,
-    feesCents: (sales._sum.platformFeeCents ?? 0) + (sales._sum.paymentFeeCents ?? 0),
-    shippingCents: sales._sum.shippingCostCents ?? 0,
-    openReturnsCount: openReturns,
-    returnLossCents: returnLoss._sum.lossCents ?? 0,
-    dueTasksCount: dueTasks,
-  };
-}
-
+/** Gruppierungszeile (von der Breakdown-Tabelle weiterverwendet). */
 export interface GroupRow {
   key: string;
   salesCount: number;
@@ -86,53 +12,403 @@ export interface GroupRow {
   feesCents: number;
 }
 
-/** Verkäufe im Zeitraum nach Plattform und Monat gruppieren. */
-export async function loadSaleBreakdowns(
+// ---------------------------------------------------------------------------
+// Zeitraum: dieses Jahr / letztes Jahr / benutzerdefiniert
+// ---------------------------------------------------------------------------
+
+export interface DateRange {
+  from: Date;
+  to: Date;
+  label: string;
+}
+
+/** Löst den Zeitraum-Filter des Dashboards auf. */
+export function resolvePeriod(
+  jahr: string | undefined,
+  von: string | undefined,
+  bis: string | undefined
+): DateRange {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  if (jahr === "benutzerdefiniert" && (von || bis)) {
+    const from = von ? new Date(`${von}T00:00:00`) : new Date(currentYear, 0, 1);
+    const to = bis ? new Date(`${bis}T23:59:59`) : now;
+    return {
+      from,
+      to,
+      label: `${from.toLocaleDateString("de-DE")} – ${to.toLocaleDateString("de-DE")}`,
+    };
+  }
+
+  const year = jahr === "letztes-jahr" ? currentYear - 1 : currentYear;
+  return {
+    from: new Date(year, 0, 1),
+    to: new Date(year, 11, 31, 23, 59, 59),
+    label: String(year),
+  };
+}
+
+function rangeWhere(range: DateRange) {
+  return { gte: range.from, lte: range.to };
+}
+
+// ---------------------------------------------------------------------------
+// KPI-Karten
+// ---------------------------------------------------------------------------
+
+export interface DashboardKpis {
+  salesCount: number;
+  revenueCents: number; // VK brutto
+  profitCents: number;
+  openReturnsCount: number;
+  stockInStockCount: number; // Artikel auf Lager
+  stockInTransitCount: number; // unterwegs
+  openInvoicesCount: number; // Verkäufe mit Rechnung = Offen
+  dueTasksCount: number; // Frist heute oder überschritten
+}
+
+const STOCK_ON_HAND = ["IN_STOCK", "STORED_R", "STORED_D", "LISTED", "RESERVED", "RETURNED"] as const;
+
+export async function loadDashboardKpis(
   db: TenantDb,
-  filter: { from: Date | null; platformId?: string }
-): Promise<{ byPlatform: GroupRow[]; byMonth: GroupRow[] }> {
-  const sales = await db.sale.findMany({
-    where: {
-      ...(filter.from ? { soldAt: { gte: filter.from } } : {}),
-      ...(filter.platformId ? { platformId: filter.platformId } : {}),
-    },
+  range: DateRange
+): Promise<DashboardKpis> {
+  const soldAt = rangeWhere(range);
+
+  const [sales, openReturns, inStock, inTransit, openInvoices, dueTasks] =
+    await Promise.all([
+      db.sale.aggregate({
+        where: { soldAt },
+        _count: true,
+        _sum: { salePriceCents: true, profitCents: true },
+      }),
+      db.return.count({
+        where: {
+          requestedAt: soldAt,
+          status: { in: ["REQUESTED", "RECEIVED", "CONFLICT"] },
+        },
+      }),
+      db.stockItem.count({ where: { status: { in: [...STOCK_ON_HAND] } } }),
+      db.stockItem.count({ where: { status: "IN_TRANSIT" } }),
+      db.sale.count({ where: { soldAt, invoiceCreated: false } }),
+      db.task.count({
+        where: {
+          archived: false,
+          status: { in: ["OPEN", "IN_PROGRESS"] },
+          dueDate: { lte: new Date() },
+        },
+      }),
+    ]);
+
+  return {
+    salesCount: sales._count,
+    revenueCents: sales._sum.salePriceCents ?? 0,
+    profitCents: sales._sum.profitCents ?? 0,
+    openReturnsCount: openReturns,
+    stockInStockCount: inStock,
+    stockInTransitCount: inTransit,
+    openInvoicesCount: openInvoices,
+    dueTasksCount: dueTasks,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Schulden-Saldo pro Person (nur offene Einträge mit GbR-Bezug)
+// ---------------------------------------------------------------------------
+
+export interface DebtBalance {
+  person: string;
+  /** > 0: GbR schuldet der Person; < 0: Person schuldet der GbR */
+  netCents: number;
+}
+
+export async function loadDebtBalances(db: TenantDb): Promise<DebtBalance[]> {
+  const debts = await db.debt.findMany({
+    where: { status: { in: ["OPEN", "PARTIALLY_PAID"] } },
     select: {
-      soldAt: true,
-      salePriceCents: true,
-      profitCents: true,
-      platformFeeCents: true,
-      paymentFeeCents: true,
-      platform: { select: { name: true } },
+      debtorName: true,
+      creditorName: true,
+      amountCents: true,
+      paidCents: true,
     },
-    orderBy: { soldAt: "asc" },
   });
 
-  const byPlatform = new Map<string, GroupRow>();
-  const byMonth = new Map<string, GroupRow>();
-
-  for (const sale of sales) {
-    const month = `${sale.soldAt.getFullYear()}-${String(sale.soldAt.getMonth() + 1).padStart(2, "0")}`;
-    for (const [map, key] of [
-      [byPlatform, sale.platform.name],
-      [byMonth, month],
-    ] as const) {
-      const row = map.get(key) ?? {
-        key,
-        salesCount: 0,
-        revenueCents: 0,
-        profitCents: 0,
-        feesCents: 0,
-      };
-      row.salesCount += 1;
-      row.revenueCents += sale.salePriceCents;
-      row.profitCents += sale.profitCents;
-      row.feesCents += sale.platformFeeCents + sale.paymentFeeCents;
-      map.set(key, row);
+  const balances = new Map<string, number>();
+  for (const d of debts) {
+    const open = d.amountCents - d.paidCents;
+    const debtor = d.debtorName.trim();
+    const creditor = d.creditorName.trim();
+    if (debtor.toLowerCase() === "gbr" && creditor.toLowerCase() !== "gbr") {
+      balances.set(creditor, (balances.get(creditor) ?? 0) + open);
+    } else if (creditor.toLowerCase() === "gbr" && debtor.toLowerCase() !== "gbr") {
+      balances.set(debtor, (balances.get(debtor) ?? 0) - open);
     }
   }
 
-  return {
-    byPlatform: [...byPlatform.values()].sort((a, b) => b.revenueCents - a.revenueCents),
-    byMonth: [...byMonth.values()].sort((a, b) => b.key.localeCompare(a.key)),
+  return [...balances.entries()]
+    .filter(([, net]) => net !== 0)
+    .map(([person, netCents]) => ({ person, netCents }))
+    .sort((a, b) => Math.abs(b.netCents) - Math.abs(a.netCents));
+}
+
+// ---------------------------------------------------------------------------
+// Diagramm-Daten
+// ---------------------------------------------------------------------------
+
+/** a) Quartalsvergleich: Umsatz aktuelles vs. letztes Jahr. */
+export interface QuarterRow {
+  quartal: string; // "Q1"…
+  aktuell: number; // Euro
+  vorjahr: number;
+}
+
+export async function loadQuarterlyComparison(
+  db: TenantDb,
+  year: number
+): Promise<{ rows: QuarterRow[]; currentYear: number; lastYear: number }> {
+  const from = new Date(year - 1, 0, 1);
+  const to = new Date(year, 11, 31, 23, 59, 59);
+  const sales = await db.sale.findMany({
+    where: { soldAt: { gte: from, lte: to } },
+    select: { soldAt: true, salePriceCents: true },
+  });
+
+  const buckets = {
+    [year]: [0, 0, 0, 0],
+    [year - 1]: [0, 0, 0, 0],
+  } as Record<number, number[]>;
+
+  for (const s of sales) {
+    const y = s.soldAt.getFullYear();
+    if (!buckets[y]) continue;
+    const q = Math.floor(s.soldAt.getMonth() / 3);
+    buckets[y][q] += s.salePriceCents;
+  }
+
+  const rows: QuarterRow[] = [0, 1, 2, 3].map((q) => ({
+    quartal: `Q${q + 1}`,
+    aktuell: Math.round((buckets[year][q] ?? 0) / 100),
+    vorjahr: Math.round((buckets[year - 1][q] ?? 0) / 100),
+  }));
+
+  return { rows, currentYear: year, lastYear: year - 1 };
+}
+
+/** b) Einkauf (EK brutto) vs. Verkauf (VK brutto) pro Monat. */
+export interface MonthFlowRow {
+  monat: string; // "2026-01"
+  label: string; // "Jan 26"
+  einkauf: number; // Euro
+  verkauf: number;
+}
+
+const MONTH_LABELS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function lowStockKey(title: string, variant: string | null | undefined) {
+  return `${title.trim()}::${(variant ?? "").trim()}`;
+}
+
+export async function loadPurchaseVsSaleMonthly(
+  db: TenantDb,
+  range: DateRange
+): Promise<MonthFlowRow[]> {
+  const [purchases, sales] = await Promise.all([
+    db.stockItem.findMany({
+      where: { purchaseDate: rangeWhere(range) },
+      select: { purchaseDate: true, purchasePriceCents: true },
+    }),
+    db.sale.findMany({
+      where: { soldAt: rangeWhere(range) },
+      select: { soldAt: true, salePriceCents: true },
+    }),
+  ]);
+
+  const map = new Map<string, MonthFlowRow>();
+  const ensure = (d: Date) => {
+    const k = monthKey(d);
+    let row = map.get(k);
+    if (!row) {
+      row = { monat: k, label: `${MONTH_LABELS[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`, einkauf: 0, verkauf: 0 };
+      map.set(k, row);
+    }
+    return row;
   };
+
+  const cursor = new Date(range.from.getFullYear(), range.from.getMonth(), 1);
+  const end = new Date(range.to.getFullYear(), range.to.getMonth(), 1);
+  while (cursor <= end) {
+    ensure(cursor);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  for (const p of purchases) {
+    if (p.purchaseDate) ensure(p.purchaseDate).einkauf += p.purchasePriceCents;
+  }
+  for (const s of sales) ensure(s.soldAt).verkauf += s.salePriceCents;
+
+  return [...map.values()]
+    .sort((a, b) => a.monat.localeCompare(b.monat))
+    .map((r) => ({ ...r, einkauf: Math.round(r.einkauf / 100), verkauf: Math.round(r.verkauf / 100) }));
+}
+
+/** c) Kreisdiagramm: Umsatzanteil je Plattform. */
+export interface PlatformSlice {
+  name: string;
+  value: number; // Euro
+}
+
+export async function loadPlatformShare(
+  db: TenantDb,
+  range: DateRange
+): Promise<PlatformSlice[]> {
+  const sales = await db.sale.findMany({
+    where: { soldAt: rangeWhere(range) },
+    select: { salePriceCents: true, platform: { select: { name: true } } },
+  });
+
+  const map = new Map<string, number>();
+  for (const s of sales) {
+    const bucket = normalizePlatformBucket(s.platform.name);
+    map.set(bucket, (map.get(bucket) ?? 0) + s.salePriceCents);
+  }
+  return ["eBay R", "eBay D", "Vinted", "KA", "StockX", "Sonstiges"]
+    .map((name) => ({ name, value: Math.round((map.get(name) ?? 0) / 100) }))
+    .filter((slice) => slice.value > 0)
+    .sort((a, b) => b.value - a.value);
+}
+
+function normalizePlatformBucket(name: string): string {
+  const normalized = name.trim().toLowerCase();
+  if (normalized === "ebay r" || normalized.includes("ebay r")) return "eBay R";
+  if (normalized === "ebay d" || normalized.includes("ebay d")) return "eBay D";
+  if (normalized.includes("vinted")) return "Vinted";
+  if (normalized === "ka" || normalized.includes("kleinanzeigen")) return "KA";
+  if (normalized.includes("stockx")) return "StockX";
+  return "Sonstiges";
+}
+
+/** d) Top 10 Modelle nach kumuliertem Gewinn. */
+export interface TopProductRow {
+  model: string;
+  profit: number; // Euro
+  salesCount: number;
+}
+
+export async function loadTopProducts(
+  db: TenantDb,
+  range: DateRange
+): Promise<TopProductRow[]> {
+  const sales = await db.sale.findMany({
+    where: { soldAt: rangeWhere(range) },
+    select: {
+      profitCents: true,
+      items: {
+        select: {
+          stockItem: { select: { title: true } },
+          consignment: { select: { itemTitle: true } },
+        },
+      },
+    },
+  });
+
+  const map = new Map<string, { profit: number; count: number }>();
+  for (const s of sales) {
+    // Gewinn dem/den Modell(en) des Verkaufs zuordnen (bei Mehrartikel geteilt)
+    const models = [
+      ...new Set(
+        s.items
+          .map((i) => i.stockItem?.title ?? i.consignment?.itemTitle)
+          .filter((m): m is string => Boolean(m))
+      ),
+    ];
+    if (models.length === 0) continue;
+    const share = s.profitCents / models.length;
+    for (const model of models) {
+      const entry = map.get(model) ?? { profit: 0, count: 0 };
+      entry.profit += share;
+      entry.count += 1;
+      map.set(model, entry);
+    }
+  }
+
+  return [...map.entries()]
+    .map(([model, v]) => ({ model, profit: Math.round(v.profit / 100), salesCount: v.count }))
+    .sort((a, b) => b.profit - a.profit)
+    .slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// Kompakt-Tabellen
+// ---------------------------------------------------------------------------
+
+export async function loadRecentSales(db: TenantDb) {
+  return db.sale.findMany({
+    include: {
+      platform: { select: { name: true } },
+      items: {
+        select: {
+          stockItem: { select: { title: true } },
+          consignment: { select: { itemTitle: true } },
+        },
+      },
+    },
+    orderBy: { soldAt: "desc" },
+    take: 10,
+  });
+}
+
+export async function loadOpenDebts(db: TenantDb) {
+  return db.debt.findMany({
+    where: { status: { in: ["OPEN", "PARTIALLY_PAID"] } },
+    orderBy: { debtDate: "desc" },
+    take: 10,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Niedrig-Bestand-Warnung (OOS)
+// ---------------------------------------------------------------------------
+
+export interface LowStockAlert {
+  key: string; // "title variant" (für Zeilen-Markierung im Lager)
+  model: string;
+  onHand: number;
+  total: number;
+}
+
+/**
+ * Gruppiert Lagerartikel nach Modell+Variante. Warnung, wenn ursprünglich
+ * mehr als 1 Einheit vorhanden war und die nicht verkaufte Restmenge auf den
+ * Schwellenwert oder darunter (aber > 0) gesunken ist.
+ */
+export async function loadLowStockAlerts(
+  db: TenantDb,
+  threshold: number
+): Promise<LowStockAlert[]> {
+  const items = await db.stockItem.findMany({
+    select: { title: true, variant: true, status: true },
+  });
+
+  const groups = new Map<string, { key: string; model: string; onHand: number; total: number }>();
+  for (const item of items) {
+    const key = lowStockKey(item.title, item.variant);
+    const g = groups.get(key) ?? {
+      key,
+      model: item.variant ? `${item.title} (${item.variant})` : item.title,
+      onHand: 0,
+      total: 0,
+    };
+    g.total += 1;
+    if (!["SOLD", "CANCELLED", "WRITTEN_OFF"].includes(item.status)) g.onHand += 1;
+    groups.set(key, g);
+  }
+
+  return [...groups.values()]
+    .filter((g) => g.total > 1 && g.onHand > 0 && g.onHand <= threshold)
+    .sort((a, b) => a.onHand - b.onHand);
 }

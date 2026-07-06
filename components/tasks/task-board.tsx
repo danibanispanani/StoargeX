@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 import type { TaskPriority, TaskStatus } from "@prisma/client";
 import { archiveTaskAction, moveTaskAction } from "@/lib/actions/tasks";
-import { TASK_PRIORITY_LABELS } from "@/lib/constants";
+import { TASK_PRIORITY_LABELS, TASK_PRIORITY_STYLES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,12 +28,7 @@ const COLUMNS: Array<{ status: TaskStatus; title: string }> = [
   { status: "DONE", title: "Erledigt" },
 ];
 
-const PRIORITY_STYLES: Record<TaskPriority, string> = {
-  LOW: "bg-muted text-muted-foreground",
-  MEDIUM: "bg-blue-100 text-blue-800",
-  HIGH: "bg-amber-100 text-amber-800",
-  URGENT: "bg-red-100 text-red-800",
-};
+const PRIORITY_STYLES: Record<TaskPriority, string> = TASK_PRIORITY_STYLES;
 
 export function TaskBoard({
   tasks,

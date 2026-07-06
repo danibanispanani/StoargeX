@@ -253,3 +253,77 @@
     animation: sx-fade 0.3s ease forwards;
   }
 }
+
+/* ==========================================================================
+   Datentabellen (Lager/Verkauf): sticky Header + erste Spalte, Zebra,
+   kompakte Zeilen, Hover-Highlight, horizontales Scrollen
+   ========================================================================== */
+
+.sx-datatable {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+/* Sticky Header */
+.sx-datatable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--card);
+  white-space: nowrap;
+}
+/* Kompakte Zeilen */
+.sx-datatable td,
+.sx-datatable th {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+}
+/* Zebra-Striping */
+.sx-datatable tbody tr:nth-child(odd) td {
+  background: color-mix(in oklab, var(--muted) 35%, transparent);
+}
+/* Hover-Highlight */
+.sx-datatable tbody tr:hover td {
+  background: var(--accent);
+}
+/* Markierte Zeile (Auswahl) */
+.sx-datatable tbody tr[data-selected="true"] td {
+  background: color-mix(in oklab, var(--accent) 80%, var(--foreground) 4%);
+}
+/* Niedrig-Bestand (gelber Hintergrund) */
+.sx-datatable tbody tr[data-low="true"] td {
+  background: color-mix(in oklab, var(--cargo-amber) 16%, transparent);
+}
+/* Sticky erste Spalte(n) – opaker Hintergrund, damit nichts durchscrollt */
+.sx-sticky-0,
+.sx-sticky-1 {
+  position: sticky;
+  z-index: 10;
+  background: var(--card);
+}
+.sx-sticky-0 {
+  left: 0;
+}
+.sx-sticky-1 {
+  left: 2.5rem;
+}
+.sx-datatable thead .sx-sticky-0,
+.sx-datatable thead .sx-sticky-1 {
+  z-index: 30;
+}
+/* Sticky-Spalten übernehmen Zebra/Hover/Marker-Hintergrund */
+.sx-datatable tbody tr:nth-child(odd) .sx-sticky-0,
+.sx-datatable tbody tr:nth-child(odd) .sx-sticky-1 {
+  background: color-mix(in oklab, var(--muted) 35%, var(--card));
+}
+.sx-datatable tbody tr:hover .sx-sticky-0,
+.sx-datatable tbody tr:hover .sx-sticky-1 {
+  background: color-mix(in oklab, var(--accent) 92%, var(--card));
+}
+.sx-datatable tbody tr[data-low="true"] .sx-sticky-0,
+.sx-datatable tbody tr[data-low="true"] .sx-sticky-1 {
+  background: color-mix(in oklab, var(--cargo-amber) 16%, var(--card));
+}
+.sx-datatable tbody tr[data-selected="true"] .sx-sticky-0,
+.sx-datatable tbody tr[data-selected="true"] .sx-sticky-1 {
+  background: color-mix(in oklab, var(--accent) 88%, var(--card));
+}

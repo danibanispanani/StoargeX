@@ -1,4 +1,7 @@
 import type {
+  DebtEntry,
+  DebtKind,
+  DebtStatus,
   EntryStatus,
   ReturnStatus,
   SaleStatus,
@@ -16,19 +19,30 @@ export interface StatusStyle {
   className: string; // Badge-/Select-Färbung
 }
 
+// Zentrale Farbtöne (Markenpalette, hell + dunkel) – überall konsistent:
+//  positive → transit-teal · warn → cargo-amber · negative → customs-red
+//  neutral → slate · info → gedämpftes Blau
+export const TONE = {
+  positive: "bg-transit-teal/15 text-teal-700 dark:text-teal-300",
+  warn: "bg-cargo-amber/15 text-amber-700 dark:text-amber-300",
+  negative: "bg-customs-red/15 text-red-700 dark:text-red-300",
+  neutral: "bg-slate/15 text-slate-600 dark:text-slate-300",
+  info: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+} as const;
+
 export const STOCK_STATUS: Record<StockItemStatus, StatusStyle> = {
-  SOLD: { label: "Verkauft", className: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
-  STORED_R: { label: "gelagert - R", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
-  STORED_D: { label: "gelagert - D", className: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300" },
-  IN_STOCK: { label: "gelagert", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
-  RETURNED: { label: "Retoure", className: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
-  CANCELLED: { label: "Storniert", className: "bg-muted text-muted-foreground" },
-  IN_TRANSIT: { label: "Unterwegs", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
-  OTHER: { label: "Sonstiges", className: "bg-muted text-muted-foreground" },
+  SOLD: { label: "Verkauft", className: TONE.positive },
+  STORED_R: { label: "gelagert - R", className: TONE.info },
+  STORED_D: { label: "gelagert - D", className: "bg-sky-500/15 text-sky-700 dark:text-sky-300" },
+  IN_STOCK: { label: "gelagert", className: TONE.info },
+  RETURNED: { label: "Retoure", className: TONE.negative },
+  CANCELLED: { label: "Storniert", className: TONE.neutral },
+  IN_TRANSIT: { label: "Unterwegs", className: TONE.warn },
+  OTHER: { label: "Sonstiges", className: TONE.neutral },
   // Altwerte – werden in Dropdowns nicht mehr angeboten
-  LISTED: { label: "gelagert", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
-  RESERVED: { label: "gelagert", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
-  WRITTEN_OFF: { label: "Sonstiges", className: "bg-muted text-muted-foreground" },
+  LISTED: { label: "gelagert", className: TONE.info },
+  RESERVED: { label: "gelagert", className: TONE.info },
+  WRITTEN_OFF: { label: "Sonstiges", className: TONE.neutral },
 };
 
 /** Status-Werte, die in Dropdowns angeboten werden (Reihenfolge = Anzeige). */
@@ -54,10 +68,10 @@ export const STOCK_STATUS_LABELS: Record<StockItemStatus, string> =
 // ---------------------------------------------------------------------------
 
 export const ENTRY_STATUS: Record<EntryStatus, StatusStyle> = {
-  E: { label: "E", className: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
-  O: { label: "O", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
-  NN: { label: "NN", className: "bg-muted text-muted-foreground" },
-  S: { label: "S", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  E: { label: "E", className: TONE.positive },
+  O: { label: "O", className: TONE.warn },
+  NN: { label: "NN", className: TONE.neutral },
+  S: { label: "S", className: TONE.info },
 };
 
 export const ENTRY_STATUS_TITLES: Record<EntryStatus, string> = {
@@ -77,18 +91,18 @@ export const RETOURE_STATUS_OPTIONS: EntryStatus[] = ["E", "O", "NN", "S"];
 
 /** Gesamtstatus im Verkauf: nur diese zwei Werte werden angeboten. */
 export const SALE_STATUS: Partial<Record<SaleStatus, StatusStyle>> = {
-  PENDING: { label: "in Bearbeitung", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
-  COMPLETED: { label: "Abgeschlossen", className: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  PENDING: { label: "in Bearbeitung", className: TONE.warn },
+  COMPLETED: { label: "Abgeschlossen", className: TONE.positive },
   // Altwerte lesbar halten
-  PAID: { label: "in Bearbeitung", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
-  SHIPPED: { label: "in Bearbeitung", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
-  CANCELLED: { label: "Storniert", className: "bg-muted text-muted-foreground" },
-  REFUNDED: { label: "Erstattet", className: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  PAID: { label: "in Bearbeitung", className: TONE.warn },
+  SHIPPED: { label: "in Bearbeitung", className: TONE.warn },
+  CANCELLED: { label: "Storniert", className: TONE.neutral },
+  REFUNDED: { label: "Erstattet", className: TONE.negative },
 };
 
 export const INVOICE_STATUS: Record<"done" | "open", StatusStyle> = {
-  done: { label: "Erledigt", className: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
-  open: { label: "Offen", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  done: { label: "Erledigt", className: TONE.positive },
+  open: { label: "Offen", className: TONE.warn },
 };
 
 // ---------------------------------------------------------------------------
@@ -108,13 +122,62 @@ export function paymentMethodCreatesDebt(zm: string): boolean {
 // Retouren-Modul & Aufgaben (unverändert)
 // ---------------------------------------------------------------------------
 
-export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
-  REQUESTED: "Angemeldet",
-  RECEIVED: "Erhalten",
-  REFUNDED: "Erstattet",
-  RESTOCKED: "Wieder eingelagert",
-  REJECTED: "Abgelehnt",
+export const RETURN_STATUS: Record<ReturnStatus, StatusStyle> = {
+  REQUESTED: { label: "Angekündigt", className: TONE.warn },
+  REJECTED: { label: "Storniert", className: TONE.neutral },
+  RESTOCKED: { label: "Gelagert", className: TONE.info },
+  REFUNDED: { label: "Erstattet", className: TONE.positive },
+  CONFLICT: { label: "Konflikt", className: TONE.negative },
+  RECEIVED: { label: "Angekündigt", className: TONE.warn },
 };
+
+export const RETURN_STATUS_OPTIONS: ReturnStatus[] = [
+  "REQUESTED",
+  "REJECTED",
+  "RESTOCKED",
+  "REFUNDED",
+  "CONFLICT",
+];
+
+export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> =
+  Object.fromEntries(
+    Object.entries(RETURN_STATUS).map(([key, value]) => [key, value.label])
+  ) as Record<ReturnStatus, string>;
+
+// ---------------------------------------------------------------------------
+// Schulden
+// ---------------------------------------------------------------------------
+
+export const DEBT_KIND_LABELS: Record<DebtKind, string> = {
+  KAUF: "Kauf",
+  VERKAUF: "Verkauf",
+  SONSTIGES: "Sonstiges",
+};
+
+export const DEBT_STATUS: Record<DebtStatus, StatusStyle> = {
+  OPEN: { label: "Offen", className: TONE.warn },
+  SETTLED: { label: "Beglichen", className: TONE.positive },
+  OTHER: { label: "Sonstiges", className: TONE.neutral },
+  PARTIALLY_PAID: { label: "Offen", className: TONE.warn },
+};
+
+export const DEBT_STATUS_OPTIONS: DebtStatus[] = ["OPEN", "SETTLED", "OTHER"];
+
+export const DEBT_ENTRY: Record<DebtEntry, StatusStyle> = {
+  IO: { label: "I.O", className: TONE.positive },
+  FEHLT: { label: "Fehlt", className: TONE.negative },
+};
+
+/** Standard-Bereiche für Aufgaben (in Einstellungen erweiterbar). */
+export const DEFAULT_TASK_AREAS = [
+  "Listing",
+  "Buchhaltung",
+  "GbR Intern",
+  "Bilder",
+  "Rechtsstreit",
+  "Versand",
+  "Steuerrecht",
+];
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   OPEN: "Offen",
@@ -127,7 +190,17 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   LOW: "Niedrig",
   MEDIUM: "Mittel",
   HIGH: "Hoch",
-  URGENT: "Dringend",
+  URGENT: "Hoch", // Altwert, wird wie Hoch behandelt
+};
+
+/** Angebotene Prioritäten: Hoch (rot), Mittel (amber), Niedrig (grün). */
+export const TASK_PRIORITY_OPTIONS: TaskPriority[] = ["HIGH", "MEDIUM", "LOW"];
+
+export const TASK_PRIORITY_STYLES: Record<TaskPriority, string> = {
+  HIGH: TONE.negative,
+  URGENT: TONE.negative,
+  MEDIUM: TONE.warn,
+  LOW: TONE.positive,
 };
 
 /** Häufige Käufer-/Zielländer (ISO-2) für Selects und Datalists. */
