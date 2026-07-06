@@ -32,17 +32,17 @@ enum LegalForm {
 }
 
 enum StockItemStatus {
-  IN_STOCK      // "gelagert" (neutral)
-  STORED_R      // "gelagert - R"
-  STORED_D      // "gelagert - D"
-  SOLD          // "Verkauft"
-  RETURNED      // "Retoure"
-  CANCELLED     // "Storniert"
-  IN_TRANSIT    // "Unterwegs"
-  OTHER         // "Sonstiges"
-  LISTED        // Altbestand (UI bietet den Wert nicht mehr an)
-  RESERVED      // Altbestand
-  WRITTEN_OFF   // Altbestand
+  IN_STOCK // "gelagert" (neutral)
+  STORED_R // "gelagert - R"
+  STORED_D // "gelagert - D"
+  SOLD // "Verkauft"
+  RETURNED // "Retoure"
+  CANCELLED // "Storniert"
+  IN_TRANSIT // "Unterwegs"
+  OTHER // "Sonstiges"
+  LISTED // Altbestand (UI bietet den Wert nicht mehr an)
+  RESERVED // Altbestand
+  WRITTEN_OFF // Altbestand
 }
 
 // Kauf-/Retoure-Buchungsstatus wie im Excel-Original:
@@ -63,35 +63,35 @@ enum OptionKind {
 }
 
 enum SaleStatus {
-  PENDING    // verkauft, Zahlung offen
-  PAID       // bezahlt
-  SHIPPED    // versendet
-  COMPLETED  // abgeschlossen
-  CANCELLED  // storniert
-  REFUNDED   // erstattet
+  PENDING // verkauft, Zahlung offen
+  PAID // bezahlt
+  SHIPPED // versendet
+  COMPLETED // abgeschlossen
+  CANCELLED // storniert
+  REFUNDED // erstattet
 }
 
 enum ReturnStatus {
-  REQUESTED  // "Angekündigt"
-  REJECTED   // "Storniert"
-  RESTOCKED  // "Gelagert" (Artikel physisch zurück -> Lagerstatus RETOURE)
-  REFUNDED   // "Erstattet"
-  CONFLICT   // "Konflikt"
-  RECEIVED   // Altwert (UI bietet ihn nicht mehr an)
+  REQUESTED // "Angekündigt"
+  REJECTED // "Storniert"
+  RESTOCKED // "Gelagert" (Artikel physisch zurück -> Lagerstatus RETOURE)
+  REFUNDED // "Erstattet"
+  CONFLICT // "Konflikt"
+  RECEIVED // Altwert (UI bietet ihn nicht mehr an)
 }
 
 enum ConsignmentStatus {
-  RECEIVED   // Kommissionsware angenommen
-  LISTED     // inseriert
-  SOLD       // verkauft
-  PAID_OUT   // Auszahlung an Einlieferer erfolgt
-  RETURNED   // an Einlieferer zurückgegeben
+  RECEIVED // Kommissionsware angenommen
+  LISTED // inseriert
+  SOLD // verkauft
+  PAID_OUT // Auszahlung an Einlieferer erfolgt
+  RETURNED // an Einlieferer zurückgegeben
 }
 
 enum DebtStatus {
-  OPEN           // "Offen"
-  SETTLED        // "Beglichen"
-  OTHER          // "Sonstiges"
+  OPEN // "Offen"
+  SETTLED // "Beglichen"
+  OTHER // "Sonstiges"
   PARTIALLY_PAID // Altwert
 }
 
@@ -136,52 +136,93 @@ enum SubscriptionTier {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 1 (inventory-refactor): additive Enums für neues Datenmodell
+// Siehe docs/inventory-refactor-plan.md
+// ---------------------------------------------------------------------------
+
+/**
+ * Dokumentarten für mandanten- und jahresbezogene Sequenzen.
+ */
+enum DocumentKind {
+  OWNED_STOCK // L-{JJ}-{NNNN}   – eigener Bestand
+  CONSIGNMENT // K-{JJ}-{NNNN}   – Konsignationsbestand
+  PURCHASE // E-{JJ}-{NNNN}   – Einkauf
+  SALE // V-{JJ}-{NNNN}   – Verkauf
+  RETURN // R-{JJ}-{NNNN}   – Retoure
+  DEBT // SCH-{JJ}-{NNNN} – Schulden-Eintrag
+}
+
+/**
+ * Bestandsart einer InventoryPosition.
+ */
+enum InventoryType {
+  OWNED
+  CONSIGNMENT
+}
+
+/**
+ * Status eines Einkaufs (Purchase).
+ */
+enum PurchaseStatus {
+  DRAFT // erfasst, aber noch nicht bestätigt
+  CONFIRMED // Bestellung ausgelöst / Ware unterwegs / eingegangen
+  CANCELLED // Einkauf storniert
+}
+
+// ---------------------------------------------------------------------------
 // Mandanten & Benutzer
 // ---------------------------------------------------------------------------
 
 model Organization {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
-  legalForm LegalForm @default(GBR)
-  vatId     String?   @map("vat_id") // USt-IdNr.
-  taxNumber String?   @map("tax_number")
+  id                   String           @id @default(cuid())
+  name                 String
+  slug                 String           @unique
+  legalForm            LegalForm        @default(GBR)
+  vatId                String?          @map("vat_id") // USt-IdNr.
+  taxNumber            String?          @map("tax_number")
   // Format für lesbare Order-IDs; Tokens: {JJJJ} {JJ} {MM} {TT} {NR:n}
-  orderIdFormat  String @default("SX-{JJJJ}-{NR:4}") @map("order_id_format")
-  orderIdCounter Int    @default(0) @map("order_id_counter")
+  orderIdFormat        String           @default("SX-{JJJJ}-{NR:4}") @map("order_id_format")
+  orderIdCounter       Int              @default(0) @map("order_id_counter")
   // Fortlaufende LagerIDs (Format L-{JJ}-{NNN})
-  stockIdCounter Int @default(0) @map("stock_id_counter")
+  stockIdCounter       Int              @default(0) @map("stock_id_counter")
   // Schwellenwert für Niedrig-Bestand-Warnung (Dashboard/Lager)
-  lowStockThreshold Int @default(1) @map("low_stock_threshold")
+  lowStockThreshold    Int              @default(1) @map("low_stock_threshold")
   // Billing (Stripe): Tier wird vom Webhook aktualisiert
   subscriptionTier     SubscriptionTier @default(FREE) @map("subscription_tier")
   stripeCustomerId     String?          @unique @map("stripe_customer_id")
   stripeSubscriptionId String?          @map("stripe_subscription_id")
-  street    String?
-  zipCode   String?   @map("zip_code")
-  city      String?
-  country   String    @default("DE")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  street               String?
+  zipCode              String?          @map("zip_code")
+  city                 String?
+  country              String           @default("DE")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  memberships   Membership[]
-  invitations   Invitation[]
-  platforms     Platform[]
-  carriers      Carrier[]
-  taxRates      TaxRate[]
-  stockItems    StockItem[]
-  sales         Sale[]
-  returns       Return[]
-  consignments  ConsignmentInventory[]
-  debts         Debt[]
-  tasks         Task[]
-  credentials   Credential[]
-  auditLogs     AuditLog[]
-  listings      StockItemListing[]
-  shippingRates ShippingRate[]
-  saleItems     SaleItem[]
-  selectOptions SelectOption[]
-  products      Product[]
+  memberships        Membership[]
+  invitations        Invitation[]
+  platforms          Platform[]
+  carriers           Carrier[]
+  taxRates           TaxRate[]
+  stockItems         StockItem[]
+  sales              Sale[]
+  returns            Return[]
+  consignments       ConsignmentInventory[]
+  debts              Debt[]
+  tasks              Task[]
+  credentials        Credential[]
+  auditLogs          AuditLog[]
+  listings           StockItemListing[]
+  shippingRates      ShippingRate[]
+  saleItems          SaleItem[]
+  selectOptions      SelectOption[]
+  products           Product[]
+  // Phase 1 – additives Datenmodell
+  documentSequences  DocumentSequence[]
+  purchases          Purchase[]
+  purchaseLines      PurchaseLine[]
+  inventoryPositions InventoryPosition[]
+  ownedStockLots     OwnedStockLot[]
+  consignmentLots    ConsignmentLot[]
 
   @@map("organizations")
 }
@@ -447,6 +488,7 @@ model Product {
   organizationId    String   @map("organization_id")
   name              String
   variant           String? // Variante/Version
+  size              String? // Größe (Phase-1-Ergänzung fürs neue Datenmodell)
   category          String?
   ean               String?
   defaultPriceCents Int?     @map("default_price_cents") // Standard-EK brutto
@@ -454,7 +496,9 @@ model Product {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseLines      PurchaseLine[]
+  inventoryPositions InventoryPosition[]
 
   @@unique([organizationId, name, variant])
   @@index([organizationId])
@@ -513,23 +557,23 @@ model Sale {
 }
 
 model Return {
-  id                String       @id @default(cuid())
-  organizationId    String       @map("organization_id")
-  saleId            String       @map("sale_id") // harter FK auf den Verkauf
-  requestedAt       DateTime     @default(now()) @map("requested_at") // Meldedatum
-  receivedAt        DateTime?    @map("received_at")
-  reason            String?
-  refundAmountCents Int          @default(0) @map("refund_amount_cents") // Erstattung brutto
-  returnShippingCents Int        @default(0) @map("return_shipping_cents") // Zusatzkosten (z.B. Rückversand)
+  id                  String       @id @default(cuid())
+  organizationId      String       @map("organization_id")
+  saleId              String       @map("sale_id") // harter FK auf den Verkauf
+  requestedAt         DateTime     @default(now()) @map("requested_at") // Meldedatum
+  receivedAt          DateTime?    @map("received_at")
+  reason              String?
+  refundAmountCents   Int          @default(0) @map("refund_amount_cents") // Erstattung brutto
+  returnShippingCents Int          @default(0) @map("return_shipping_cents") // Zusatzkosten (z.B. Rückversand)
   // Tatsächlicher finanzieller Verlust, server-seitig berechnet
   // (lib/calculations.ts calcReturnLoss): Erstattung abzüglich enthaltener
   // USt und anteiliger Gebühren/Versand, plus Zusatzkosten.
-  lossCents         Int          @default(0) @map("loss_cents")
-  status            ReturnStatus @default(REQUESTED)
-  restocked         Boolean      @default(false) // wieder in den Bestand aufgenommen?
-  notes             String?
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
+  lossCents           Int          @default(0) @map("loss_cents")
+  status              ReturnStatus @default(REQUESTED)
+  restocked           Boolean      @default(false) // wieder in den Bestand aufgenommen?
+  notes               String?
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
@@ -717,4 +761,184 @@ model VerificationToken {
 
   @@unique([identifier, token])
   @@map("verification_tokens")
+}
+
+// ===========================================================================
+// Phase 1 (inventory-refactor): Additives Datenfundament
+// Ohne Umschaltung – bestehende Modelle (StockItem, Sale, SaleItem,
+// ConsignmentInventory, Debt) bleiben in dieser Phase produktiv aktiv.
+// Siehe docs/inventory-refactor-plan.md
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Sichtbare Dokumentnummern je Mandant + Jahr + Dokumentart.
+// value wird atomar über increment inkrementiert (Postgres INSERT ... ON
+// CONFLICT DO UPDATE SET value = value + 1 RETURNING value).
+// Die sichtbare Nummer selbst (z.B. L-26-0001) ist KEIN Primary Key.
+// ---------------------------------------------------------------------------
+
+model DocumentSequence {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  kind           DocumentKind
+  year           Int
+  value          Int          @default(0) // zuletzt vergebene Nummer
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind, year])
+  @@index([organizationId])
+  @@map("document_sequences")
+}
+
+// ---------------------------------------------------------------------------
+// Purchase / PurchaseLine – Einkaufsbeleg mit Positionen
+// Geldbeträge als Decimal(12,2) für exakte Buchhaltung.
+// ---------------------------------------------------------------------------
+
+model Purchase {
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
+  purchaseNumber String         @map("purchase_number") // z.B. "E-26-0001"
+  purchaseDate   DateTime       @map("purchase_date")
+  vendor         String
+  paymentMethod  String         @map("payment_method")
+  purchaseStatus PurchaseStatus @default(DRAFT) @map("purchase_status")
+  comment        String?
+  createdById    String         @map("created_by_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines        PurchaseLine[]
+
+  @@unique([organizationId, purchaseNumber])
+  @@index([organizationId])
+  @@index([organizationId, purchaseDate])
+  @@map("purchases")
+}
+
+model PurchaseLine {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  purchaseId     String   @map("purchase_id")
+  productId      String   @map("product_id")
+  quantity       Int
+  unitPriceGross Decimal  @map("unit_price_gross") @db.Decimal(12, 2)
+  unitPriceNet   Decimal  @map("unit_price_net") @db.Decimal(12, 2)
+  vatDeductible  Boolean  @default(false) @map("vat_deductible")
+  totalGross     Decimal  @map("total_gross") @db.Decimal(12, 2)
+  totalNet       Decimal  @map("total_net") @db.Decimal(12, 2)
+  comment        String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchase     Purchase        @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  ownedLots    OwnedStockLot[]
+
+  @@index([organizationId])
+  @@index([purchaseId])
+  @@map("purchase_lines")
+}
+
+// ---------------------------------------------------------------------------
+// InventoryPosition – gemeinsame Basistabelle für eigenen und Konsignations-
+// bestand. Genau EIN OwnedStockLot ODER genau EIN ConsignmentLot pro
+// Position (siehe unique-Constraints auf den Spezialisierungen).
+// Mengen dürfen nicht negativ sein (CHECK-Constraints in der Migration).
+// ---------------------------------------------------------------------------
+
+model InventoryPosition {
+  id                 String        @id @default(cuid())
+  organizationId     String        @map("organization_id")
+  productId          String        @map("product_id")
+  inventoryType      InventoryType @map("inventory_type")
+  inventoryNumber    String        @map("inventory_number") // z.B. "L-26-0001" oder "K-26-0001"
+  quantityReceived   Int           @default(0) @map("quantity_received")
+  quantityAvailable  Int           @default(0) @map("quantity_available")
+  quantityReserved   Int           @default(0) @map("quantity_reserved")
+  quantityInspection Int           @default(0) @map("quantity_inspection")
+  quantityDefective  Int           @default(0) @map("quantity_defective")
+  quantitySold       Int           @default(0) @map("quantity_sold")
+  active             Boolean       @default(true)
+  receivedAt         DateTime      @default(now()) @map("received_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  ownedLot       OwnedStockLot?
+  consignmentLot ConsignmentLot?
+
+  @@unique([organizationId, inventoryNumber])
+  @@index([organizationId])
+  @@index([organizationId, inventoryType])
+  @@index([organizationId, active])
+  @@map("inventory_positions")
+}
+
+// ---------------------------------------------------------------------------
+// OwnedStockLot – Spezialisierung für eigenen Bestand.
+// EntryStatus-Enums werden wiederverwendet (Kauf: E/O/NN, Retoure: E/O/NN/S).
+// ---------------------------------------------------------------------------
+
+model OwnedStockLot {
+  id                  String      @id @default(cuid())
+  inventoryPositionId String      @unique @map("inventory_position_id")
+  organizationId      String      @map("organization_id")
+  purchaseLineId      String?     @map("purchase_line_id") // Übergangsphase: optional
+  purchaseDate        DateTime    @map("purchase_date")
+  vendor              String
+  unitPriceGross      Decimal     @map("unit_price_gross") @db.Decimal(12, 2)
+  unitPriceNet        Decimal     @map("unit_price_net") @db.Decimal(12, 2)
+  vatDeductible       Boolean     @default(false) @map("vat_deductible")
+  paymentMethod       String      @map("payment_method")
+  purchaseEntryStatus EntryStatus @default(O) @map("purchase_entry_status")
+  returnEntryStatus   EntryStatus @default(NN) @map("return_entry_status")
+  ean                 String?
+  legacySource        String?     @map("legacy_source") // z.B. "stock_items:<id>" (Backfill)
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+  purchaseLine      PurchaseLine?     @relation(fields: [purchaseLineId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("owned_stock_lots")
+}
+
+// ---------------------------------------------------------------------------
+// ConsignmentLot – Spezialisierung für Konsignationsbestand.
+// Beträge als Decimal; channelPrices als JSON (mehrere Preisebenen).
+// ---------------------------------------------------------------------------
+
+model ConsignmentLot {
+  id                   String   @id @default(cuid())
+  inventoryPositionId  String   @unique @map("inventory_position_id")
+  organizationId       String   @map("organization_id")
+  partnerCompany       String   @map("partner_company")
+  externalSku          String?  @map("external_sku")
+  identificationNumber String?  @map("identification_number")
+  costGross            Decimal? @map("cost_gross") @db.Decimal(12, 2)
+  costNet              Decimal? @map("cost_net") @db.Decimal(12, 2)
+  settlementAmount     Decimal? @map("settlement_amount") @db.Decimal(12, 2)
+  shippingCost         Decimal? @map("shipping_cost") @db.Decimal(12, 2)
+  // Preisebenen je Verkaufskanal: [{ "channel": "eBay R", "priceGross": 49.99 }, ...]
+  channelPrices        Json     @default("[]") @map("channel_prices")
+  comment              String?
+  legacySource         String?  @map("legacy_source") // z.B. "consignment_inventory:<id>" (Backfill)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, partnerCompany])
+  @@map("consignment_lots")
 }

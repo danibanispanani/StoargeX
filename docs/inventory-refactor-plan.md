@@ -1,5 +1,16 @@
 # Inventory-Refactor – Analyse & Umbauplan
 
+> **Phase 1 abgeschlossen** (Migration `20260706180000_inventory_datamodel_phase1`):
+> Neue Modelle `DocumentSequence`, `Purchase`, `PurchaseLine`,
+> `InventoryPosition`, `OwnedStockLot`, `ConsignmentLot` additiv angelegt,
+> `Product` um `size` erweitert. Alle sechs neuen Tabellen mit RLS-Policies
+> (`tenant_isolation` + `bypass_rls`, `FORCE ROW LEVEL SECURITY`) und
+> CHECK-Constraints (nicht-negative Mengen). Zentraler Service unter
+> `lib/services/document-number-service.ts` erzeugt concurrency-sichere
+> Dokumentnummern per atomarem `upsert + increment`. Format:
+> `L/K/E/V/R/SCH-{JJ}-{NNNN}`. **Bestehende Modelle und APIs bleiben
+> unverändert produktiv** – keine Umschaltung in dieser Phase.
+
 > **Status:** Nur Analyse. Es wurden **keine** fachlichen Änderungen an
 > Prisma-Schema, Migrationen, Server Actions, Business-Services, UI oder Tests
 > vorgenommen. Baseline-Checks am Ausgangspunkt:
@@ -338,8 +349,10 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
 
 ## 10. Checkliste für die folgenden Phasen
 
-- [ ] **Phase 1** – Neues Prisma-Schema additiv + Migration + RLS + Zod-Schemas
-      unter `lib/domain/*` als reine Typen (kein Business-Code).
+- [x] **Phase 1** – Neues Prisma-Schema additiv + Migration + RLS +
+      DocumentNumberService inkl. Tests. **Abgeschlossen** in Migration
+      `20260706180000_inventory_datamodel_phase1` und
+      [lib/services/document-number-service.ts](../lib/services/document-number-service.ts).
 - [ ] **Phase 2** – Backfill-Skript als eigene Migration + Read-only-Verifier
       (`scripts/verify-backfill.ts`), der KPI/Bestand vor/nach vergleicht.
 - [ ] **Phase 3** – Neue Actions `purchases.ts`, `inventory.ts`, `sales.v2.ts`,
