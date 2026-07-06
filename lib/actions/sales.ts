@@ -380,6 +380,94 @@ export async function updateSaleAction(
   return { success: `Verkauf ${existing.orderNumber ?? ""} gespeichert ✓` };
 }
 
+/** Verkauf loeschen und die betroffenen Bestaende wieder freigeben. */
+export async function deleteSaleAction(saleId: string): Promise<ActionState> {
+  const { organization, userId } = await requireOrg("MEMBER");
+
+  try {
+    const deleted = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
+
+      const sale = await tx.sale.findFirst({
+        where: { id: saleId },
+        include: {
+          items: {
+            include: {
+              stockItem: { select: { id: true, sku: true } },
+              consignment: {
+                select: {
+                  id: true,
+                  sku: true,
+                  quantity: true,
+                  soldQuantity: true,
+                  linkedSaleIds: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!sale) throw new Error("Verkauf nicht gefunden.");
+
+      const stockIds = sale.items
+        .map((item) => item.stockItem?.id)
+        .filter((id): id is string => Boolean(id));
+      if (stockIds.length > 0) {
+        await tx.stockItem.updateMany({
+          where: { id: { in: stockIds } },
+          data: { status: "IN_STOCK", quantity: 1 },
+        });
+      }
+
+      for (const item of sale.items) {
+        const consignment = item.consignment;
+        if (!consignment) continue;
+        await tx.consignmentInventory.update({
+          where: { id: consignment.id },
+          data: {
+            quantity: consignment.quantity + 1,
+            soldQuantity: Math.max(0, consignment.soldQuantity - 1),
+            linkedSaleIds: consignment.linkedSaleIds.filter((id) => id !== sale.id),
+          },
+        });
+      }
+
+      if (sale.orderNumber) {
+        await tx.debt.deleteMany({
+          where: { kind: "VERKAUF", refId: sale.orderNumber },
+        });
+      }
+
+      await tx.sale.delete({ where: { id: sale.id } });
+      return sale;
+    });
+
+    await writeAuditLog({
+      organizationId: organization.id,
+      userId,
+      action: "sale.delete",
+      entityType: "Sale",
+      entityId: saleId,
+      before: {
+        orderNumber: deleted.orderNumber,
+        salePriceCents: deleted.salePriceCents,
+        items: deleted.items.length,
+      },
+    });
+
+    revalidatePath("/verkauf");
+    revalidatePath("/lager");
+    revalidatePath("/konsignation");
+    revalidatePath("/schulden");
+    revalidatePath("/dashboard");
+    return { success: `Verkauf ${deleted.orderNumber ?? ""} geloescht.` };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Verkauf konnte nicht geloescht werden.",
+    };
+  }
+}
+
 /** Gesamtstatus ändern (in Bearbeitung / Abgeschlossen). */
 export async function updateSaleStatusAction(
   saleId: string,
