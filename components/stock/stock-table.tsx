@@ -33,6 +33,7 @@ import {
   StockItemDialog,
   type EditableStockItem,
 } from "@/components/stock/stock-item-dialog";
+import { DeleteStockItemButton } from "@/components/stock/delete-stock-item-button";
 import type { PickerProduct } from "@/components/products/product-picker";
 
 export interface StockRow {
@@ -112,7 +113,7 @@ export function StockTable({
       )}
 
       <Card>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="sx-table-shell p-0">
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
@@ -145,7 +146,7 @@ export function StockTable({
                     {p.name}
                   </TableHead>
                 ))}
-                <TableHead className="w-20" />
+                <TableHead className="w-36" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -274,17 +275,20 @@ export function StockTable({
                     </TableCell>
                   ))}
                   <TableCell>
-                    <StockItemDialog
-                      item={toEditable(row)}
-                      platforms={platforms}
-                      zmOptions={zmOptions}
-                      products={products}
-                      trigger={
-                        <Button variant="ghost" size="sm">
-                          Bearbeiten
-                        </Button>
-                      }
-                    />
+                    <div className="flex items-center gap-1">
+                      <StockItemDialog
+                        item={toEditable(row)}
+                        platforms={platforms}
+                        zmOptions={zmOptions}
+                        products={products}
+                        trigger={
+                          <Button variant="ghost" size="sm">
+                            Bearbeiten
+                          </Button>
+                        }
+                      />
+                      <DeleteStockItemButton stockItemId={row.id} sku={row.sku} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

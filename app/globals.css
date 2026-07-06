@@ -262,6 +262,17 @@
 .sx-datatable {
   border-collapse: separate;
   border-spacing: 0;
+  min-width: max-content;
+}
+.sx-table-shell {
+  max-height: min(68vh, calc(100vh - 16rem));
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+.sx-table-shell [data-slot="table-container"] {
+  overflow: visible;
+  width: max-content;
+  min-width: 100%;
 }
 /* Sticky Header */
 .sx-datatable thead th {
