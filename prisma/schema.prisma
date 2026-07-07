@@ -243,13 +243,14 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  accounts        Account[]
-  sessions        Session[]
-  memberships     Membership[]
-  sentInvitations Invitation[]
-  assignedTasks   Task[]       @relation("TaskAssignee")
-  createdTasks    Task[]       @relation("TaskCreator")
-  auditLogs       AuditLog[]
+  accounts         Account[]
+  sessions         Session[]
+  memberships      Membership[]
+  sentInvitations  Invitation[]
+  assignedTasks    Task[]       @relation("TaskAssignee")
+  createdTasks     Task[]       @relation("TaskCreator")
+  createdPurchases Purchase[]   @relation("PurchaseCreatedBy")
+  auditLogs        AuditLog[]
 
   @@map("users")
 }
@@ -812,11 +813,13 @@ model Purchase {
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User           @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   lines        PurchaseLine[]
 
   @@unique([organizationId, purchaseNumber])
   @@index([organizationId])
   @@index([organizationId, purchaseDate])
+  @@index([createdById])
   @@map("purchases")
 }
 

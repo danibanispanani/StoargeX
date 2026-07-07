@@ -11,19 +11,10 @@
 > `L/K/E/V/R/SCH-{JJ}-{NNNN}`. **Bestehende Modelle und APIs bleiben
 > unverändert produktiv** – keine Umschaltung in dieser Phase.
 
-> **Status:** Nur Analyse. Es wurden **keine** fachlichen Änderungen an
-> Prisma-Schema, Migrationen, Server Actions, Business-Services, UI oder Tests
-> vorgenommen. Baseline-Checks am Ausgangspunkt:
->
-> - `npm run lint` → grün
-> - `npx tsc --noEmit` → grün
-> - `npm test` → 44/44 grün
-> - `npm run build` → grün (Next.js 15.5, Turbopack, alle Routen)
->
-> Letzter Commit auf `main`: `cb49e4a Prepare Vercel Supabase deployment`.
-> Bekannte, nicht committete Feinschliffe (Sticky-Header, farbcodierte Selects,
-> Bulk-Delete-Buttons) sind **kein Teil dieser Analyse** und bleiben
-> unangetastet.
+> **Recovery-Ergänzung:** Die additive Folgemigration
+> `20260707120000_inventory_phase1_purchase_created_by_fk` schließt die
+> fehlende Relation `Purchase.createdBy -> User`. Phase 1 bleibt bewusst ein
+> Datenfundament: keine Umschaltung von Lager, Verkauf, Retouren, Import oder UI.
 
 ---
 
@@ -248,7 +239,7 @@ Erst nach Phase 6 (End-to-End grün) fallen Legacy-Reste.
 | Phase | Inhalt | Migration-Typ |
 |---|---|---|
 | **0** | Dieses Dokument. Baseline-Checks. Kein Code-Change. | – |
-| **1** | Neue Tabellen additiv: `Purchase`, `PurchaseLine`, `OwnedStockLot`, `ConsignmentLot`, `InventoryPosition`, `InventoryMovement`, `SaleLine`, `SaleLineAllocation`, `ReturnLine`, `ReturnAllocation`, `DocumentSequence`, `ImportBatch`, `ImportRow`, `SourceReference`. RLS-Policies je Tabelle. **Keine** Änderung an alten Tabellen. | `CREATE TABLE`, RLS |
+| **1** | Neue Tabellen additiv: `Purchase`, `PurchaseLine`, `OwnedStockLot`, `ConsignmentLot`, `InventoryPosition`, `DocumentSequence`. `Product.size` additiv. RLS-Policies je neuer Tenant-Tabelle. **Keine** Änderung an produktiver Legacy-Logik. | `CREATE TABLE`, RLS |
 | **2** | Backfill-Script (idempotent): jede `StockItem`-Row → `Purchase` + `PurchaseLine` + `OwnedStockLot` + `InventoryPosition`. Jedes `SaleItem` → `SaleLine` + `SaleLineAllocation` + `InventoryMovement(OUT)`. Jede `Return` mit `restocked=true` → `InventoryMovement(RETURN)`. Jede `ConsignmentInventory` → `ConsignmentLot` + `InventoryPosition`. `DocumentSequence`-Startwerte aus `Organization.*Counter`. | Script + Read-only-Test |
 | **3** | Neue Server Actions (`purchases.ts`, `inventory.ts`, neue `sales.ts` v2, neue `returns.ts` v2) schreiben in beide Modelle (dual write) und lesen nur noch aus dem neuen. Alt-Actions bleiben unverändert erreichbar. Feature-Flag `USE_NEW_INVENTORY=false` default. | Code, kein Migration |
 | **4** | UI (`/lager`, `/verkauf`, `/retouren`, `/konsignation`, Dashboard) auf neue Lese-Endpoints umstellen; Schreib-Aktionen weiterhin dual. Import wird auf `ImportBatch` umgestellt (Rückgängig-Machen möglich). | Code |
@@ -393,7 +384,8 @@ Dashboard-Berechnungen `app/(app)/dashboard/page.tsx` + `lib/reporting.ts` +
 
 ## 12. Bestätigung
 
-**Es wurde keine Geschäftslogik verändert.** Diese Analyse enthält
-ausschließlich Beobachtungen und einen Umbauplan. Es wurden **keine**
-destruktiven Prisma-Änderungen und **keine** Daten-Migrationen ausgeführt.
-Nur diese Datei (`docs/inventory-refactor-plan.md`) wird committet.
+**Phase 1 ist ein additives Datenfundament.** Es wurden keine Legacy-Tabellen
+oder produktiven Felder entfernt, keine Bestandsmengen migriert und keine
+bestehende Lager-/Verkaufs-/Retourenlogik umgeschaltet. Die neuen Tabellen,
+Enums, Constraints, RLS-Policies, der zentrale DocumentNumberService und die
+zugehörigen Tests bilden die Grundlage für Phase 2.
