@@ -24,6 +24,14 @@
 > `docs/inventory-domain.md` dokumentiert. Legacy-UI und Legacy-Actions werden
 > in dieser Phase noch nicht umgestellt.
 
+> **Phase 3 abgeschlossen** (Migration `20260707140000_owned_purchase_batches_phase3`):
+> Eigener Wareneingang schreibt neue Daten ab jetzt als
+> `Purchase -> PurchaseLine -> InventoryPosition -> OwnedStockLot` mit einer
+> `PURCHASE_RECEIPT`-Bewegung pro fachlicher Einkaufsposition. Menge > 1 erzeugt
+> eine Charge statt N Legacy-StockItems. Die Lagerseite zeigt neue Chargen und
+> Legacy-Zeilen gemeinsam; Verkauf, Retouren, Konsignation, Schulden und Import
+> bleiben für spätere Phasen unverändert.
+
 ---
 
 ## 1. Ist-Architektur (Kurzform)
@@ -358,8 +366,12 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       [lib/services/inventory-service.ts](../lib/services/inventory-service.ts).
 - [ ] **Phase 2b** – Backfill-Skript als eigene Migration + Read-only-Verifier
       (`scripts/verify-backfill.ts`), der KPI/Bestand vor/nach vergleicht.
-- [ ] **Phase 3** – Neue Actions `purchases.ts`, `inventory.ts`, `sales.v2.ts`,
-      `returns.v2.ts`, `consignment.v2.ts`; dual write hinter Flag.
+- [x] **Phase 3** – Eigenes Lager und Wareneingang auf Mengen-/Chargenmodell
+      umgestellt. **Abgeschlossen** in Migration
+      `20260707140000_owned_purchase_batches_phase3` und
+      [lib/services/owned-purchase-service.ts](../lib/services/owned-purchase-service.ts).
+- [ ] **Phase 3b** – Verkauf, Retouren, Konsignation, Schulden und Import auf
+      neue Inventory-Domain umstellen.
 - [ ] **Phase 4** – UI-Umbau je Modul; jede Seite mit Vitest-Snapshot-Tests
       der Zahlen abgesichert.
 - [ ] **Phase 5** – Feature-Flag on; Playwright-Smoke; Load-Test der neuen

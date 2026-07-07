@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { EntryStatus, StockItemStatus } from "@prisma/client";
 import {
   bulkUpdateStockAction,
+  adjustOwnedInventoryQuantityAction,
   toggleListingAction,
+  toggleInventoryPositionListingAction,
+  updateOwnedLotEntryStatusAction,
   updateEntryStatusAction,
   updateStockItemStatusAction,
 } from "@/lib/actions/stock";
@@ -34,9 +37,12 @@ import {
   type EditableStockItem,
 } from "@/components/stock/stock-item-dialog";
 import type { PickerProduct } from "@/components/products/product-picker";
+import type { ActionState } from "@/lib/actions/team";
 
 export interface StockRow {
+  source: "owned" | "legacy";
   id: string;
+  lotId?: string;
   sku: string;
   date: string; // dd.mm.yyyy
   dateIso: string; // yyyy-mm-dd (fürs Edit-Formular)
@@ -51,11 +57,14 @@ export interface StockRow {
   kaufStatus: EntryStatus;
   retoureStatus: EntryStatus;
   status: StockItemStatus;
+  derivedStatus?: string;
   ean: string;
   imageUrl: string | null;
   listings: string[]; // platformIds
   notes: string;
   low: boolean; // niedriger Bestand (Zeilen-Markierung)
+  availableQuantity: number;
+  originalQuantity: number;
 }
 
 export function StockTable({
@@ -71,11 +80,12 @@ export function StockTable({
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const legacyRows = rows.filter((row) => row.source === "legacy");
 
-  const allSelected = rows.length > 0 && selected.size === rows.length;
+  const allSelected = legacyRows.length > 0 && selected.size === legacyRows.length;
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+    setSelected(allSelected ? new Set() : new Set(legacyRows.map((r) => r.id)));
   }
 
   function toggleOne(id: string) {
@@ -125,34 +135,26 @@ export function StockTable({
                     className="size-4"
                   />
                 </TableHead>
-                <TableHead className="sx-sticky-1">LagerID</TableHead>
+                <TableHead className="sx-sticky-1">Lager-Nr.</TableHead>
                 <TableHead>Datum</TableHead>
-                <TableHead>Händler</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Colorway/Version</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead className="text-right">Brutto</TableHead>
-                <TableHead className="text-center">VST</TableHead>
-                <TableHead className="text-right">Netto</TableHead>
+                <TableHead>Artikel</TableHead>
+                <TableHead className="text-right">Menge</TableHead>
+                <TableHead className="text-right">EK netto</TableHead>
                 <TableHead>ZM</TableHead>
                 <TableHead>Kauf</TableHead>
                 <TableHead>Retoure</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Bestandsstatus</TableHead>
+                <TableHead>Listings</TableHead>
                 <TableHead>EAN</TableHead>
                 <TableHead>Bilder</TableHead>
-                {platforms.map((p) => (
-                  <TableHead key={p.id} className="text-center">
-                    {p.name}
-                  </TableHead>
-                ))}
-                <TableHead className="w-20" />
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={17 + platforms.length}
+                    colSpan={13}
                     className="py-8 text-center text-muted-foreground"
                   >
                     Keine Artikel gefunden. Über „Wareneingang erfassen&ldquo;
@@ -168,25 +170,29 @@ export function StockTable({
                   data-low={row.low}
                 >
                   <TableCell className="sx-sticky-0">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(row.id)}
-                      onChange={() => toggleOne(row.id)}
-                      aria-label={`${row.sku} auswählen`}
-                      className="size-4"
-                    />
+                    {row.source === "legacy" ? (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(row.id)}
+                        onChange={() => toggleOne(row.id)}
+                        aria-label={row.sku + " auswählen"}
+                        className="size-4"
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Neu</span>
+                    )}
                   </TableCell>
                   <TableCell className="sx-sticky-1 font-mono text-xs">{row.sku}</TableCell>
                   <TableCell className="whitespace-nowrap">{row.date}</TableCell>
-                  <TableCell>{row.supplier || "–"}</TableCell>
-                  <TableCell className="max-w-44 truncate font-medium">{row.title}</TableCell>
-                  <TableCell className="max-w-36 truncate">{row.variant || "–"}</TableCell>
-                  <TableCell>{row.size || "–"}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEuro(row.grossCents)}
+                  <TableCell className="min-w-56">
+                    <div className="font-medium">{row.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[row.variant, row.size].filter(Boolean).join(" · ") || "–"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{row.supplier || "–"}</div>
                   </TableCell>
-                  <TableCell className="text-center">
-                    {row.inputTaxDeductible ? "✓" : "–"}
+                  <TableCell className="text-right font-mono">
+                    {row.availableQuantity} / {row.originalQuantity}
                   </TableCell>
                   <TableCell className="text-right font-mono">
                     {row.netCents !== null ? formatEuro(row.netCents) : "–"}
@@ -201,7 +207,13 @@ export function StockTable({
                       disabled={pending}
                       onChange={(value) =>
                         run(() =>
-                          updateEntryStatusAction(row.id, "kaufStatus", value as EntryStatus)
+                          row.source === "owned" && row.lotId
+                            ? updateOwnedLotEntryStatusAction(
+                                row.lotId,
+                                "purchaseEntryStatus",
+                                value as EntryStatus
+                              )
+                            : updateEntryStatusAction(row.id, "kaufStatus", value as EntryStatus)
                         )
                       }
                     />
@@ -215,34 +227,60 @@ export function StockTable({
                       disabled={pending}
                       onChange={(value) =>
                         run(() =>
-                          updateEntryStatusAction(row.id, "retoureStatus", value as EntryStatus)
+                          row.source === "owned" && row.lotId
+                            ? updateOwnedLotEntryStatusAction(
+                                row.lotId,
+                                "returnEntryStatus",
+                                value as EntryStatus
+                              )
+                            : updateEntryStatusAction(row.id, "retoureStatus", value as EntryStatus)
                         )
                       }
                     />
                   </TableCell>
                   <TableCell>
-                    <select
-                      value={row.status}
-                      disabled={pending}
-                      onChange={(e) =>
-                        run(() =>
-                          updateStockItemStatusAction(
-                            row.id,
-                            e.target.value as StockItemStatus
+                    {row.source === "owned" ? (
+                      <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">
+                        {row.derivedStatus}
+                      </span>
+                    ) : (
+                      <select
+                        value={row.status}
+                        disabled={pending}
+                        onChange={(e) =>
+                          run(() =>
+                            updateStockItemStatusAction(
+                              row.id,
+                              e.target.value as StockItemStatus
+                            )
                           )
+                        }
+                        className={cn(
+                          "h-7 rounded-md border-0 px-2 text-xs font-medium",
+                          STOCK_STATUS[row.status].className
+                        )}
+                      >
+                        {STOCK_STATUS_OPTIONS.map((value) => (
+                          <option key={value} value={value}>
+                            {STOCK_STATUS[value].label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <ListingDetails
+                      row={row}
+                      platforms={platforms}
+                      disabled={pending}
+                      onToggle={(platformId, listed) =>
+                        run(() =>
+                          row.source === "owned"
+                            ? toggleInventoryPositionListingAction(row.id, platformId, listed)
+                            : toggleListingAction(row.id, platformId, listed)
                         )
                       }
-                      className={cn(
-                        "h-7 rounded-md border-0 px-2 text-xs font-medium",
-                        STOCK_STATUS[row.status].className
-                      )}
-                    >
-                      {STOCK_STATUS_OPTIONS.map((value) => (
-                        <option key={value} value={value}>
-                          {STOCK_STATUS[value].label}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </TableCell>
                   <TableCell className="font-mono text-xs">{row.ean || "–"}</TableCell>
                   <TableCell>
@@ -257,34 +295,22 @@ export function StockTable({
                       "–"
                     )}
                   </TableCell>
-                  {platforms.map((platform) => (
-                    <TableCell key={platform.id} className="text-center">
-                      <input
-                        type="checkbox"
-                        checked={row.listings.includes(platform.id)}
-                        disabled={pending}
-                        title={`${platform.name}: gelistet?`}
-                        onChange={(e) =>
-                          run(() =>
-                            toggleListingAction(row.id, platform.id, e.target.checked)
-                          )
-                        }
-                        className="size-4"
-                      />
-                    </TableCell>
-                  ))}
                   <TableCell>
-                    <StockItemDialog
-                      item={toEditable(row)}
-                      platforms={platforms}
-                      zmOptions={zmOptions}
-                      products={products}
-                      trigger={
-                        <Button variant="ghost" size="sm">
-                          Bearbeiten
-                        </Button>
-                      }
-                    />
+                    {row.source === "owned" ? (
+                      <QuantityAdjustmentDialog row={row} />
+                    ) : (
+                      <StockItemDialog
+                        item={toEditable(row)}
+                        platforms={platforms}
+                        zmOptions={zmOptions}
+                        products={products}
+                        trigger={
+                          <Button variant="ghost" size="sm">
+                            Bearbeiten
+                          </Button>
+                        }
+                      />
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -293,6 +319,119 @@ export function StockTable({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ListingDetails({
+  row,
+  platforms,
+  disabled,
+  onToggle,
+}: {
+  row: StockRow;
+  platforms: Array<{ id: string; name: string }>;
+  disabled: boolean;
+  onToggle: (platformId: string, listed: boolean) => void;
+}) {
+  const listed = platforms.filter((platform) => row.listings.includes(platform.id));
+  const visible = listed.slice(0, 2);
+  const extra = Math.max(0, listed.length - visible.length);
+
+  return (
+    <details className="relative">
+      <summary className="flex cursor-pointer list-none flex-wrap gap-1">
+        {visible.length === 0 ? (
+          <span className="text-xs text-muted-foreground">Keine</span>
+        ) : (
+          visible.map((platform) => (
+            <span key={platform.id} className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              {platform.name}
+            </span>
+          ))
+        )}
+        {extra > 0 && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-xs">+{extra}</span>
+        )}
+      </summary>
+      <div className="absolute z-20 mt-2 min-w-48 rounded-md border bg-popover p-2 text-popover-foreground shadow">
+        {platforms.map((platform) => (
+          <label key={platform.id} className="flex items-center gap-2 py-1 text-xs">
+            <input
+              type="checkbox"
+              checked={row.listings.includes(platform.id)}
+              disabled={disabled}
+              onChange={(event) => onToggle(platform.id, event.target.checked)}
+              className="size-4"
+            />
+            {platform.name}
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function QuantityAdjustmentDialog({ row }: { row: StockRow }) {
+  const action = adjustOwnedInventoryQuantityAction.bind(null, row.id);
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    action,
+    null
+  );
+
+  useEffect(() => {
+    if (state?.success) toast.success(state.success);
+    if (state?.error) toast.error(state.error);
+  }, [state]);
+
+  return (
+    <details className="relative">
+      <summary className="cursor-pointer list-none">
+        <Button variant="ghost" size="sm" type="button">
+          Korrektur
+        </Button>
+      </summary>
+      <form
+        action={formAction}
+        className="absolute right-0 z-20 mt-2 w-72 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow"
+      >
+        <div className="text-sm font-medium">Bestand korrigieren</div>
+        <select
+          name="direction"
+          defaultValue="IN"
+          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
+        >
+          <option value="IN">Differenz +</option>
+          <option value="OUT">Differenz -</option>
+        </select>
+        <select
+          name="bucket"
+          defaultValue="AVAILABLE"
+          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
+        >
+          <option value="AVAILABLE">Verfügbar</option>
+          <option value="INSPECTION">In Prüfung</option>
+          <option value="DEFECTIVE">Defekt</option>
+          <option value="RESERVED">Reserviert</option>
+        </select>
+        <input
+          name="quantity"
+          type="number"
+          min={1}
+          max={500}
+          defaultValue={1}
+          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
+        />
+        <input
+          name="comment"
+          required
+          placeholder="Grund / Kommentar"
+          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
+        />
+        <Button type="submit" size="sm" disabled={pending} className="w-full">
+          Buchen
+        </Button>
+      </form>
+    </details>
   );
 }
 

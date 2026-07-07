@@ -219,32 +219,33 @@ model Organization {
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  memberships        Membership[]
-  invitations        Invitation[]
-  platforms          Platform[]
-  carriers           Carrier[]
-  taxRates           TaxRate[]
-  stockItems         StockItem[]
-  sales              Sale[]
-  returns            Return[]
-  consignments       ConsignmentInventory[]
-  debts              Debt[]
-  tasks              Task[]
-  credentials        Credential[]
-  auditLogs          AuditLog[]
-  listings           StockItemListing[]
-  shippingRates      ShippingRate[]
-  saleItems          SaleItem[]
-  selectOptions      SelectOption[]
-  products           Product[]
+  memberships               Membership[]
+  invitations               Invitation[]
+  platforms                 Platform[]
+  carriers                  Carrier[]
+  taxRates                  TaxRate[]
+  stockItems                StockItem[]
+  sales                     Sale[]
+  returns                   Return[]
+  consignments              ConsignmentInventory[]
+  debts                     Debt[]
+  tasks                     Task[]
+  credentials               Credential[]
+  auditLogs                 AuditLog[]
+  listings                  StockItemListing[]
+  shippingRates             ShippingRate[]
+  saleItems                 SaleItem[]
+  selectOptions             SelectOption[]
+  products                  Product[]
   // Phase 1 – additives Datenmodell
-  documentSequences  DocumentSequence[]
-  purchases          Purchase[]
-  purchaseLines      PurchaseLine[]
-  inventoryPositions InventoryPosition[]
-  ownedStockLots     OwnedStockLot[]
-  consignmentLots    ConsignmentLot[]
-  inventoryMovements InventoryMovement[]
+  documentSequences         DocumentSequence[]
+  purchases                 Purchase[]
+  purchaseLines             PurchaseLine[]
+  inventoryPositions        InventoryPosition[]
+  ownedStockLots            OwnedStockLot[]
+  consignmentLots           ConsignmentLot[]
+  inventoryMovements        InventoryMovement[]
+  inventoryPositionListings InventoryPositionListing[]
 
   @@map("organizations")
 }
@@ -329,10 +330,11 @@ model Platform {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sales        Sale[]
-  credentials  Credential[]
-  listings     StockItemListing[]
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sales             Sale[]
+  credentials       Credential[]
+  listings          StockItemListing[]
+  inventoryListings InventoryPositionListing[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -895,11 +897,12 @@ model InventoryPosition {
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product        Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
   ownedLot       OwnedStockLot?
   consignmentLot ConsignmentLot?
   movements      InventoryMovement[]
+  listings       InventoryPositionListing[]
 
   @@unique([organizationId, inventoryNumber])
   @@index([organizationId])
@@ -927,6 +930,7 @@ model OwnedStockLot {
   purchaseEntryStatus EntryStatus @default(O) @map("purchase_entry_status")
   returnEntryStatus   EntryStatus @default(NN) @map("return_entry_status")
   ean                 String?
+  imageUrls           String[]    @default([]) @map("image_urls")
   legacySource        String?     @map("legacy_source") // z.B. "stock_items:<id>" (Backfill)
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")
@@ -937,6 +941,22 @@ model OwnedStockLot {
 
   @@index([organizationId])
   @@map("owned_stock_lots")
+}
+
+model InventoryPositionListing {
+  id                  String @id @default(cuid())
+  organizationId      String @map("organization_id")
+  inventoryPositionId String @map("inventory_position_id")
+  platformId          String @map("platform_id")
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+  platform          Platform          @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@unique([inventoryPositionId, platformId])
+  @@index([organizationId])
+  @@index([platformId])
+  @@map("inventory_position_listings")
 }
 
 // ---------------------------------------------------------------------------

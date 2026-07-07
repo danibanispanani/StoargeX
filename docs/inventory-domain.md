@@ -75,3 +75,19 @@ Scheitert ein Schritt nach der Mengenänderung, rollt die Transaktion die Mengen
 ## Timeline
 
 `getInventoryTimeline({ organizationId, inventoryPositionId })` liefert die chronologische Movement-Historie einer Position. Die Funktion prüft zuerst, dass die Position zur Organisation gehört, und liest dann die Bewegungen sortiert nach `createdAt` und `id`.
+
+## Eigener Wareneingang ab Phase 3
+
+Neue eigene Lagerzugänge werden nicht mehr als einzelne `StockItem`-Zeilen geschrieben. Der neue Pfad ist:
+
+`Product -> Purchase -> PurchaseLine -> InventoryPosition(OWNED) -> OwnedStockLot -> InventoryMovement(PURCHASE_RECEIPT)`
+
+Für 10 gleiche Artikel entsteht genau eine fachliche Einkaufsposition und eine Charge:
+
+- ein `Purchase` mit `purchaseNumber` im Format `E-YY-NNNN`,
+- eine `PurchaseLine` mit `quantity=10`,
+- eine `InventoryPosition` mit `inventoryNumber` im Format `L-YY-NNNN`,
+- ein `OwnedStockLot` mit Einkaufsdaten, VST, Status und Bildern,
+- eine `PURCHASE_RECEIPT`-Bewegung mit `quantity=10`.
+
+Unterschiedliche Einkaufspreise, andere Händler oder mehrere fachliche Positionen bleiben getrennte `PurchaseLine`-/Lot-Kombinationen. Alte `StockItem`-Daten bleiben für Übergang, Export und spätere Migration erhalten, werden bei neuen Wareneingängen aber nicht mehr parallel erzeugt.

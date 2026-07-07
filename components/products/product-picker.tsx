@@ -8,6 +8,7 @@ export interface PickerProduct {
   id: string;
   name: string;
   variant: string | null;
+  size?: string | null;
   ean: string | null;
   category: string | null;
   defaultPriceCents: number | null;

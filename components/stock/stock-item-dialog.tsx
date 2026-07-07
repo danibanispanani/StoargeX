@@ -65,8 +65,10 @@ export function StockItemDialog({
   // Prefill-Felder (Produktkatalog) – überschreibbar
   const [title, setTitle] = useState(item?.title ?? "");
   const [variant, setVariant] = useState(item?.variant ?? "");
+  const [size, setSize] = useState(item?.size ?? "");
   const [ean, setEan] = useState(item?.ean ?? "");
   const [price, setPrice] = useState(item?.priceGross ?? "");
+  const [productId, setProductId] = useState("");
 
   const action = item
     ? updateStockItemAction.bind(null, item.id)
@@ -83,16 +85,20 @@ export function StockItemDialog({
       if (!item) {
         setTitle("");
         setVariant("");
+        setSize("");
         setEan("");
         setPrice("");
+        setProductId("");
         setDeductible(false);
       }
     }
   }, [state, item]);
 
   function applyProduct(product: PickerProduct) {
+    setProductId(product.id);
     setTitle(product.name);
     setVariant(product.variant ?? "");
+    setSize(product.size ?? "");
     setEan(product.ean ?? "");
     if (product.defaultPriceCents != null) {
       setPrice((product.defaultPriceCents / 100).toFixed(2).replace(".", ","));
@@ -114,7 +120,7 @@ export function StockItemDialog({
           <SheetDescription>
             {item
               ? "Alle Felder sind nachträglich änderbar."
-              : "Netto wird bei Vorsteuerabzug automatisch berechnet. Menge > 1 erzeugt separate Einträge mit fortlaufenden LagerIDs."}
+              : "Netto wird bei Vorsteuerabzug automatisch berechnet. Menge > 1 erzeugt eine Charge mit gemeinsamer Lagernummer."}
           </SheetDescription>
         </SheetHeader>
         <form action={formAction} className="space-y-4">
@@ -125,7 +131,10 @@ export function StockItemDialog({
           )}
 
           {!item && products.length > 0 && (
-            <ProductPicker products={products} onSelect={applyProduct} />
+            <>
+              <input type="hidden" name="productId" value={productId} />
+              <ProductPicker products={products} onSelect={applyProduct} />
+            </>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -174,7 +183,8 @@ export function StockItemDialog({
               <Input
                 id="si-size"
                 name="size"
-                defaultValue={item?.size}
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
                 placeholder="z.B. XL, 42, One Size"
               />
             </div>
