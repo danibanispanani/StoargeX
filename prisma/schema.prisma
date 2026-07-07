@@ -169,6 +169,27 @@ enum PurchaseStatus {
   CANCELLED // Einkauf storniert
 }
 
+enum InventoryBucket {
+  AVAILABLE
+  RESERVED
+  INSPECTION
+  DEFECTIVE
+}
+
+enum InventoryMovementType {
+  PURCHASE_RECEIPT
+  CONSIGNMENT_RECEIPT
+  SALE_OUT
+  RESERVE
+  RELEASE_RESERVATION
+  RETURN_RECEIPT
+  RETURN_RESTOCK
+  RETURN_DEFECTIVE
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  REVERSAL
+}
+
 // ---------------------------------------------------------------------------
 // Mandanten & Benutzer
 // ---------------------------------------------------------------------------
@@ -223,6 +244,7 @@ model Organization {
   inventoryPositions InventoryPosition[]
   ownedStockLots     OwnedStockLot[]
   consignmentLots    ConsignmentLot[]
+  inventoryMovements InventoryMovement[]
 
   @@map("organizations")
 }
@@ -243,14 +265,15 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  accounts         Account[]
-  sessions         Session[]
-  memberships      Membership[]
-  sentInvitations  Invitation[]
-  assignedTasks    Task[]       @relation("TaskAssignee")
-  createdTasks     Task[]       @relation("TaskCreator")
-  createdPurchases Purchase[]   @relation("PurchaseCreatedBy")
-  auditLogs        AuditLog[]
+  accounts           Account[]
+  sessions           Session[]
+  memberships        Membership[]
+  sentInvitations    Invitation[]
+  assignedTasks      Task[]              @relation("TaskAssignee")
+  createdTasks       Task[]              @relation("TaskCreator")
+  createdPurchases   Purchase[]          @relation("PurchaseCreatedBy")
+  inventoryMovements InventoryMovement[] @relation("InventoryMovementCreatedBy")
+  auditLogs          AuditLog[]
 
   @@map("users")
 }
@@ -872,10 +895,11 @@ model InventoryPosition {
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
   ownedLot       OwnedStockLot?
   consignmentLot ConsignmentLot?
+  movements      InventoryMovement[]
 
   @@unique([organizationId, inventoryNumber])
   @@index([organizationId])
@@ -944,4 +968,32 @@ model ConsignmentLot {
   @@index([organizationId])
   @@index([organizationId, partnerCompany])
   @@map("consignment_lots")
+}
+
+model InventoryMovement {
+  id                  String                @id @default(cuid())
+  organizationId      String                @map("organization_id")
+  inventoryPositionId String                @map("inventory_position_id")
+  movementType        InventoryMovementType @map("movement_type")
+  quantity            Int
+  fromBucket          InventoryBucket?      @map("from_bucket")
+  toBucket            InventoryBucket?      @map("to_bucket")
+  referenceType       String?               @map("reference_type")
+  referenceId         String?               @map("reference_id")
+  referenceAction     String?               @map("reference_action")
+  idempotencyKey      String?               @map("idempotency_key")
+  comment             String?
+  createdById         String?               @map("created_by_id")
+  createdAt           DateTime              @default(now()) @map("created_at")
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+  createdBy         User?             @relation("InventoryMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@index([organizationId, inventoryPositionId, createdAt])
+  @@index([organizationId, referenceType, referenceId])
+  @@index([createdById])
+  @@map("inventory_movements")
 }

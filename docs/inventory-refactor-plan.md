@@ -16,6 +16,14 @@
 > fehlende Relation `Purchase.createdBy -> User`. Phase 1 bleibt bewusst ein
 > Datenfundament: keine Umschaltung von Lager, Verkauf, Retouren, Import oder UI.
 
+> **Phase 2 abgeschlossen** (Migration `20260707130000_inventory_movements_phase2`):
+> `InventoryMovement`, `InventoryBucket` und `InventoryMovementType` ergänzen
+> eine vollständige Bewegungs-Historie. Der zentrale Service
+> `lib/services/inventory-service.ts` kapselt Bestandsänderungen transaktional,
+> idempotent und mandantensicher. Die Mengen-Semantik ist in
+> `docs/inventory-domain.md` dokumentiert. Legacy-UI und Legacy-Actions werden
+> in dieser Phase noch nicht umgestellt.
+
 ---
 
 ## 1. Ist-Architektur (Kurzform)
@@ -344,7 +352,11 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       DocumentNumberService inkl. Tests. **Abgeschlossen** in Migration
       `20260706180000_inventory_datamodel_phase1` und
       [lib/services/document-number-service.ts](../lib/services/document-number-service.ts).
-- [ ] **Phase 2** – Backfill-Skript als eigene Migration + Read-only-Verifier
+- [x] **Phase 2** – `InventoryMovement` + zentraler `InventoryService` +
+      Mengen-Semantik und Unit-Tests. **Abgeschlossen** in Migration
+      `20260707130000_inventory_movements_phase2` und
+      [lib/services/inventory-service.ts](../lib/services/inventory-service.ts).
+- [ ] **Phase 2b** – Backfill-Skript als eigene Migration + Read-only-Verifier
       (`scripts/verify-backfill.ts`), der KPI/Bestand vor/nach vergleicht.
 - [ ] **Phase 3** – Neue Actions `purchases.ts`, `inventory.ts`, `sales.v2.ts`,
       `returns.v2.ts`, `consignment.v2.ts`; dual write hinter Flag.
