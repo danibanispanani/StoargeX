@@ -149,17 +149,19 @@ export async function runMigrationImport(input: {
       },
     });
   } catch (error) {
-    await input.tx.importBatch.update({
-      where: { id: batch.id },
-      data: {
-        status: "FAILED",
-        finishedAt: new Date(),
-        summary: {
-          ...summary,
-          failure: error instanceof Error ? error.message : "Import fehlgeschlagen.",
-        } as unknown as Prisma.InputJsonValue,
-      },
-    });
+    try {
+      await input.tx.importBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: "FAILED",
+          finishedAt: new Date(),
+          summary: {
+            ...summary,
+            failure: error instanceof Error ? error.message : "Import fehlgeschlagen.",
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+    } catch {}
     throw error;
   }
 

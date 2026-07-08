@@ -88,7 +88,7 @@ export async function importRowsAction(
         dryRun,
         metadata,
       });
-    }, { timeout: 180000 });
+    }, { maxWait: 30000, timeout: 600000 });
 
     if (!dryRun && (result.importedCount ?? 0) > 0) {
       await writeAuditLog({
