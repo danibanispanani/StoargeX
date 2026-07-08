@@ -58,6 +58,13 @@
 > Schuldenseite zeigt den Bezug als Link auf Einkauf oder Verkauf; `refId`
 > bleibt nur als Legacy-Hinweis erhalten.
 
+> **Phase 8 abgeschlossen** (Migration `20260708140000_import_pipeline_phase8`):
+> Der bestehende CSV-/XLSX-Import nutzt jetzt `ImportBatch` und
+> `SourceReference`, erzeugt neue SaaS-Nummern, führt Dry Runs mit
+> Review-Zusammenfassung aus, gruppiert Lagerzeilen kontrolliert, markiert
+> historische Verkaufsbezüge als `LINKED`, `PARTIALLY_LINKED` oder `UNRESOLVED`
+> und schützt über Row-Hashes vor stillen Doppelimporten.
+
 ---
 
 ## 1. Ist-Architektur (Kurzform)
@@ -396,7 +403,10 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       umgestellt. **Abgeschlossen** in Migration
       `20260707140000_owned_purchase_batches_phase3` und
       [lib/services/owned-purchase-service.ts](../lib/services/owned-purchase-service.ts).
-- [ ] **Phase 3b** – Import auf neue Inventory-Domain umstellen.
+- [x] **Phase 3b** – Import auf neue Inventory-Domain umstellen.
+      **Abgeschlossen** in Migration
+      `20260708140000_import_pipeline_phase8` und
+      [lib/services/import-migration-service.ts](../lib/services/import-migration-service.ts).
 - [x] **Phase 4** – Konsignationsbestand auf getrennte UI mit gemeinsamer
       `InventoryPosition(CONSIGNMENT)`-Struktur umgestellt. **Abgeschlossen**
       in Migration `20260708100000_consignment_inventory_positions_phase4` und

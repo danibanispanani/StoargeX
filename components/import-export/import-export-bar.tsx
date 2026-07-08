@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { importRowsAction, type ImportResult } from "@/lib/actions/import";
 import {
   autoMapColumns,
+  detectHeaderRowIndex,
   IMPORT_TABLES,
   type TableKey,
 } from "@/lib/import-export";
@@ -22,7 +22,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-/** Toolbar: Export (CSV/XLSX mit aktuellen Filtern) + Import mit Mapping. */
 export function ImportExportBar({ table }: { table: TableKey }) {
   const searchParams = useSearchParams();
   const query = searchParams.toString();
@@ -53,6 +52,8 @@ function ImportDialog({ table }: { table: TableKey }) {
   const def = IMPORT_TABLES[table];
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [fileHash, setFileHash] = useState("");
+  const [sheetName, setSheetName] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
@@ -61,6 +62,8 @@ function ImportDialog({ table }: { table: TableKey }) {
 
   function reset() {
     setFileName("");
+    setFileHash("");
+    setSheetName("");
     setHeaders([]);
     setRawRows([]);
     setMapping({});
@@ -69,22 +72,42 @@ function ImportDialog({ table }: { table: TableKey }) {
 
   async function handleFile(file: File) {
     try {
-      // CSV als UTF-8-Text lesen (SheetJS nimmt sonst cp1252 an -> Umlaute kaputt)
+      const buffer = await file.arrayBuffer();
       const isCsv = file.name.toLowerCase().endsWith(".csv");
       const workbook = isCsv
-        ? XLSX.read(await file.text(), { type: "string", cellDates: false })
-        : XLSX.read(await file.arrayBuffer(), { cellDates: false });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        ? XLSX.read(new TextDecoder().decode(buffer), { type: "string", cellDates: false })
+        : XLSX.read(buffer, { cellDates: false });
+      const selectedSheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[selectedSheetName];
+      const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
         raw: false,
         defval: "",
       });
+      const headerIndex = detectHeaderRowIndex(def.fields, matrix);
+      const fileHeaders = (matrix[headerIndex] ?? [])
+        .map((cell) => String(cell ?? "").trim())
+        .filter(Boolean);
+      const dataRows = matrix
+        .slice(headerIndex + 1)
+        .filter((row) => row.some((cell) => String(cell ?? "").trim()));
+      const json = dataRows.map((row) =>
+        Object.fromEntries(
+          fileHeaders.map((header, index) => [header, String(row[index] ?? "")])
+        )
+      );
       if (json.length === 0) {
         toast.error("Die Datei enthält keine Datenzeilen.");
         return;
       }
-      const fileHeaders = Object.keys(json[0]);
+      const digest = await crypto.subtle.digest("SHA-256", buffer);
+      const hash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+
       setFileName(file.name);
+      setFileHash(hash);
+      setSheetName(selectedSheetName);
       setHeaders(fileHeaders);
       setRawRows(json);
       setMapping(autoMapColumns(def.fields, fileHeaders));
@@ -105,9 +128,13 @@ function ImportDialog({ table }: { table: TableKey }) {
     });
   }
 
+  function metadata() {
+    return { fileName, fileHash, sheetName };
+  }
+
   function runCheck() {
     startTransition(async () => {
-      const result = await importRowsAction(table, buildMappedRows(), true);
+      const result = await importRowsAction(table, buildMappedRows(), true, metadata());
       if (result.error) toast.error(result.error);
       setCheckResult(result);
     });
@@ -115,7 +142,7 @@ function ImportDialog({ table }: { table: TableKey }) {
 
   function runImport() {
     startTransition(async () => {
-      const result = await importRowsAction(table, buildMappedRows(), false);
+      const result = await importRowsAction(table, buildMappedRows(), false, metadata());
       if (result.error) {
         toast.error(result.error);
         return;
@@ -140,12 +167,12 @@ function ImportDialog({ table }: { table: TableKey }) {
           Importieren
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{def.label} importieren</DialogTitle>
           <DialogDescription>
-            CSV oder Excel (.xlsx) hochladen, Spalten zuordnen, prüfen,
-            importieren. Bekannte Spaltennamen werden automatisch erkannt.
+            CSV oder Excel hochladen, Spalten zuordnen, Dry Run prüfen,
+            anschließend migrationssicher importieren.
           </DialogDescription>
         </DialogHeader>
 
@@ -155,15 +182,15 @@ function ImportDialog({ table }: { table: TableKey }) {
               type="file"
               accept=".csv,.xlsx,.xls"
               aria-label="Import-Datei wählen"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
+              onChange={(event) => {
+                const file = event.target.files?.[0];
                 if (file) void handleFile(file);
               }}
               className="text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm"
             />
             {fileName && (
               <p className="text-xs text-muted-foreground">
-                {fileName} · {rawRows.length} Zeilen · {headers.length} Spalten
+                {fileName} · {sheetName} · {rawRows.length} Zeilen · {headers.length} Spalten
               </p>
             )}
           </div>
@@ -180,10 +207,10 @@ function ImportDialog({ table }: { table: TableKey }) {
                     </span>
                     <select
                       value={mapping[field.key] ?? ""}
-                      onChange={(e) => {
+                      onChange={(event) => {
                         setMapping((prev) => ({
                           ...prev,
-                          [field.key]: e.target.value || null,
+                          [field.key]: event.target.value || null,
                         }));
                         setCheckResult(null);
                       }}
@@ -208,9 +235,10 @@ function ImportDialog({ table }: { table: TableKey }) {
                 <AlertDescription>
                   {checkResult.validCount} von {rawRows.length} Zeilen gültig
                   {checkResult.errors.length > 0 &&
-                    ` · ${checkResult.errors.length} Fehler (fehlerhafte Zeilen werden übersprungen)`}
+                    ` · ${checkResult.errors.length} Fehler`}
                 </AlertDescription>
               </Alert>
+              {checkResult.summary && <ImportSummaryView result={checkResult} />}
               {checkResult.errors.length > 0 && (
                 <ul className="max-h-36 space-y-0.5 overflow-y-auto rounded-md border p-2 text-xs text-destructive">
                   {checkResult.errors.map((error, index) => (
@@ -229,7 +257,7 @@ function ImportDialog({ table }: { table: TableKey }) {
               disabled={pending || rawRows.length === 0}
               onClick={runCheck}
             >
-              {pending ? "Prüft…" : "Prüfen"}
+              {pending ? "Prüft…" : "Dry Run prüfen"}
             </Button>
             <Button
               disabled={
@@ -245,5 +273,42 @@ function ImportDialog({ table }: { table: TableKey }) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ImportSummaryView({ result }: { result: ImportResult }) {
+  const summary = result.summary;
+  if (!summary) return null;
+  return (
+    <div className="space-y-2">
+      <div className="grid gap-2 rounded-md border p-2 text-xs sm:grid-cols-4">
+        <ImportStat label="Unverändert" value={summary.unchanged} />
+        <ImportStat label="Neu" value={summary.newRows} />
+        <ImportStat label="Verknüpft" value={summary.linked} />
+        <ImportStat label="Teilweise" value={summary.partiallyLinked} />
+        <ImportStat label="Ungeklärt" value={summary.unresolved} />
+        <ImportStat label="Review" value={summary.reviewRequired} />
+        <ImportStat label="Konflikte" value={summary.conflicts} />
+        <ImportStat label="Fehler" value={summary.errors} />
+      </div>
+      <ul className="max-h-44 space-y-0.5 overflow-y-auto rounded-md border p-2 text-xs">
+        {summary.review.slice(0, 80).map((item, index) => (
+          <li key={index} className="flex gap-2">
+            <span className="w-16 shrink-0">Zeile {item.row}</span>
+            <span className="w-32 shrink-0 font-mono">{item.status}</span>
+            <span>{item.message}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ImportStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded bg-muted px-2 py-1">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="font-mono font-semibold">{value}</div>
+    </div>
   );
 }

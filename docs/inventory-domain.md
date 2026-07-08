@@ -218,3 +218,28 @@ Verkaufs-Automatismus:
 Beim Wechsel auf `SETTLED` setzt der zentrale Debt-Service `settledAt` und
 `paidCents`, schreibt AuditLog und verändert den zugrunde liegenden Einkauf
 oder Verkauf nicht.
+
+## Import ab Phase 8
+
+Der Import ist eine nachvollziehbare Migrationspipeline statt eines direkten
+Legacy-Tabellen-Inserts.
+
+- Jeder finale Import schreibt einen `ImportBatch` mit Dateiname, Datei-Hash,
+  Importtyp, Status, Zeitstempeln, User und Zusammenfassung.
+- Jede erzeugte Zielentity erhält eine `SourceReference` mit Sheetname,
+  Zeilennummer, Row-Hash, Zielentity, Ziel-ID, Legacy-Referenz, Status,
+  Warnungen und Fehlern.
+- Row-Hashes und SourceReferences verhindern stille Doppelimporte. Bereits
+  bekannte Zeilen werden im Dry Run als `UNCHANGED` gemeldet.
+- Lagerzeilen werden nur gruppiert, wenn Produkt, Variante, Größe, EAN,
+  Händler, Kaufdatum, EK, VST, Zahlungsmethode und Statusinformationen
+  identisch sind. Alle alten LagerIDs bleiben als Legacy-Referenzen auf die
+  neue `InventoryPosition` abbildbar.
+- Verkäufe erhalten neue V-Nummern. Wenn Legacy-LagerIDs eindeutig auf
+  importierte `InventoryPosition`s zeigen, entstehen `SaleLineAllocation`s;
+  sonst wird der Verkauf als historisch `UNRESOLVED` importiert.
+- Pattfield/Konsignation nutzt robuste Header-Erkennung und schreibt neue
+  K-Positionen über die gemeinsame `InventoryPosition(CONSIGNMENT)`-Struktur.
+- Schuldenreferenzen unterstützen Einzelwerte, `&`, Bindestrichbereiche,
+  `bis`, Zeilenumbrüche und Leerzeichenvarianten. Gesamtbeträge werden bei
+  Mehrfachreferenzen nicht vervielfacht.

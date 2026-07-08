@@ -197,6 +197,48 @@ enum InventoryMovementType {
   REVERSAL
 }
 
+enum ImportBatchStatus {
+  DRY_RUN
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ImportRowStatus {
+  UNCHANGED
+  UPDATE_AVAILABLE
+  NEW
+  LINKED
+  PARTIALLY_LINKED
+  UNRESOLVED
+  REVIEW_REQUIRED
+  CONFLICT
+  ERROR
+}
+
+enum ImportTargetEntity {
+  PRODUCT
+  PURCHASE
+  PURCHASE_LINE
+  INVENTORY_POSITION
+  CONSIGNMENT_LOT
+  SALE
+  SALE_LINE
+  SALE_LINE_ALLOCATION
+  RETURN
+  RETURN_LINE
+  DEBT
+  TASK
+  LEGACY_ONLY
+}
+
+enum HistoricalRelationStatus {
+  LINKED
+  PARTIALLY_LINKED
+  UNRESOLVED
+  REVIEW_REQUIRED
+}
+
 // ---------------------------------------------------------------------------
 // Mandanten & Benutzer
 // ---------------------------------------------------------------------------
@@ -260,6 +302,8 @@ model Organization {
   debtPurchaseLinks         DebtPurchaseLink[]
   debtSaleLinks             DebtSaleLink[]
   debtInventoryLinks        DebtInventoryLink[]
+  importBatches             ImportBatch[]
+  sourceReferences          SourceReference[]
 
   @@map("organizations")
 }
@@ -289,6 +333,7 @@ model User {
   createdPurchases   Purchase[]          @relation("PurchaseCreatedBy")
   inventoryMovements InventoryMovement[] @relation("InventoryMovementCreatedBy")
   auditLogs          AuditLog[]
+  importBatches      ImportBatch[]       @relation("ImportBatchCreatedBy")
 
   @@map("users")
 }
@@ -547,40 +592,41 @@ model Product {
 }
 
 model Sale {
-  id                   String     @id @default(cuid())
-  organizationId       String     @map("organization_id")
-  stockItemId          String?    @map("stock_item_id") // Alt-Feld; neue Verkäufe nutzen SaleItem
-  platformId           String     @map("platform_id")
-  carrierId            String?    @map("carrier_id")
-  taxRateId            String?    @map("tax_rate_id")
-  soldAt               DateTime   @default(now()) @map("sold_at")
-  quantity             Int        @default(1)
-  salePriceCents       Int        @map("sale_price_cents") // VK brutto in Cent
+  id                       String                   @id @default(cuid())
+  organizationId           String                   @map("organization_id")
+  stockItemId              String?                  @map("stock_item_id") // Alt-Feld; neue Verkäufe nutzen SaleItem
+  platformId               String                   @map("platform_id")
+  carrierId                String?                  @map("carrier_id")
+  taxRateId                String?                  @map("tax_rate_id")
+  soldAt                   DateTime                 @default(now()) @map("sold_at")
+  quantity                 Int                      @default(1)
+  salePriceCents           Int                      @map("sale_price_cents") // VK brutto in Cent
   // Server-seitig berechnet (lib/calculations.ts) und als Snapshot gespeichert:
-  saleNetCents         Int        @default(0) @map("sale_net_cents") // VK netto
-  taxRatePercent       Decimal    @default(0) @map("tax_rate_percent") @db.Decimal(5, 2)
-  marginCents          Int        @default(0) @map("margin_cents") // VK netto - EK netto
-  profitCents          Int        @default(0) @map("profit_cents") // Marge - Versand - Gebühren
-  buyerCountry         String     @default("DE") @map("buyer_country") // ISO-2
-  shippingMethod       String?    @map("shipping_method")
-  payoutRecipient      String?    @map("payout_recipient") // Auszahlungsempfänger
-  shippingChargedCents Int        @default(0) @map("shipping_charged_cents") // Versand vom Käufer
-  shippingCostCents    Int        @default(0) @map("shipping_cost_cents") // Versand netto
-  platformFeeCents     Int        @default(0) @map("platform_fee_cents") // Plattformgebühren brutto
-  platformFeeNetCents  Int        @default(0) @map("platform_fee_net_cents") // berechnet oder manuell
-  feeInclVat           Boolean    @default(true) @map("fee_incl_vat") // Gebühren inkl. MwSt?
-  paymentFeeCents      Int        @default(0) @map("payment_fee_cents") // Alt-Feld (in Plattformgebühren aufgegangen)
+  saleNetCents             Int                      @default(0) @map("sale_net_cents") // VK netto
+  taxRatePercent           Decimal                  @default(0) @map("tax_rate_percent") @db.Decimal(5, 2)
+  marginCents              Int                      @default(0) @map("margin_cents") // VK netto - EK netto
+  profitCents              Int                      @default(0) @map("profit_cents") // Marge - Versand - Gebühren
+  buyerCountry             String                   @default("DE") @map("buyer_country") // ISO-2
+  shippingMethod           String?                  @map("shipping_method")
+  payoutRecipient          String?                  @map("payout_recipient") // Auszahlungsempfänger
+  shippingChargedCents     Int                      @default(0) @map("shipping_charged_cents") // Versand vom Käufer
+  shippingCostCents        Int                      @default(0) @map("shipping_cost_cents") // Versand netto
+  platformFeeCents         Int                      @default(0) @map("platform_fee_cents") // Plattformgebühren brutto
+  platformFeeNetCents      Int                      @default(0) @map("platform_fee_net_cents") // berechnet oder manuell
+  feeInclVat               Boolean                  @default(true) @map("fee_incl_vat") // Gebühren inkl. MwSt?
+  paymentFeeCents          Int                      @default(0) @map("payment_fee_cents") // Alt-Feld (in Plattformgebühren aufgegangen)
   // Informative Checkbox-Status:
-  invoiceCreated       Boolean    @default(false) @map("invoice_created")
-  postageBooked        Boolean    @default(false) @map("postage_booked")
-  feesBooked           Boolean    @default(false) @map("fees_booked")
-  buyerUsername        String?    @map("buyer_username")
-  orderNumber          String?    @map("order_number") // lesbare Order-ID (Format konfigurierbar)
-  trackingNumber       String?    @map("tracking_number")
-  status               SaleStatus @default(PENDING)
-  notes                String?
-  createdAt            DateTime   @default(now()) @map("created_at")
-  updatedAt            DateTime   @updatedAt @map("updated_at")
+  invoiceCreated           Boolean                  @default(false) @map("invoice_created")
+  postageBooked            Boolean                  @default(false) @map("postage_booked")
+  feesBooked               Boolean                  @default(false) @map("fees_booked")
+  buyerUsername            String?                  @map("buyer_username")
+  orderNumber              String?                  @map("order_number") // lesbare Order-ID (Format konfigurierbar)
+  trackingNumber           String?                  @map("tracking_number")
+  status                   SaleStatus               @default(PENDING)
+  historicalRelationStatus HistoricalRelationStatus @default(LINKED) @map("historical_relation_status")
+  notes                    String?
+  createdAt                DateTime                 @default(now()) @map("created_at")
+  updatedAt                DateTime                 @updatedAt @map("updated_at")
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stockItem    StockItem?             @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
@@ -824,6 +870,55 @@ model Task {
   @@index([organizationId, status])
   @@index([assigneeId])
   @@map("tasks")
+}
+
+model ImportBatch {
+  id             String            @id @default(cuid())
+  organizationId String            @map("organization_id")
+  fileName       String            @map("file_name")
+  fileHash       String            @map("file_hash")
+  importType     String            @map("import_type")
+  status         ImportBatchStatus @default(RUNNING)
+  startedAt      DateTime          @default(now()) @map("started_at")
+  finishedAt     DateTime?         @map("finished_at")
+  createdById    String?           @map("created_by_id")
+  summary        Json              @default("{}")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User?             @relation("ImportBatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  sourceReferences SourceReference[]
+
+  @@index([organizationId])
+  @@index([organizationId, importType])
+  @@index([organizationId, fileHash])
+  @@map("import_batches")
+}
+
+model SourceReference {
+  id              String             @id @default(cuid())
+  organizationId  String             @map("organization_id")
+  importBatchId   String             @map("import_batch_id")
+  sheetName       String?            @map("sheet_name")
+  rowNumber       Int                @map("row_number")
+  rowHash         String             @map("row_hash")
+  targetEntity    ImportTargetEntity @map("target_entity")
+  targetEntityId  String             @map("target_entity_id")
+  legacyReference String?            @map("legacy_reference")
+  status          ImportRowStatus
+  warnings        String[]           @default([])
+  errors          String[]           @default([])
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  importBatch  ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, rowHash, targetEntity, legacyReference])
+  @@index([organizationId])
+  @@index([organizationId, legacyReference])
+  @@index([organizationId, targetEntity, targetEntityId])
+  @@index([importBatchId])
+  @@map("source_references")
 }
 
 model Credential {

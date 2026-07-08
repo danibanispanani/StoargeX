@@ -1,6 +1,6 @@
-// Gemeinsame Definitionen für Import & Export (client- und server-tauglich).
-// Die Aliasse decken die Spaltennamen der Original-Excel-Sheets ab
-// (VKÜ 2026, VKÜ 20242025, Lager, Schulden, Retouren, Aufgaben, Pattfield).
+// Gemeinsame Definitionen für Import & Export.
+// Aliasse decken die Original-Sheets ab: VKÜ 2026, VKÜ 2024/2025, Lager,
+// Schulden, Retouren, Aufgaben und Pattfield.
 
 export type TableKey =
   | "lager"
@@ -14,7 +14,7 @@ export interface FieldDef {
   key: string;
   label: string;
   required?: boolean;
-  aliases: string[]; // lowercase-Vergleich
+  aliases: string[];
 }
 
 export interface TableDef {
@@ -26,115 +26,173 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
   lager: {
     label: "Lager",
     fields: [
-      { key: "lagerid", label: "LagerID", aliases: ["lagerid", "lager-id", "lager id", "sku", "id"] },
-      { key: "datum", label: "Datum", aliases: ["datum", "kaufdatum", "date"] },
-      { key: "haendler", label: "Händler", aliases: ["händler", "haendler", "dealer", "lieferant"] },
-      { key: "model", label: "Model", required: true, aliases: ["model", "modell", "artikel", "titel", "name"] },
-      { key: "colorway", label: "Colorway/Version", aliases: ["colorway", "colorway/version", "version", "variante", "farbe"] },
-      { key: "size", label: "Size", aliases: ["size", "größe", "groesse", "gr"] },
-      { key: "brutto", label: "Brutto", required: true, aliases: ["brutto", "ek brutto", "ek", "preis", "einkaufspreis"] },
-      { key: "vst", label: "VST", aliases: ["vst", "vorsteuer", "vorsteuerabzug"] },
-      { key: "zm", label: "ZM", aliases: ["zm", "zahlungsmethode", "zahlung"] },
-      { key: "kauf", label: "Kauf", aliases: ["kauf", "kauf-status", "kaufstatus"] },
-      { key: "retoure", label: "Retoure", aliases: ["retoure", "retoure-status", "retourestatus"] },
-      { key: "status", label: "Status", aliases: ["status"] },
-      { key: "ean", label: "EAN", aliases: ["ean", "gtin", "barcode"] },
-      { key: "kommentar", label: "Kommentar", aliases: ["kommentar", "notiz", "anmerkung", "notes"] },
+      field("lagerid", "LagerID", ["lagerid", "lager-id", "lager id", "sku", "id"]),
+      field("datum", "Datum", ["datum", "kaufdatum", "date"]),
+      field("haendler", "Händler", ["händler", "haendler", "dealer", "lieferant"]),
+      field("model", "Model", ["model", "modell", "artikel", "titel", "name"], true),
+      field("colorway", "Colorway/Version", ["colorway", "colorway/version", "version", "variante", "farbe"]),
+      field("size", "Size", ["size", "größe", "groesse", "gr"]),
+      field("brutto", "Brutto", ["brutto", "ek brutto", "ek", "preis", "einkaufspreis"], true),
+      field("vst", "VST", ["vst", "vorsteuer", "vorsteuerabzug"]),
+      field("netto", "Netto", ["netto", "ek netto"]),
+      field("zm", "ZM", ["zm", "zahlungsmethode", "zahlung"]),
+      field("kauf", "Kauf", ["kauf", "kauf-status", "kaufstatus"]),
+      field("retoure", "Retoure", ["retoure", "retoure-status", "retourestatus"]),
+      field("status", "Status", ["status"]),
+      field("ean", "EAN", ["ean", "gtin", "barcode"]),
+      field("bilder", "Bilder", ["bilder", "bild", "image", "images"]),
+      field("ka", "KA", ["ka", "kleinanzeigen"]),
+      field("vinted", "Vinted", ["vinted"]),
+      field("ebay_d", "eBay D", ["ebay d", "ebay_d", "ebay daniel"]),
+      field("ebay_r", "eBay R", ["ebay r", "ebay_r", "ebay richard"]),
+      field("sonstiges", "Sonstiges", ["sonstiges", "sonstige plattform"]),
+      field("rechnung", "Rechnungsnr", ["rechnungsnr", "rechnung", "invoice"]),
+      field("gruppierung", "Gruppierung", ["gruppierung", "gruppe", "group"]),
+      field("kommentar", "Kommentar", ["kommentar", "notiz", "anmerkung", "notes"]),
     ],
   },
   verkauf: {
     label: "Verkauf",
     fields: [
-      { key: "orderid", label: "OrderID", aliases: ["orderid", "order-id", "order id", "bestellnummer", "id"] },
-      { key: "datum", label: "Verkaufsdatum", aliases: ["verkaufsdatum", "datum", "date"] },
-      { key: "lagerids", label: "LagerID(s)", aliases: ["lagerid(s)", "lagerids", "lagerid", "lager-id", "sku"] },
-      { key: "model", label: "Model", aliases: ["model", "modell", "artikel", "titel"] },
-      { key: "vk_brutto", label: "VK brutto", required: true, aliases: ["vk brutto", "vk_brutto", "vk", "verkaufspreis", "brutto"] },
-      { key: "ek_netto", label: "EK netto", aliases: ["ek netto", "ek_netto", "ek"] },
-      { key: "gebuehren_brutto", label: "Plattformgebühren brutto", aliases: ["plattformgebühren brutto", "gebühren brutto", "gebühren", "gebuehren", "fees"] },
-      { key: "versand", label: "Versand netto", aliases: ["versand netto", "versand", "versandkosten"] },
-      { key: "plattform", label: "Plattform", aliases: ["plattform", "platform"] },
-      { key: "versandart", label: "Versandart", aliases: ["versandart", "carrier"] },
-      { key: "land", label: "Land", aliases: ["land", "country", "käuferland", "kaeuferland"] },
-      { key: "auszahlung", label: "Auszahlung", aliases: ["auszahlung", "auszahlungsempfänger", "empfänger"] },
-      { key: "status", label: "Gesamtstatus", aliases: ["gesamtstatus", "status"] },
-      { key: "rechnung", label: "Rechnung", aliases: ["rechnung", "invoice"] },
-      { key: "kommentar", label: "Kommentar", aliases: ["kommentar", "notiz", "anmerkung"] },
+      field("orderid", "OrderID", ["orderid", "order-id", "order id", "bestellnummer", "id"]),
+      field("datum", "Verkaufsdatum", ["verkaufsdatum", "datum", "date"]),
+      field("lagerids", "LagerID(s)", ["lagerid(s)", "lagerids", "lagerid", "lager-id", "sku"]),
+      field("model", "Model", ["model", "modell", "artikel", "titel"]),
+      field("colorway", "Colorway/Version", ["colorway", "colorway/version", "version", "variante"]),
+      field("size", "Größe", ["größe", "groesse", "size", "gr"]),
+      field("menge", "Menge", ["menge", "anzahl", "quantity"]),
+      field("vk_brutto", "VK brutto", ["vk brutto", "vk_brutto", "vk", "verkaufspreis", "brutto"], true),
+      field("steuern", "Steuern", ["steuern", "steuer", "tax"]),
+      field("vk_netto", "VK Netto", ["vk netto", "vk_netto", "netto"]),
+      field("ek_netto", "EK netto", ["ek netto", "ek_netto", "ek"]),
+      field("gebuehren_brutto", "Plattformgebühren brutto", ["plattformgebühren brutto", "gebühren brutto", "gebühren", "gebuehren", "fees"]),
+      field("gebuehren_netto", "Gebühren Netto", ["gebühren netto", "gebuehren netto", "fees net"]),
+      field("versand_netto", "Versand Netto", ["versand netto", "versand", "versandkosten"]),
+      field("gmarge", "GMarge", ["gmarge", "marge", "gross margin"]),
+      field("gewinn", "Gewinn", ["gewinn", "profit"]),
+      field("plattform", "Plattform", ["plattform", "platform"]),
+      field("portoart", "Portoart", ["portoart", "versandart", "carrier"]),
+      field("land", "Land", ["land", "country", "käuferland", "kaeuferland"]),
+      field("auszahlung", "Auszahlung", ["auszahlung", "auszahlungsempfänger", "empfänger"]),
+      field("gesamtstatus", "Gesamtstatus", ["gesamtstatus", "status"]),
+      field("rechnung", "Rechnung", ["rechnung", "invoice"]),
+      field("kommentar", "Kommentar", ["kommentar", "notiz", "anmerkung"]),
     ],
   },
   retouren: {
     label: "Retouren",
     fields: [
-      { key: "orderid", label: "OrderID des Verkaufs", required: true, aliases: ["orderid", "order-id", "order id", "verkauf", "id"] },
-      { key: "datum", label: "Meldedatum", aliases: ["meldedatum", "datum", "date"] },
-      { key: "grund", label: "Grund", aliases: ["grund", "reason"] },
-      { key: "erstattung", label: "Erstattungsbetrag", aliases: ["erstattungsbetrag", "erstattung", "refund"] },
-      { key: "zusatzkosten", label: "Zusatzkosten", aliases: ["zusatzkosten", "rückversand", "rueckversand"] },
-      { key: "status", label: "Status", aliases: ["status"] },
-      { key: "kommentar", label: "Kommentar", aliases: ["kommentar", "notiz", "anmerkung"] },
+      field("orderid", "OrderID des Verkaufs", ["orderid", "order-id", "order id", "verkauf", "id"], true),
+      field("datum", "Meldedatum", ["meldedatum", "datum", "date"]),
+      field("lagerid", "LagerID", ["lagerid", "lager-id", "sku"]),
+      field("verkaufsdatum", "Verkaufsdatum", ["verkaufsdatum"]),
+      field("model", "Model", ["model", "modell", "artikel"]),
+      field("colorway", "Variante", ["variante", "version", "colorway"]),
+      field("size", "Größe", ["größe", "groesse", "size"]),
+      field("menge", "Menge", ["menge", "quantity"]),
+      field("problem", "Problemart", ["art des problems", "problemart", "problem"]),
+      field("erstattung", "Erstattungsbetrag", ["erstattungsbetrag", "erstattung", "refund"]),
+      field("zusatzkosten", "Zusatzkosten", ["zusatzkosten", "rückversand", "rueckversand"]),
+      field("verlust", "Verlust", ["verlust", "loss"]),
+      field("status", "Status Ware", ["status ware", "status"]),
+      field("rechnungskorrektur", "Rechnungskorrektur", ["rechnungskorrektur"]),
+      field("porto", "Porto", ["porto"]),
+      field("plattform", "Plattform", ["plattform", "platform"]),
+      field("ursache", "Ursache", ["ursache", "grund", "cause", "reason"]),
+      field("kommentar", "Kommentar", ["kommentar", "notiz", "anmerkung"]),
     ],
   },
   konsignation: {
     label: "Konsignation",
     fields: [
-      { key: "sku", label: "SKU", aliases: ["sku", "id", "lagerid"] },
-      { key: "partner", label: "Partnerfirma", required: true, aliases: ["partnerfirma", "partner", "firma", "einlieferer"] },
-      { key: "artikel", label: "Artikel", required: true, aliases: ["artikel", "artikelbezeichnung", "model", "titel", "name"] },
-      { key: "bestand", label: "Bestand", aliases: ["bestand", "menge", "quantity"] },
-      { key: "verkauft", label: "Verkauft", aliases: ["verkauft", "sold"] },
-      { key: "retourniert", label: "Retourniert", aliases: ["retourniert", "retoure"] },
-      { key: "defekt", label: "Defekt", aliases: ["defekt", "defective"] },
-      { key: "kommentar", label: "Kommentar", aliases: ["kommentar", "notiz", "anmerkung"] },
+      field("nr", "Nr.", ["nr.", "nr", "nummer"]),
+      field("sku", "SKU", ["sku", "id", "lagerid"]),
+      field("partner", "Partnerfirma", ["partnerfirma", "partner", "firma", "einlieferer"]),
+      field("bezeichnung", "Bezeichnung", ["bezeichnung", "artikelbezeichnung"]),
+      field("artikel", "Artikel", ["artikel", "artikelbezeichnung", "model", "titel", "name"]),
+      field("name", "Name", ["name"]),
+      field("sonstiges", "Sonstiges", ["sonstiges", "variante", "version"]),
+      field("ean", "EAN", ["ean"]),
+      field("identifikationsnr", "Identifikationsnr.", ["identifikationsnr.", "identifikationsnr", "identifikationsnummer"]),
+      field("kategorie", "Kategorie", ["kategorie", "category"]),
+      field("mm_stk", "MM Stk.", ["mm stk.", "mm stk", "mm_stk"]),
+      field("lager", "Lager", ["lager"]),
+      field("verkauft", "Verkauft", ["verkauft", "sold"]),
+      field("retoure", "Retoure", ["retoure", "retourniert"]),
+      field("defekt", "Defekt", ["defekt", "defective"]),
+      field("restlager", "Restlager", ["restlager", "rest lager", "bestand", "quantity"]),
+      field("ek_brutto", "EK Brutto", ["ek brutto", "ek_brutto"]),
+      field("ek_netto", "EK Netto", ["ek netto", "ek_netto"]),
+      field("endbetrag", "Endbetrag", ["endbetrag"]),
+      field("versand", "Versand", ["versand"]),
+      field("reale_ovp", "Reale OVP", ["reale ovp", "reale_ovp", "ovp"]),
+      field("kommentar", "Kommentar", ["kommentar", "notiz", "anmerkung"]),
     ],
   },
   schulden: {
     label: "Schulden",
     fields: [
-      { key: "datum", label: "Datum", aliases: ["datum", "date"] },
-      { key: "refid", label: "ID", aliases: ["id", "refid", "lagerid", "orderid"] },
-      { key: "beschreibung", label: "Artikelbeschreibung", required: true, aliases: ["artikelbeschreibung", "beschreibung", "artikel"] },
-      { key: "art", label: "Art", aliases: ["art", "typ", "kind"] },
-      { key: "menge", label: "Menge", aliases: ["menge", "anzahl", "quantity"] },
-      { key: "betrag", label: "Betrag", required: true, aliases: ["betrag", "summe", "amount"] },
-      { key: "schuldner", label: "Schuldner", required: true, aliases: ["schuldner", "debtor"] },
-      { key: "empfaenger", label: "Empfänger", required: true, aliases: ["empfänger", "empfaenger", "gläubiger", "glaeubiger", "creditor"] },
-      { key: "status", label: "Status", aliases: ["status"] },
-      { key: "eintrag", label: "Eintrag", aliases: ["eintrag", "buchung"] },
-      { key: "beglichen", label: "Begleichungsdatum", aliases: ["begleichungsdatum", "beglichen am", "beglichen"] },
-      { key: "kommentar", label: "Kommentar", aliases: ["kommentar", "notiz", "anmerkung"] },
+      field("datum", "Datum", ["datum", "date"]),
+      field("refid", "ID", ["id", "refid", "lagerid", "orderid"]),
+      field("beschreibung", "Artikelbeschreibung", ["artikelbeschreibung", "beschreibung", "artikel"], true),
+      field("art", "Art", ["art", "typ", "kind"]),
+      field("menge", "Menge", ["menge", "anzahl", "quantity"]),
+      field("betrag", "Betrag", ["betrag", "summe", "amount"], true),
+      field("schuldner", "Schuldner", ["schuldner", "debtor"], true),
+      field("empfaenger", "Empfänger", ["empfänger", "empfaenger", "gläubiger", "glaeubiger", "creditor"], true),
+      field("status", "Status", ["status"]),
+      field("eintrag", "Eintrag", ["eintrag", "buchung"]),
+      field("beglichen", "Begleichungsdatum", ["begleichungsdatum", "beglichen am", "beglichen"]),
+      field("kommentar", "Kommentar", ["kommentar", "notiz", "anmerkung"]),
     ],
   },
   aufgaben: {
     label: "Aufgaben",
     fields: [
-      { key: "aufgabe", label: "Aufgabe", required: true, aliases: ["aufgabe", "titel", "task"] },
-      { key: "zustaendig", label: "Zuständig", aliases: ["zuständig", "zustaendig", "assignee"] },
-      { key: "frist", label: "Frist", aliases: ["frist", "deadline", "fällig", "faellig"] },
-      { key: "bereich", label: "Bereich", aliases: ["bereich", "area", "kategorie"] },
-      { key: "prioritaet", label: "Priorität", aliases: ["priorität", "prioritaet", "prio", "priority"] },
-      { key: "status", label: "Status", aliases: ["status"] },
-      { key: "anmerkung", label: "Anmerkung", aliases: ["anmerkung", "beschreibung", "kommentar", "notiz"] },
+      field("aufgabe", "Aufgabe", ["aufgabe", "titel", "task"], true),
+      field("zustaendig", "Zuständig", ["zuständig", "zustaendig", "assignee"]),
+      field("frist", "Frist", ["frist", "deadline", "fällig", "faellig"]),
+      field("bereich", "Bereich", ["bereich", "area", "kategorie"]),
+      field("prioritaet", "Priorität", ["priorität", "prioritaet", "prio", "priority"]),
+      field("status", "Status", ["status"]),
+      field("anmerkung", "Anmerkung", ["anmerkung", "beschreibung", "kommentar", "notiz"]),
     ],
   },
 };
 
-/** Header-Namen normalisieren für den Alias-Vergleich. */
+function field(key: string, label: string, aliases: string[], required = false): FieldDef {
+  return { key, label, required, aliases };
+}
+
 export function normalizeHeader(header: string): string {
   return header.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** Automatisches Mapping: App-Feld -> Spaltenname der Datei (oder null). */
 export function autoMapColumns(
   fields: FieldDef[],
   fileHeaders: string[]
 ): Record<string, string | null> {
-  const normalized = fileHeaders.map((h) => ({ raw: h, norm: normalizeHeader(h) }));
+  const normalized = fileHeaders.map((header) => ({ raw: header, norm: normalizeHeader(header) }));
   const mapping: Record<string, string | null> = {};
   for (const field of fields) {
     const match = normalized.find(
-      (h) => h.norm === field.key || field.aliases.includes(h.norm)
+      (header) => header.norm === field.key || field.aliases.includes(header.norm)
     );
     mapping[field.key] = match?.raw ?? null;
   }
   return mapping;
+}
+
+export function detectHeaderRowIndex(fields: FieldDef[], rows: unknown[][]): number {
+  const aliases = new Set(fields.flatMap((field) => [field.key, ...field.aliases]).map(normalizeHeader));
+  let bestIndex = 0;
+  let bestScore = -1;
+  rows.forEach((row, index) => {
+    const score = row.filter((cell) => aliases.has(normalizeHeader(String(cell ?? "")))).length;
+    if (score > bestScore) {
+      bestIndex = index;
+      bestScore = score;
+    }
+  });
+  return bestIndex;
 }
