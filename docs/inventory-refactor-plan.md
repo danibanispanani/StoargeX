@@ -45,6 +45,12 @@
 > Verkauf und buchen Bestand ausschließlich über `SALE_OUT`-Movements. Storno
 > neuer Verkäufe läuft über `REVERSAL`; Legacy-`SaleItem` bleibt lesbar.
 
+> **Phase 6 abgeschlossen** (Migration `20260708120000_return_lines_allocations_phase6`):
+> Neue Retouren schreiben `ReturnLine` und `ReturnAllocation`, beziehen sich
+> auf die ursprüngliche `SaleLineAllocation` und buchen Eingang, Wiedereinlagerung
+> oder Defekt ausschließlich über `RETURN_*`-Movements. Legacy-Retouren bleiben
+> lesbar.
+
 ---
 
 ## 1. Ist-Architektur (Kurzform)
@@ -383,8 +389,7 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       umgestellt. **Abgeschlossen** in Migration
       `20260707140000_owned_purchase_batches_phase3` und
       [lib/services/owned-purchase-service.ts](../lib/services/owned-purchase-service.ts).
-- [ ] **Phase 3b** – Retouren, Schulden und Import auf neue Inventory-Domain
-      umstellen.
+- [ ] **Phase 3b** – Schulden und Import auf neue Inventory-Domain umstellen.
 - [x] **Phase 4** – Konsignationsbestand auf getrennte UI mit gemeinsamer
       `InventoryPosition(CONSIGNMENT)`-Struktur umgestellt. **Abgeschlossen**
       in Migration `20260708100000_consignment_inventory_positions_phase4` und
@@ -393,6 +398,10 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       umgestellt. **Abgeschlossen** in Migration
       `20260708110000_sales_lines_allocations_phase5` und
       [lib/services/sales-service.ts](../lib/services/sales-service.ts).
+- [x] **Phase 6** – Retouren auf `ReturnLine` und `ReturnAllocation`
+      umgestellt. **Abgeschlossen** in Migration
+      `20260708120000_return_lines_allocations_phase6` und
+      [lib/services/returns-service.ts](../lib/services/returns-service.ts).
 - [ ] **Phase 5** – Feature-Flag on; Playwright-Smoke; Load-Test der neuen
       Aggregationen (`loadDashboardKpis` etc.).
 - [ ] **Phase 6** – Alt-Spalten droppen, Rollback-Plan (git revert +

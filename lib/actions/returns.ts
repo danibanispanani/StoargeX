@@ -4,39 +4,41 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ReturnStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
-import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { calcReturnLoss, euroToCents } from "@/lib/calculations";
 import type { ActionState } from "@/lib/actions/team";
+import {
+  applyReturnWorkflow,
+  createRelationalReturn,
+  type ReturnWorkflowOperation,
+} from "@/lib/services/returns-service";
 
 const optionalEuro = z
   .string()
-  .refine((v) => {
-    if (!v.trim()) return true;
+  .refine((value) => {
+    if (!value.trim()) return true;
     try {
-      euroToCents(v);
+      euroToCents(value);
       return true;
     } catch {
       return false;
     }
   }, "Ungültiger Betrag.")
-  .transform((v) => (v.trim() ? euroToCents(v) : 0));
+  .transform((value) => (value.trim() ? euroToCents(value) : 0));
 
 const returnSchema = z.object({
   saleId: z.string().min(1, "Bitte einen Verkauf wählen."),
+  allocationIds: z.array(z.string().min(1)).min(1, "Bitte mindestens eine Position auswählen."),
+  quantities: z.array(z.coerce.number().int().min(1).max(100000)),
   requestedAt: z.string().optional().or(z.literal("")),
   reason: z.string().max(500).optional().or(z.literal("")),
-  refundAmount: optionalEuro, // Erstattung brutto
-  extraCost: optionalEuro, // Zusatzkosten (z.B. Rückversand)
-  restock: z.coerce.boolean(),
+  problemType: z.string().max(200).optional().or(z.literal("")),
+  condition: z.string().max(100).optional().or(z.literal("")),
+  refundAmount: optionalEuro,
+  extraCost: optionalEuro,
   notes: z.string().max(2000).optional().or(z.literal("")),
 });
 
-/**
- * Retoure erfassen: harter FK auf den Sale, Verlust wird server-seitig aus
- * den Snapshot-Werten des Verkaufs berechnet (calcReturnLoss). Optionales
- * Wiedereinlagern erhöht den Bestand in derselben Transaktion.
- */
 export async function createReturnAction(
   _prev: ActionState,
   formData: FormData
@@ -45,169 +47,116 @@ export async function createReturnAction(
 
   const parsed = returnSchema.safeParse({
     saleId: formData.get("saleId"),
+    allocationIds: formData.getAll("allocationIds").map(String),
+    quantities: formData.getAll("quantities").map(String),
     requestedAt: formData.get("requestedAt"),
     reason: formData.get("reason"),
+    problemType: formData.get("problemType"),
+    condition: formData.get("condition"),
     refundAmount: formData.get("refundAmount") ?? "",
     extraCost: formData.get("extraCost") ?? "",
-    restock: formData.get("restock") === "on",
     notes: formData.get("notes"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Ungültige Eingaben." };
   }
   const data = parsed.data;
+  if (data.allocationIds.length !== data.quantities.length) {
+    return { error: "Zu jeder Retourenposition muss eine Menge angegeben sein." };
+  }
 
   try {
-    const created = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
-
-      const sale = await tx.sale.findFirst({
-        where: { id: data.saleId },
-        include: { items: true },
-      });
-      if (!sale) throw new Error("Verkauf nicht gefunden.");
-
-      const lossCents = calcReturnLoss({
-        refundGrossCents: data.refundAmount,
-        taxRatePercent: Number(sale.taxRatePercent),
-        saleGrossCents: sale.salePriceCents,
-        platformFeeCents: sale.platformFeeNetCents, // Gebühren netto
-        paymentFeeCents: 0,
-        shippingCostCents: sale.shippingCostCents,
-        extraCostCents: data.extraCost,
-      });
-
-      const ret = await tx.return.create({
-        data: {
-          organizationId: organization.id,
-          saleId: sale.id,
-          requestedAt: data.requestedAt ? new Date(data.requestedAt) : new Date(),
-          reason: data.reason || null,
-          refundAmountCents: data.refundAmount,
-          returnShippingCents: data.extraCost,
-          lossCents,
-          restocked: data.restock,
-          status: data.restock ? "RESTOCKED" : "REQUESTED",
-          notes: data.notes || null,
-        },
-      });
-
-      if (data.refundAmount > 0) {
-        await tx.sale.update({
-          where: { id: sale.id },
-          data: { status: "REFUNDED" },
-        });
-      }
-
-      if (data.restock) {
-        // Alle Lager-Positionen des Verkaufs wieder einlagern
-        const stockItemIds = sale.items
-          .map((item) => item.stockItemId)
-          .filter((id): id is string => Boolean(id));
-        // Alt-Verkäufe ohne Positionen: Fallback auf das Legacy-Feld
-        if (stockItemIds.length === 0 && sale.stockItemId) {
-          stockItemIds.push(sale.stockItemId);
-        }
-        if (stockItemIds.length > 0) {
-          await tx.stockItem.updateMany({
-            where: { id: { in: stockItemIds } },
-            data: { quantity: 1, status: "RETURNED", retoureStatus: "O" },
-          });
-        }
-      }
-
-      return ret;
-    });
-
-    await writeAuditLog({
+    const created = await createRelationalReturn({
       organizationId: organization.id,
-      userId,
-      action: "return.create",
-      entityType: "Return",
-      entityId: created.id,
-      after: {
-        saleId: data.saleId,
-        refundCents: data.refundAmount,
-        lossCents: created.lossCents,
-      },
+      createdById: userId,
+      saleId: data.saleId,
+      requestedAt: data.requestedAt ? new Date(data.requestedAt) : new Date(),
+      reason: data.reason || null,
+      refundAmountCents: data.refundAmount,
+      extraCostCents: data.extraCost,
+      problemType: data.problemType || data.reason || null,
+      condition: data.condition || null,
+      notes: data.notes || null,
+      selections: data.allocationIds.map((allocationId, index) => ({
+        saleLineAllocationId: allocationId,
+        quantity: data.quantities[index] ?? 1,
+      })),
     });
 
-    revalidatePath("/retouren");
-    revalidatePath("/verkauf");
-    revalidatePath("/lager");
-    return { success: "Retoure erfasst." };
+    revalidateReturnViews();
+    return { success: `Retoure ${created.returnRecord.returnNumber ?? ""} erfasst.` };
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : "Retoure konnte nicht gespeichert werden.",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Retoure konnte nicht gespeichert werden.",
     };
   }
 }
 
-/**
- * Status einer Retoure ändern. Automatik: bei "Gelagert" (RESTOCKED) bekommt
- * der verknüpfte Artikel im Lager den Status RETOURE – er ist physisch wieder
- * da, muss aber ggf. geprüft werden (bewusst nicht "gelagert").
- */
+export async function applyReturnWorkflowAction(
+  returnId: string,
+  operation: ReturnWorkflowOperation
+): Promise<ActionState> {
+  const { organization, userId } = await requireOrg("MEMBER");
+
+  try {
+    const ret = await applyReturnWorkflow({
+      organizationId: organization.id,
+      returnId,
+      operation,
+      createdById: userId,
+    });
+
+    revalidateReturnViews();
+    return {
+      success:
+        operation === "RECEIVE"
+          ? `Retoure ${ret.returnNumber ?? ""} in Prüfung gebucht.`
+          : operation === "RESTOCK"
+            ? `Retoure ${ret.returnNumber ?? ""} wieder verfügbar gebucht.`
+            : `Retoure ${ret.returnNumber ?? ""} als defekt gebucht.`,
+    };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Retourenbewegung konnte nicht gebucht werden.",
+    };
+  }
+}
+
 export async function updateReturnStatusAction(
   returnId: string,
   status: ReturnStatus
 ): Promise<ActionState> {
-  const { organization } = await requireOrg("MEMBER");
+  const { db } = await requireOrg("MEMBER");
 
   const parsed = z.nativeEnum(ReturnStatus).safeParse(status);
   if (!parsed.success) return { error: "Ungültiger Status." };
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
+  const existing = await db.return.findFirst({
+    where: { id: returnId },
+    include: { returnLines: { select: { id: true } } },
+  });
+  if (!existing) return { error: "Retoure nicht gefunden." };
 
-      const existing = await tx.return.findFirst({
-        where: { id: returnId },
-        include: { sale: { include: { items: true } } },
-      });
-      if (!existing) throw new Error("Retoure nicht gefunden.");
-
-      await tx.return.update({
-        where: { id: returnId },
-        data: {
-          status: parsed.data,
-          restocked: parsed.data === "RESTOCKED" ? true : existing.restocked,
-          receivedAt:
-            parsed.data === "RESTOCKED" && !existing.receivedAt
-              ? new Date()
-              : existing.receivedAt,
-        },
-      });
-
-      if (parsed.data === "RESTOCKED") {
-        const stockItemIds = existing.sale.items
-          .map((item) => item.stockItemId)
-          .filter((id): id is string => Boolean(id));
-        if (stockItemIds.length === 0 && existing.sale.stockItemId) {
-          stockItemIds.push(existing.sale.stockItemId);
-        }
-        if (stockItemIds.length > 0) {
-          await tx.stockItem.updateMany({
-            where: { id: { in: stockItemIds } },
-            data: { quantity: 1, status: "RETURNED" },
-          });
-        }
-      }
-    });
-
-    revalidatePath("/retouren");
-    revalidatePath("/lager");
-    return {
-      success:
-        parsed.data === "RESTOCKED"
-          ? "Retoure auf Gelagert gesetzt – Artikel im Lager als Retoure markiert ✓"
-          : "Retoure-Status geändert ✓",
-    };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Status konnte nicht geändert werden.",
-    };
+  if (parsed.data === "RESTOCKED" && existing.returnLines.length > 0) {
+    return applyReturnWorkflowAction(returnId, "RESTOCK");
   }
+
+  await db.return.update({
+    where: { id: returnId },
+    data: {
+      status: parsed.data,
+      restocked: parsed.data === "RESTOCKED" ? true : existing.restocked,
+    },
+  });
+
+  revalidateReturnViews();
+  return { success: "Retoure-Status geändert ✓" };
 }
 
 const editReturnSchema = z.object({
@@ -218,7 +167,6 @@ const editReturnSchema = z.object({
   notes: z.string().max(2000).optional().or(z.literal("")),
 });
 
-/** Retoure nachträglich bearbeiten – der Verlust wird neu berechnet. */
 export async function updateReturnAction(
   returnId: string,
   _prev: ActionState,
@@ -272,10 +220,20 @@ export async function updateReturnAction(
     action: "return.update",
     entityType: "Return",
     entityId: returnId,
-    before: { refundCents: existing.refundAmountCents, lossCents: existing.lossCents },
+    before: {
+      refundCents: existing.refundAmountCents,
+      lossCents: existing.lossCents,
+    },
     after: { refundCents: data.refundAmount, lossCents },
   });
 
   revalidatePath("/retouren");
   return { success: "Retoure gespeichert ✓" };
+}
+
+function revalidateReturnViews(): void {
+  revalidatePath("/retouren");
+  revalidatePath("/verkauf");
+  revalidatePath("/lager");
+  revalidatePath("/konsignation");
 }

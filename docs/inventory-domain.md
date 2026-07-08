@@ -150,3 +150,27 @@ sichtbare Verkaufsnummer; fachlich enthält es jetzt die V-Nummer aus
 Legacy-Verkäufe mit `SaleItem` bleiben lesbar. Sie werden nicht destruktiv
 migriert und können nicht automatisch über den neuen Reversal-Pfad storniert
 werden.
+
+## Retouren ab Phase 6
+
+Neue Retouren werden relational und mengenbasiert erfasst:
+
+`Return(returnNumber=R-YY-NNNN) -> ReturnLine -> ReturnAllocation -> SaleLineAllocation -> InventoryPosition`
+
+Der Nutzer wählt keinen Lager-/Order-Freitext mehr, sondern einen Verkauf und
+dessen retournierbare Positionen. `ReturnAllocation` verweist auf die
+ursprüngliche `SaleLineAllocation`; dadurch ist bekannt, aus welcher L- oder
+K-Position die Ware ursprünglich verkauft wurde.
+
+- `ReturnLine.quantity` beschreibt die retournierte Menge je Verkaufsposition.
+- `ReturnAllocation.quantity` darf die verkaufte und noch nicht retournierte
+  Menge der ursprünglichen Allocation nicht überschreiten.
+- `REQUESTED` / „Angekündigt“ erzeugt keine Bestandsbewegung.
+- Physischer Eingang bucht `RETURN_RECEIPT` (`null -> INSPECTION`).
+- Verkaufbare Retoure bucht danach `RETURN_RESTOCK` (`INSPECTION -> AVAILABLE`).
+- Defekte Retoure bucht danach `RETURN_DEFECTIVE` (`INSPECTION -> DEFECTIVE`).
+- Wiederholte Workflow-Aktionen sind über gespeicherte Movement-IDs und
+  Idempotency-Keys doppelsicher.
+
+Legacy-Retouren ohne `ReturnLine` bleiben in `/retouren` lesbar und editierbar,
+werden aber nicht automatisch über den neuen Movement-Workflow gebucht.

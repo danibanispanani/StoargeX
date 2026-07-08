@@ -248,6 +248,8 @@ model Organization {
   inventoryPositionListings InventoryPositionListing[]
   saleLines                 SaleLine[]
   saleLineAllocations       SaleLineAllocation[]
+  returnLines               ReturnLine[]
+  returnAllocations         ReturnAllocation[]
 
   @@map("organizations")
 }
@@ -589,6 +591,7 @@ model Sale {
 model Return {
   id                  String       @id @default(cuid())
   organizationId      String       @map("organization_id")
+  returnNumber        String?      @map("return_number")
   saleId              String       @map("sale_id") // harter FK auf den Verkauf
   requestedAt         DateTime     @default(now()) @map("requested_at") // Meldedatum
   receivedAt          DateTime?    @map("received_at")
@@ -607,10 +610,59 @@ model Return {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  returnLines  ReturnLine[]
 
+  @@unique([organizationId, returnNumber])
   @@index([organizationId])
   @@index([organizationId, status])
   @@map("returns")
+}
+
+model ReturnLine {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  returnId          String   @map("return_id")
+  saleLineId        String   @map("sale_line_id")
+  quantity          Int
+  problemType       String?  @map("problem_type")
+  condition         String?
+  refundAmountCents Int?     @map("refund_amount_cents")
+  extraCostsCents   Int?     @map("extra_costs_cents")
+  comment           String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  return            Return             @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleLine          SaleLine           @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
+  returnAllocations ReturnAllocation[]
+
+  @@index([organizationId])
+  @@index([returnId])
+  @@index([saleLineId])
+  @@map("return_lines")
+}
+
+model ReturnAllocation {
+  id                   String   @id @default(cuid())
+  organizationId       String   @map("organization_id")
+  returnLineId         String   @map("return_line_id")
+  saleLineAllocationId String   @map("sale_line_allocation_id")
+  quantity             Int
+  receiptMovementId    String?  @map("receipt_movement_id")
+  restockMovementId    String?  @map("restock_movement_id")
+  defectiveMovementId  String?  @map("defective_movement_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  returnLine         ReturnLine         @relation(fields: [returnLineId], references: [id], onDelete: Cascade)
+  saleLineAllocation SaleLineAllocation @relation(fields: [saleLineAllocationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([returnLineId])
+  @@index([saleLineAllocationId])
+  @@map("return_allocations")
 }
 
 model ConsignmentInventory {
@@ -1044,6 +1096,7 @@ model SaleLine {
   sale         Sale                 @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
   allocations  SaleLineAllocation[]
+  returnLines  ReturnLine[]
 
   @@index([organizationId])
   @@index([saleId])
@@ -1062,9 +1115,10 @@ model SaleLineAllocation {
   consignmentSettlementSnapshot Decimal?      @map("consignment_settlement_snapshot") @db.Decimal(12, 2)
   createdAt                     DateTime      @default(now()) @map("created_at")
 
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  saleLine          SaleLine          @relation(fields: [saleLineId], references: [id], onDelete: Cascade)
-  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Restrict)
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  saleLine          SaleLine           @relation(fields: [saleLineId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition  @relation(fields: [inventoryPositionId], references: [id], onDelete: Restrict)
+  returnAllocations ReturnAllocation[]
 
   @@index([organizationId])
   @@index([saleLineId])
