@@ -8,6 +8,7 @@
         "start": "next start",
         "lint": "eslint",
         "test": "vitest run",
+        "integrity:check": "node scripts/integrity-check.mjs",
         "postinstall": "prisma generate",
         "db:up": "powershell -ExecutionPolicy Bypass -File scripts/db-start.ps1",
         "db:down": "powershell -ExecutionPolicy Bypass -File scripts/db-stop.ps1",

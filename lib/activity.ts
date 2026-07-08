@@ -17,6 +17,12 @@ interface AuditPayload {
   tier?: string;
   debtor?: string;
   creditor?: string;
+  purchaseNumber?: string;
+  inventoryNumber?: string;
+  saleNumber?: string;
+  returnNumber?: string;
+  debtNumber?: string;
+  productName?: string;
 }
 
 export interface ActivityEntry {
@@ -51,6 +57,8 @@ const ENTITY_ROUTES: Record<string, string> = {
   Task: "/aufgaben",
   Product: "/produkte",
   ConsignmentInventory: "/konsignation",
+  InventoryPosition: "/lager",
+  Purchase: "/lager",
   ShippingRate: "/versand",
   Credential: "/zugangsdaten",
   Membership: "/team",
@@ -66,6 +74,11 @@ function ref(payload: AuditPayload): string {
   }
   return (
     payload.sku ??
+    payload.purchaseNumber ??
+    payload.inventoryNumber ??
+    payload.saleNumber ??
+    payload.returnNumber ??
+    payload.debtNumber ??
     payload.orderNumber ??
     payload.label ??
     payload.name ??
@@ -121,6 +134,17 @@ export function activityText(
     "organization.export": `hat den Datenexport ausgeführt`,
     "billing.tier_change": `hat den Plan auf ${a.tier ?? "?"} geändert`,
     "import.run": `hat ${a.importedCount ?? "?"} Zeilen in „${a.table ?? "?"}“ importiert`,
+    "purchase.create": `hat Wareneingang ${a.purchaseNumber ?? target} erfasst`,
+    "owned_stock_lot.create": `hat Lagerbestand ${a.inventoryNumber ?? target} erfasst`,
+    "owned_purchase.create_from_stock_form": `hat Wareneingang ${a.purchaseNumber ?? target} erfasst`,
+    "owned_stock_lot.entry_status_change": `hat Status von ${a.inventoryNumber ?? target} geändert`,
+    "consignment_lot.create": `hat Konsignationsbestand ${a.inventoryNumber ?? target} erfasst`,
+    "sale.create_v2": `hat Verkauf ${a.saleNumber ?? target} abgeschlossen`,
+    "sale.cancel_v2": `hat Verkauf ${a.saleNumber ?? target} storniert`,
+    "return.create_v2": `hat Retoure ${a.returnNumber ?? target} erfasst`,
+    "debt.create_purchase": `hat Schuld ${a.debtNumber ?? target} aus Einkauf ${a.purchaseNumber ?? ""} angelegt`,
+    "debt.create_sale": `hat Schuld ${a.debtNumber ?? target} aus Verkauf ${a.saleNumber ?? ""} angelegt`,
+    "inventory.movement": `hat eine Bestandsbewegung für ${a.inventoryNumber ?? target} gebucht`,
     "tax_rate.create": `hat einen Steuersatz angelegt`,
     "tax_rate.update": `hat einen Steuersatz geändert`,
   };

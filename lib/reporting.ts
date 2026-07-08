@@ -63,6 +63,8 @@ export interface DashboardKpis {
   profitCents: number;
   openReturnsCount: number;
   stockInStockCount: number; // Artikel auf Lager
+  consignmentStockCount: number;
+  stockValueCents: number;
   stockInTransitCount: number; // unterwegs
   openInvoicesCount: number; // Verkäufe mit Rechnung = Offen
   dueTasksCount: number; // Frist heute oder überschritten
@@ -76,7 +78,16 @@ export async function loadDashboardKpis(
 ): Promise<DashboardKpis> {
   const soldAt = rangeWhere(range);
 
-  const [sales, openReturns, inStock, inTransit, openInvoices, dueTasks] =
+  const [
+    sales,
+    openReturns,
+    inventoryStock,
+    ownedInventory,
+    legacyInStock,
+    legacyInTransit,
+    openInvoices,
+    dueTasks,
+  ] =
     await Promise.all([
       db.sale.aggregate({
         where: { soldAt },
@@ -87,6 +98,17 @@ export async function loadDashboardKpis(
         where: {
           requestedAt: soldAt,
           status: { in: ["REQUESTED", "RECEIVED", "CONFLICT"] },
+        },
+      }),
+      db.inventoryPosition.aggregate({
+        where: { active: true },
+        _sum: { quantityAvailable: true },
+      }),
+      db.inventoryPosition.findMany({
+        where: { active: true, inventoryType: "OWNED" },
+        select: {
+          quantityAvailable: true,
+          ownedLot: { select: { unitPriceNet: true } },
         },
       }),
       db.stockItem.count({ where: { status: { in: [...STOCK_ON_HAND] } } }),
@@ -106,8 +128,20 @@ export async function loadDashboardKpis(
     revenueCents: sales._sum.salePriceCents ?? 0,
     profitCents: sales._sum.profitCents ?? 0,
     openReturnsCount: openReturns,
-    stockInStockCount: inStock,
-    stockInTransitCount: inTransit,
+    stockInStockCount: (inventoryStock._sum.quantityAvailable ?? 0) + legacyInStock,
+    consignmentStockCount:
+      (await db.inventoryPosition.aggregate({
+        where: { active: true, inventoryType: "CONSIGNMENT" },
+        _sum: { quantityAvailable: true },
+      }))._sum.quantityAvailable ?? 0,
+    stockValueCents: ownedInventory.reduce(
+      (sum, position) =>
+        sum +
+        position.quantityAvailable *
+          Math.round(Number(position.ownedLot?.unitPriceNet ?? 0) * 100),
+      0
+    ),
+    stockInTransitCount: legacyInTransit,
     openInvoicesCount: openInvoices,
     dueTasksCount: dueTasks,
   };
@@ -217,10 +251,21 @@ export async function loadPurchaseVsSaleMonthly(
   db: TenantDb,
   range: DateRange
 ): Promise<MonthFlowRow[]> {
-  const [purchases, sales] = await Promise.all([
+  const [legacyPurchases, inventoryPurchases, sales] = await Promise.all([
     db.stockItem.findMany({
       where: { purchaseDate: rangeWhere(range) },
       select: { purchaseDate: true, purchasePriceCents: true },
+    }),
+    db.inventoryPosition.findMany({
+      where: {
+        inventoryType: "OWNED",
+        receivedAt: rangeWhere(range),
+      },
+      select: {
+        receivedAt: true,
+        quantityReceived: true,
+        ownedLot: { select: { unitPriceGross: true } },
+      },
     }),
     db.sale.findMany({
       where: { soldAt: rangeWhere(range) },
@@ -246,8 +291,12 @@ export async function loadPurchaseVsSaleMonthly(
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
-  for (const p of purchases) {
+  for (const p of legacyPurchases) {
     if (p.purchaseDate) ensure(p.purchaseDate).einkauf += p.purchasePriceCents;
+  }
+  for (const p of inventoryPurchases) {
+    ensure(p.receivedAt).einkauf +=
+      p.quantityReceived * Math.round(Number(p.ownedLot?.unitPriceGross ?? 0) * 100);
   }
   for (const s of sales) ensure(s.soldAt).verkauf += s.salePriceCents;
 
@@ -307,6 +356,11 @@ export async function loadTopProducts(
     where: { soldAt: rangeWhere(range) },
     select: {
       profitCents: true,
+      saleLines: {
+        select: {
+          descriptionSnapshot: true,
+        },
+      },
       items: {
         select: {
           stockItem: { select: { title: true } },
@@ -319,13 +373,11 @@ export async function loadTopProducts(
   const map = new Map<string, { profit: number; count: number }>();
   for (const s of sales) {
     // Gewinn dem/den Modell(en) des Verkaufs zuordnen (bei Mehrartikel geteilt)
-    const models = [
-      ...new Set(
-        s.items
-          .map((i) => i.stockItem?.title ?? i.consignment?.itemTitle)
-          .filter((m): m is string => Boolean(m))
-      ),
-    ];
+    const lineModels = s.saleLines.map((line) => line.descriptionSnapshot);
+    const legacyModels = s.items
+      .map((i) => i.stockItem?.title ?? i.consignment?.itemTitle)
+      .filter((m): m is string => Boolean(m));
+    const models = [...new Set(lineModels.length > 0 ? lineModels : legacyModels)];
     if (models.length === 0) continue;
     const share = s.profitCents / models.length;
     for (const model of models) {
@@ -350,6 +402,11 @@ export async function loadRecentSales(db: TenantDb) {
   return db.sale.findMany({
     include: {
       platform: { select: { name: true } },
+      saleLines: {
+        select: {
+          descriptionSnapshot: true,
+        },
+      },
       items: {
         select: {
           stockItem: { select: { title: true } },
@@ -390,11 +447,35 @@ export async function loadLowStockAlerts(
   db: TenantDb,
   threshold: number
 ): Promise<LowStockAlert[]> {
-  const items = await db.stockItem.findMany({
-    select: { title: true, variant: true, status: true },
-  });
+  const [items, positions] = await Promise.all([
+    db.stockItem.findMany({
+      select: { title: true, variant: true, status: true },
+    }),
+    db.inventoryPosition.findMany({
+      where: { active: true },
+      select: {
+        quantityAvailable: true,
+        quantityReceived: true,
+        product: { select: { name: true, variant: true } },
+      },
+    }),
+  ]);
 
   const groups = new Map<string, { key: string; model: string; onHand: number; total: number }>();
+  for (const position of positions) {
+    const key = lowStockKey(position.product.name, position.product.variant);
+    const g = groups.get(key) ?? {
+      key,
+      model: position.product.variant
+        ? `${position.product.name} (${position.product.variant})`
+        : position.product.name,
+      onHand: 0,
+      total: 0,
+    };
+    g.total += position.quantityReceived;
+    g.onHand += position.quantityAvailable;
+    groups.set(key, g);
+  }
   for (const item of items) {
     const key = lowStockKey(item.title, item.variant);
     const g = groups.get(key) ?? {

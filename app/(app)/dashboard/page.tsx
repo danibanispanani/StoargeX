@@ -46,7 +46,13 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-function saleModels(items: Array<{ stockItem: { title: string } | null; consignment: { itemTitle: string } | null }>) {
+function saleModels(
+  items: Array<{ stockItem: { title: string } | null; consignment: { itemTitle: string } | null }>,
+  saleLines: Array<{ descriptionSnapshot: string }> = []
+) {
+  if (saleLines.length > 0) {
+    return [...new Set(saleLines.map((line) => line.descriptionSnapshot))].join(", ");
+  }
   return (
     [
       ...new Set(items.map((i) => i.stockItem?.title ?? i.consignment?.itemTitle).filter(Boolean)),
@@ -319,7 +325,7 @@ export default async function DashboardPage({
                 {recentSales.map((sale) => (
                   <TableRow key={sale.id}>
                     <TableCell className="font-mono text-xs">{sale.orderNumber ?? "–"}</TableCell>
-                    <TableCell className="max-w-40 truncate">{saleModels(sale.items)}</TableCell>
+                    <TableCell className="max-w-40 truncate">{saleModels(sale.items, sale.saleLines)}</TableCell>
                     <TableCell className="text-right font-mono">{formatEuro(sale.salePriceCents)}</TableCell>
                     <TableCell>
                       {SALE_STATUS[sale.status] && <StatusBadge style={SALE_STATUS[sale.status]!} />}

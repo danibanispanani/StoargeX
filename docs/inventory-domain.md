@@ -243,3 +243,17 @@ Legacy-Tabellen-Inserts.
 - Schuldenreferenzen unterstützen Einzelwerte, `&`, Bindestrichbereiche,
   `bis`, Zeilenumbrüche und Leerzeichenvarianten. Gesamtbeträge werden bei
   Mehrfachreferenzen nicht vervielfacht.
+## Abschlussintegration ab Phase 10
+
+Die neue relationale Architektur ist fachlich führend. Neue Kernprozesse laufen
+über:
+
+- Einkauf: `Purchase -> PurchaseLine -> InventoryPosition(OWNED) -> OwnedStockLot -> PURCHASE_RECEIPT`.
+- Konsignation: `InventoryPosition(CONSIGNMENT) -> ConsignmentLot -> CONSIGNMENT_RECEIPT`.
+- Verkauf: `Sale -> SaleLine -> SaleLineAllocation -> SALE_OUT`.
+- Retoure: `Return -> ReturnLine -> ReturnAllocation -> RETURN_RECEIPT/RETURN_RESTOCK/RETURN_DEFECTIVE`.
+- Schulden: `Debt -> DebtPurchaseLink` beziehungsweise `DebtSaleLink`.
+
+Legacy-Modelle (`StockItem`, `SaleItem`, `ConsignmentInventory`, `Debt.refId`)
+werden nicht destruktiv entfernt, solange historische Anzeige, Export,
+Import-Review oder Dashboard-Fallbacks darauf zugreifen.

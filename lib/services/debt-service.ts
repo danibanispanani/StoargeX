@@ -244,6 +244,7 @@ export async function settleDebt(input: {
       settledAt: existing.settledAt?.toISOString() ?? null,
     },
     after: {
+      debtNumber: debt.debtNumber,
       status: debt.status,
       settledAt: debt.settledAt?.toISOString() ?? null,
     },
