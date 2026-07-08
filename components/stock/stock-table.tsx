@@ -24,6 +24,12 @@ import { formatEuro } from "@/lib/calculations";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
+import {
+  DetailDrawer,
+  DetailGrid,
+  DetailSection,
+} from "@/components/table/detail-drawer";
 import {
   Table,
   TableBody,
@@ -121,12 +127,22 @@ export function StockTable({
         />
       )}
 
+      <CompactTableShell
+        storageKey="lager"
+        views={[
+          { value: "standard", label: "Standard" },
+          { value: "einkauf", label: "Einkauf" },
+          { value: "listings", label: "Listings" },
+          { value: "bestand", label: "Bestand" },
+          { value: "all", label: "Alle Spalten" },
+        ]}
+      >
       <Card>
         <CardContent className="overflow-x-auto">
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead className="sx-sticky-0 w-10">
+                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-0 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -135,19 +151,19 @@ export function StockTable({
                     className="size-4"
                   />
                 </TableHead>
-                <TableHead className="sx-sticky-1">Lager-Nr.</TableHead>
-                <TableHead>Datum</TableHead>
-                <TableHead>Artikel</TableHead>
-                <TableHead className="text-right">Menge</TableHead>
-                <TableHead className="text-right">EK netto</TableHead>
-                <TableHead>ZM</TableHead>
-                <TableHead>Kauf</TableHead>
-                <TableHead>Retoure</TableHead>
-                <TableHead>Bestandsstatus</TableHead>
-                <TableHead>Listings</TableHead>
-                <TableHead>EAN</TableHead>
-                <TableHead>Bilder</TableHead>
-                <TableHead className="w-24" />
+                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-1">Lager-Nr.</TableHead>
+                <TableHead data-column data-view-standard data-view-einkauf data-view-all>Datum</TableHead>
+                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all>Artikel</TableHead>
+                <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Bestand</TableHead>
+                <TableHead data-column data-view-standard data-view-einkauf data-view-all className="text-right">EK netto</TableHead>
+                <TableHead data-column data-view-standard data-view-einkauf data-view-all>ZM</TableHead>
+                <TableHead data-column data-view-einkauf data-view-all>Kauf</TableHead>
+                <TableHead data-column data-view-einkauf data-view-all>Retoure</TableHead>
+                <TableHead data-column data-view-standard data-view-bestand data-view-all>Bestandsstatus</TableHead>
+                <TableHead data-column data-view-standard data-view-listings data-view-all>Listings</TableHead>
+                <TableHead data-column data-view-einkauf data-view-listings data-view-all>EAN</TableHead>
+                <TableHead data-column data-view-listings data-view-all>Bilder</TableHead>
+                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="w-36">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -169,7 +185,7 @@ export function StockTable({
                   data-selected={selected.has(row.id)}
                   data-low={row.low}
                 >
-                  <TableCell className="sx-sticky-0">
+                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-0">
                     {row.source === "legacy" ? (
                       <input
                         type="checkbox"
@@ -182,23 +198,24 @@ export function StockTable({
                       <span className="text-xs text-muted-foreground">Neu</span>
                     )}
                   </TableCell>
-                  <TableCell className="sx-sticky-1 font-mono text-xs">{row.sku}</TableCell>
-                  <TableCell className="whitespace-nowrap">{row.date}</TableCell>
-                  <TableCell className="min-w-56">
+                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-1 font-mono text-xs">{row.sku}</TableCell>
+                  <TableCell data-column data-view-standard data-view-einkauf data-view-all className="whitespace-nowrap">{row.date}</TableCell>
+                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-cell-primary min-w-56">
                     <div className="font-medium">{row.title}</div>
                     <div className="text-xs text-muted-foreground">
                       {[row.variant, row.size].filter(Boolean).join(" · ") || "–"}
                     </div>
                     <div className="text-xs text-muted-foreground">{row.supplier || "–"}</div>
                   </TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right font-mono">
                     {row.availableQuantity} / {row.originalQuantity}
+                    <div className="text-xs text-muted-foreground">verfügbar</div>
                   </TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell data-column data-view-standard data-view-einkauf data-view-all className="sx-cell-money text-right font-mono">
                     {row.netCents !== null ? formatEuro(row.netCents) : "–"}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">{row.zm || "–"}</TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-einkauf data-view-all className="whitespace-nowrap">{row.zm || "–"}</TableCell>
+                  <TableCell data-column data-view-einkauf data-view-all>
                     <ColoredSelect
                       value={row.kaufStatus}
                       options={KAUF_STATUS_OPTIONS}
@@ -218,7 +235,7 @@ export function StockTable({
                       }
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-einkauf data-view-all>
                     <ColoredSelect
                       value={row.retoureStatus}
                       options={RETOURE_STATUS_OPTIONS}
@@ -238,7 +255,7 @@ export function StockTable({
                       }
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-bestand data-view-all>
                     {row.source === "owned" ? (
                       <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">
                         {row.derivedStatus}
@@ -268,7 +285,7 @@ export function StockTable({
                       </select>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-listings data-view-all>
                     <ListingDetails
                       row={row}
                       platforms={platforms}
@@ -282,8 +299,8 @@ export function StockTable({
                       }
                     />
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{row.ean || "–"}</TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-einkauf data-view-listings data-view-all className="font-mono text-xs">{row.ean || "–"}</TableCell>
+                  <TableCell data-column data-view-listings data-view-all>
                     {row.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -295,22 +312,25 @@ export function StockTable({
                       "–"
                     )}
                   </TableCell>
-                  <TableCell>
-                    {row.source === "owned" ? (
-                      <QuantityAdjustmentDialog row={row} />
-                    ) : (
-                      <StockItemDialog
-                        item={toEditable(row)}
-                        platforms={platforms}
-                        zmOptions={zmOptions}
-                        products={products}
-                        trigger={
-                          <Button variant="ghost" size="sm">
-                            Bearbeiten
-                          </Button>
-                        }
-                      />
-                    )}
+                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all>
+                    <div className="flex justify-end gap-1">
+                      <StockDetailDrawer row={row} platforms={platforms} />
+                      {row.source === "owned" ? (
+                        <QuantityAdjustmentDialog row={row} />
+                      ) : (
+                        <StockItemDialog
+                          item={toEditable(row)}
+                          platforms={platforms}
+                          zmOptions={zmOptions}
+                          products={products}
+                          trigger={
+                            <Button variant="ghost" size="sm">
+                              Bearbeiten
+                            </Button>
+                          }
+                        />
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -318,7 +338,81 @@ export function StockTable({
           </Table>
         </CardContent>
       </Card>
+      </CompactTableShell>
     </div>
+  );
+}
+
+function StockDetailDrawer({
+  row,
+  platforms,
+}: {
+  row: StockRow;
+  platforms: Array<{ id: string; name: string }>;
+}) {
+  const listingNames = platforms
+    .filter((platform) => row.listings.includes(platform.id))
+    .map((platform) => platform.name);
+
+  return (
+    <DetailDrawer title={row.sku} description={row.title}>
+      <DetailSection title="Artikel">
+        <DetailGrid
+          items={[
+            { label: "Name", value: row.title },
+            { label: "Variante", value: row.variant || "–" },
+            { label: "Größe", value: row.size || "–" },
+            { label: "EAN", value: row.ean || "–" },
+          ]}
+        />
+      </DetailSection>
+      <DetailSection title="Einkauf">
+        <DetailGrid
+          items={[
+            { label: "Datum", value: row.date },
+            { label: "Händler", value: row.supplier || "–" },
+            { label: "Zahlungsmethode", value: row.zm || "–" },
+            { label: "VST", value: row.inputTaxDeductible ? "Ja" : "Nein" },
+            { label: "Kaufstatus", value: row.kaufStatus },
+            { label: "Retourenstatus", value: row.retoureStatus },
+          ]}
+        />
+      </DetailSection>
+      <DetailSection title="Finanzen">
+        <DetailGrid
+          items={[
+            { label: "EK brutto", value: formatEuro(row.grossCents) },
+            { label: "EK netto", value: row.netCents !== null ? formatEuro(row.netCents) : "–" },
+          ]}
+        />
+      </DetailSection>
+      <DetailSection title="Bestand">
+        <DetailGrid
+          items={[
+            { label: "Verfügbar", value: row.availableQuantity },
+            { label: "Ursprünglich", value: row.originalQuantity },
+            { label: "Status", value: row.derivedStatus ?? STOCK_STATUS[row.status].label },
+            { label: "Niedriger Bestand", value: row.low ? "Ja" : "Nein" },
+          ]}
+        />
+      </DetailSection>
+      <DetailSection title="Listings">
+        <p>{listingNames.length ? listingNames.join(" · ") : "Keine Listings"}</p>
+      </DetailSection>
+      <DetailSection title="Bestandsverlauf">
+        <p>Bewegungen liegen im InventoryMovement-Verlauf und bleiben prüfbar.</p>
+      </DetailSection>
+      {row.source === "legacy" && (
+        <DetailSection title="Legacy-Importinformationen">
+          <DetailGrid
+            items={[
+              { label: "Legacy-ID", value: row.id },
+              { label: "Notizen", value: row.notes || "–" },
+            ]}
+          />
+        </DetailSection>
+      )}
+    </DetailDrawer>
   );
 }
 

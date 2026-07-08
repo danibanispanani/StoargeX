@@ -14,6 +14,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
+import {
+  DetailDrawer,
+  DetailGrid,
+  DetailSection,
+} from "@/components/table/detail-drawer";
 import {
   Table,
   TableBody,
@@ -107,25 +113,33 @@ export default async function DebtsPage() {
         </div>
       </div>
 
+      <CompactTableShell
+        storageKey="schulden"
+        views={[
+          { value: "standard", label: "Standard" },
+          { value: "buchhaltung", label: "Buchhaltung" },
+          { value: "all", label: "Alle Spalten" },
+        ]}
+      >
       <Card>
         <CardContent className="overflow-x-auto">
-          <Table>
+          <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead>Datum</TableHead>
-                <TableHead>Schuld</TableHead>
-                <TableHead>Bezug</TableHead>
-                <TableHead>Artikelbeschreibung</TableHead>
-                <TableHead>Art</TableHead>
-                <TableHead className="text-right">Menge</TableHead>
-                <TableHead className="text-right">Betrag</TableHead>
-                <TableHead>Schuldner</TableHead>
-                <TableHead>Empfänger</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Eintrag</TableHead>
-                <TableHead>Beglichen am</TableHead>
-                <TableHead>Kommentar</TableHead>
-                <TableHead className="w-36" />
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>Datum</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>SCH-Nummer</TableHead>
+                <TableHead data-column data-view-standard data-view-all>Bezug</TableHead>
+                <TableHead data-column data-view-standard data-view-all>Beschreibung</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all>Art</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">Menge</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all className="text-right">Betrag</TableHead>
+                <TableHead data-column data-view-standard data-view-all>Schuldner</TableHead>
+                <TableHead data-column data-view-standard data-view-all>Empfänger</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>Status</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all>Eintrag</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all>Beglichen am</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all>Kommentar</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all className="w-48">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,41 +157,42 @@ export default async function DebtsPage() {
                   key={debt.id}
                   className={debt.status === "SETTLED" ? "opacity-60" : ""}
                 >
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all className="whitespace-nowrap">
                     {debt.debtDate.toLocaleDateString("de-DE")}
                   </TableCell>
-                  <TableCell className="max-w-32 truncate font-mono text-xs">
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all className="max-w-32 truncate font-mono text-xs">
                     {debt.debtNumber ?? "–"}
                   </TableCell>
-                  <TableCell className="max-w-40 truncate">
+                  <TableCell data-column data-view-standard data-view-all className="max-w-40 truncate">
                     <DebtReference debt={debt} />
                   </TableCell>
-                  <TableCell className="max-w-52 truncate">
+                  <TableCell data-column data-view-standard data-view-all className="sx-cell-primary max-w-52 truncate">
                     {debt.description ?? "–"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all>
                     <Badge variant="outline">{DEBT_TYPE_LABELS[debt.type]}</Badge>
                   </TableCell>
-                  <TableCell className="text-right">{debt.quantity}</TableCell>
-                  <TableCell className="text-right font-mono font-medium">
+                  <TableCell data-column data-view-buchhaltung data-view-all className="text-right">{debt.quantity}</TableCell>
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono font-medium">
                     {formatEuro(debt.amountCents)}
                   </TableCell>
-                  <TableCell>{debt.debtorName}</TableCell>
-                  <TableCell>{debt.creditorName}</TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-all>{debt.debtorName}</TableCell>
+                  <TableCell data-column data-view-standard data-view-all>{debt.creditorName}</TableCell>
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all>
                     <DebtStatusSelect debtId={debt.id} status={debt.status} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all>
                     <DebtEntrySelect debtId={debt.id} entryStatus={debt.entryStatus} />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell data-column data-view-buchhaltung data-view-all className="whitespace-nowrap">
                     {debt.settledAt?.toLocaleDateString("de-DE") ?? "–"}
                   </TableCell>
-                  <TableCell className="max-w-36 truncate">
+                  <TableCell data-column data-view-buchhaltung data-view-all className="max-w-36 truncate">
                     {debt.notes ?? "–"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all>
                     <div className="flex gap-1">
+                      <DebtDetailDrawer debt={debt} />
                       <DebtDialog
                         debt={toEditable(debt)}
                         memberNames={memberNames}
@@ -196,6 +211,7 @@ export default async function DebtsPage() {
           </Table>
         </CardContent>
       </Card>
+      </CompactTableShell>
     </div>
   );
 }
@@ -237,4 +253,47 @@ function DebtReference({ debt }: { debt: DebtWithReference }) {
 
   if (debt.type === "MANUAL") return <span>Manuell</span>;
   return <span className="font-mono text-xs">{debt.refId ?? "Legacy"}</span>;
+}
+
+function DebtDetailDrawer({ debt }: { debt: DebtWithReference }) {
+  return (
+    <DetailDrawer
+      title={debt.debtNumber ?? debt.id.slice(0, 8)}
+      description={debt.description ?? "Schuld"}
+    >
+      <DetailSection title="Bezug">
+        <div className="text-foreground">
+          <DebtReference debt={debt} />
+        </div>
+      </DetailSection>
+      <DetailSection title="Schuld">
+        <DetailGrid
+          items={[
+            { label: "Datum", value: debt.debtDate.toLocaleDateString("de-DE") },
+            { label: "Art", value: DEBT_TYPE_LABELS[debt.type] },
+            { label: "Menge", value: debt.quantity },
+            { label: "Betrag", value: formatEuro(debt.amountCents) },
+            { label: "Bezahlt", value: formatEuro(debt.paidCents) },
+            { label: "Offen", value: formatEuro(debt.amountCents - debt.paidCents) },
+          ]}
+        />
+      </DetailSection>
+      <DetailSection title="Parteien und Status">
+        <DetailGrid
+          items={[
+            { label: "Schuldner", value: debt.debtorName },
+            { label: "Empfänger", value: debt.creditorName },
+            { label: "Status", value: debt.status },
+            { label: "Eintrag", value: debt.entryStatus },
+            { label: "Beglichen am", value: debt.settledAt?.toLocaleDateString("de-DE") ?? "–" },
+          ]}
+        />
+      </DetailSection>
+      {debt.notes && (
+        <DetailSection title="Kommentar">
+          <p>{debt.notes}</p>
+        </DetailSection>
+      )}
+    </DetailDrawer>
+  );
 }

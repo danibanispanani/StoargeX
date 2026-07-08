@@ -10,6 +10,12 @@ import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
+import {
+  DetailDrawer,
+  DetailGrid,
+  DetailSection,
+} from "@/components/table/detail-drawer";
 import {
   Table,
   TableBody,
@@ -111,6 +117,11 @@ export default async function SalesPage({
         where,
         include: {
           platform: { select: { name: true } },
+          debtLinks: {
+            include: {
+              debt: { select: { debtNumber: true, status: true } },
+            },
+          },
           saleLines: {
             include: {
               allocations: {
@@ -268,6 +279,78 @@ export default async function SalesPage({
     };
   }
 
+  function SaleDetailDrawer({ row }: { row: (typeof rows)[number] }) {
+    const allocationLabels = row.sale.saleLines.flatMap((line) =>
+      line.allocations.map(
+        (allocation) =>
+          `${allocation.inventoryPosition.inventoryNumber} × ${allocation.quantity}`
+      )
+    );
+
+    return (
+      <DetailDrawer
+        title={row.sale.orderNumber ?? row.sale.id.slice(0, 8)}
+        description={row.itemInfos.map((item) => item.model).join(", ")}
+      >
+        <DetailSection title="Verkauf">
+          <DetailGrid
+            items={[
+              { label: "Datum", value: row.sale.soldAt.toLocaleDateString("de-DE") },
+              { label: "Menge", value: row.sale.quantity },
+              { label: "Plattform", value: row.sale.platform.name },
+              { label: "Status", value: row.sale.status },
+              { label: "Rechnung", value: row.sale.invoiceCreated ? "Erledigt" : "Offen" },
+              { label: "Relation", value: row.sale.historicalRelationStatus },
+            ]}
+          />
+        </DetailSection>
+        <DetailSection title="Artikel">
+          <p>{row.itemInfos.map((item) => `${item.model} × ${item.quantity}`).join(" · ")}</p>
+          <p className="font-mono text-xs">{row.itemInfos.map((item) => item.sku).join(" · ")}</p>
+        </DetailSection>
+        <DetailSection title="Finanzen">
+          <DetailGrid
+            items={[
+              { label: "VK brutto", value: formatEuro(row.sale.salePriceCents) },
+              { label: "VK netto", value: formatEuro(row.sale.saleNetCents) },
+              { label: "Steuern", value: formatEuro(row.sale.salePriceCents - row.sale.saleNetCents) },
+              { label: "EK netto", value: formatEuro(row.ekNetCents) },
+              { label: "Gebühren", value: formatEuro(row.sale.platformFeeNetCents || row.sale.platformFeeCents) },
+              { label: "Versand", value: formatEuro(row.sale.shippingCostCents) },
+              { label: "Gewinn", value: formatEuro(row.sale.profitCents) },
+              { label: "Marge", value: formatPercent(row.sale.profitCents, row.sale.salePriceCents) },
+            ]}
+          />
+        </DetailSection>
+        <DetailSection title="Versand und Auszahlung">
+          <DetailGrid
+            items={[
+              { label: "Versandart", value: row.sale.shippingMethod ?? "–" },
+              { label: "Land", value: row.sale.buyerCountry },
+              { label: "Auszahlung", value: row.sale.payoutRecipient ?? "–" },
+              {
+                label: "Schulden",
+                value: row.sale.debtLinks.length
+                  ? row.sale.debtLinks
+                      .map((link) => `${link.debt.debtNumber ?? "SCH"} · ${link.debt.status}`)
+                      .join(", ")
+                  : "–",
+              },
+            ]}
+          />
+        </DetailSection>
+        <DetailSection title="Bestandsbezug">
+          <p>{allocationLabels.length ? allocationLabels.join(" · ") : "Legacy oder ungeklärt"}</p>
+        </DetailSection>
+        {row.sale.notes && (
+          <DetailSection title="Kommentar">
+            <p>{row.sale.notes}</p>
+          </DetailSection>
+        )}
+      </DetailDrawer>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -302,35 +385,54 @@ export default async function SalesPage({
         shippingMethods={shippingMethodOptions}
       />
 
+      <CompactTableShell
+        storageKey="verkauf"
+        views={[
+          { value: "standard", label: "Standard" },
+          { value: "buchhaltung", label: "Buchhaltung" },
+          { value: "versand", label: "Versand" },
+          { value: "auszahlung", label: "Auszahlung" },
+          { value: "all", label: "Alle Spalten" },
+        ]}
+      >
       <Card>
         <CardContent className="overflow-x-auto">
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead className="sx-sticky-0">Verkauf</TableHead>
-                <TableHead>Datum</TableHead>
-                <TableHead>Artikel</TableHead>
-                <TableHead className="text-right">Menge</TableHead>
-                <TableHead className="text-right">VK brutto</TableHead>
-                <TableHead className="text-right">Gewinn</TableHead>
-                <TableHead>Plattform</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Rechnung</TableHead>
-                <TableHead>Auszahlung</TableHead>
-                <TableHead className="w-40 text-right">Aktionen</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-versand data-view-auszahlung data-view-all className="sx-sticky-0">Verkauf</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>Datum</TableHead>
+                <TableHead data-column data-view-standard data-view-versand data-view-all>Artikel</TableHead>
+                <TableHead data-column data-view-standard data-view-all className="text-right">Menge</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-auszahlung data-view-all className="text-right">VK brutto</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">Steuern</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">VK netto</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">EK netto</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">Gebühren</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">Versand</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all className="text-right">Gewinn</TableHead>
+                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">Marge</TableHead>
+                <TableHead data-column data-view-standard data-view-versand data-view-auszahlung data-view-all>Plattform</TableHead>
+                <TableHead data-column data-view-standard data-view-versand data-view-all>Status</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>Rechnung</TableHead>
+                <TableHead data-column data-view-versand data-view-all>Versandart</TableHead>
+                <TableHead data-column data-view-versand data-view-all>Land</TableHead>
+                <TableHead data-column data-view-standard data-view-auszahlung data-view-all>Auszahlung</TableHead>
+                <TableHead data-column data-view-auszahlung data-view-all>Schuldstatus</TableHead>
+                <TableHead data-column data-view-standard data-view-buchhaltung data-view-versand data-view-auszahlung data-view-all className="w-48 text-right">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={20} className="py-8 text-center text-muted-foreground">
                     Keine Verkäufe gefunden.
                   </TableCell>
                 </TableRow>
               )}
               {rows.map((row) => (
                 <TableRow key={row.sale.id}>
-                  <TableCell className="sx-sticky-0 font-mono text-xs">
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-versand data-view-auszahlung data-view-all className="sx-sticky-0 font-mono text-xs">
                     {row.sale.orderNumber ?? "–"}
                     {!row.hasNewLines && (
                       <div className="text-[10px] uppercase text-muted-foreground">
@@ -338,10 +440,10 @@ export default async function SalesPage({
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all className="whitespace-nowrap">
                     {row.sale.soldAt.toLocaleDateString("de-DE")}
                   </TableCell>
-                  <TableCell className="max-w-96">
+                  <TableCell data-column data-view-standard data-view-versand data-view-all className="sx-cell-primary max-w-96">
                     <div className="truncate font-medium">
                       {[...new Set(row.itemInfos.map((item) => item.model))].join(", ")}
                     </div>
@@ -349,13 +451,32 @@ export default async function SalesPage({
                       {row.itemInfos.map((item) => item.sku).join(" · ")}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">{row.sale.quantity}</TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell data-column data-view-standard data-view-all className="text-right">{row.sale.quantity}</TableCell>
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-auszahlung data-view-all className="sx-cell-money text-right font-mono">
                     {formatEuro(row.sale.salePriceCents)}
                   </TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono">
+                    {formatEuro(row.sale.salePriceCents - row.sale.saleNetCents)}
+                  </TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono">
+                    {formatEuro(row.sale.saleNetCents)}
+                  </TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono">
+                    {formatEuro(row.ekNetCents)}
+                  </TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono">
+                    {formatEuro(row.sale.platformFeeNetCents || row.sale.platformFeeCents)}
+                  </TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono">
+                    {formatEuro(row.sale.shippingCostCents)}
+                  </TableCell>
                   <TableCell
+                    data-column
+                    data-view-standard
+                    data-view-buchhaltung
+                    data-view-all
                     className={cn(
-                      "text-right font-mono font-medium",
+                      "sx-cell-money text-right font-mono font-medium",
                       row.sale.profitCents < 0
                         ? "text-customs-red"
                         : "text-transit-teal"
@@ -363,21 +484,34 @@ export default async function SalesPage({
                   >
                     {formatEuro(row.sale.profitCents)}
                     <div className="text-xs font-normal text-muted-foreground">
-                      EK {formatEuro(row.ekNetCents)}
+                      {formatPercent(row.sale.profitCents, row.sale.salePriceCents)} Marge
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono">
+                    {formatEuro(row.sale.marginCents)}
+                  </TableCell>
+                  <TableCell data-column data-view-standard data-view-versand data-view-auszahlung data-view-all>
                     <Badge variant="outline">{row.sale.platform.name}</Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-versand data-view-all>
                     <SaleStatusSelect saleId={row.sale.id} status={row.sale.status} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all>
                     <InvoiceSelect saleId={row.sale.id} done={row.sale.invoiceCreated} />
                   </TableCell>
-                  <TableCell>{row.sale.payoutRecipient ?? "–"}</TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-versand data-view-all>{row.sale.shippingMethod ?? "–"}</TableCell>
+                  <TableCell data-column data-view-versand data-view-all>{row.sale.buyerCountry}</TableCell>
+                  <TableCell data-column data-view-standard data-view-auszahlung data-view-all>{row.sale.payoutRecipient ?? "–"}</TableCell>
+                  <TableCell data-column data-view-auszahlung data-view-all>
+                    {row.sale.debtLinks.length
+                      ? row.sale.debtLinks
+                          .map((link) => `${link.debt.debtNumber ?? "SCH"} · ${link.debt.status}`)
+                          .join(", ")
+                      : "–"}
+                  </TableCell>
+                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-versand data-view-auszahlung data-view-all>
                     <div className="flex justify-end gap-1">
+                      <SaleDetailDrawer row={row} />
                       <SaleDialog
                         sale={toEditable(row)}
                         items={sellable}
@@ -417,6 +551,15 @@ export default async function SalesPage({
           </Table>
         </CardContent>
       </Card>
+      </CompactTableShell>
     </div>
   );
+}
+
+function formatPercent(valueCents: number, basisCents: number) {
+  if (basisCents === 0) return "0,0 %";
+  return `${((valueCents / basisCents) * 100).toLocaleString("de-DE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} %`;
 }

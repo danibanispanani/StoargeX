@@ -6,6 +6,12 @@ import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { ConsignmentRowActions } from "@/components/consignment/consignment-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
+import {
+  DetailDrawer,
+  DetailGrid,
+  DetailSection,
+} from "@/components/table/detail-drawer";
 import {
   Table,
   TableBody,
@@ -115,6 +121,50 @@ export default async function ConsignmentPage() {
     } (${formatEuro(sale.salePriceCents)})`,
   }));
 
+  function ConsignmentDetailDrawer({ row }: { row: (typeof rows)[number] }) {
+    return (
+      <DetailDrawer title={row.sku} description={`${row.partner} · ${row.title}`}>
+        <DetailSection title="Artikel">
+          <DetailGrid
+            items={[
+              { label: "Partner", value: row.partner },
+              { label: "Artikel", value: row.title },
+              { label: "Zusatzinfo", value: row.subtitle || "–" },
+              { label: "Quelle", value: row.source === "legacy" ? "Legacy" : "InventoryPosition" },
+            ]}
+          />
+        </DetailSection>
+        <DetailSection title="Bestand">
+          <DetailGrid
+            items={[
+              { label: "Verfügbar", value: row.quantity },
+              { label: "Erhalten", value: row.quantityReceived },
+              { label: "Verkauft", value: row.soldQuantity },
+              { label: "Prüfung", value: row.returnedQuantity },
+              { label: "Defekt", value: row.defectiveQuantity },
+              { label: "Status", value: row.status },
+            ]}
+          />
+        </DetailSection>
+        <DetailSection title="Finanzen und Channel-Preise">
+          <DetailGrid
+            items={[
+              { label: "EK brutto", value: row.costGrossCents != null ? formatEuro(row.costGrossCents) : "–" },
+              { label: "EK netto", value: row.costNetCents != null ? formatEuro(row.costNetCents) : "–" },
+              {
+                label: "Preise",
+                value: row.priceTiers.length
+                  ? row.priceTiers.map((tier) => `${tier.label}: ${formatEuro(tier.cents)}`).join(" · ")
+                  : "–",
+              },
+              { label: "Verknüpfte Verkäufe", value: row.linkedCount },
+            ]}
+          />
+        </DetailSection>
+      </DetailDrawer>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -131,23 +181,32 @@ export default async function ConsignmentPage() {
         </div>
       </div>
 
+      <CompactTableShell
+        storageKey="konsignation"
+        views={[
+          { value: "standard", label: "Standard" },
+          { value: "preise", label: "Channel-Preise" },
+          { value: "bestand", label: "Bestand" },
+          { value: "all", label: "Alle Spalten" },
+        ]}
+      >
       <Card>
         <CardContent>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="sx-datatable">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Konsi-Nr.</TableHead>
-                  <TableHead>Partner</TableHead>
-                  <TableHead>Artikel</TableHead>
-                  <TableHead className="text-right">Verfügbar / erhalten</TableHead>
-                  <TableHead className="text-right">Verkauft</TableHead>
-                  <TableHead className="text-right">Retoure/Prüfung</TableHead>
-                  <TableHead className="text-right">Defekt</TableHead>
-                  <TableHead>EK</TableHead>
-                  <TableHead>Channel-Preise</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-40 text-right">Aktionen</TableHead>
+                  <TableHead data-column data-view-standard data-view-preise data-view-bestand data-view-all>K-Nummer</TableHead>
+                  <TableHead data-column data-view-standard data-view-all>Partner</TableHead>
+                  <TableHead data-column data-view-standard data-view-preise data-view-bestand data-view-all>Artikel</TableHead>
+                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Bestand</TableHead>
+                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Verkauft</TableHead>
+                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Prüfung</TableHead>
+                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Defekt</TableHead>
+                  <TableHead data-column data-view-standard data-view-preise data-view-all>EK</TableHead>
+                  <TableHead data-column data-view-preise data-view-all>Channel-Preise</TableHead>
+                  <TableHead data-column data-view-bestand data-view-all>Status</TableHead>
+                  <TableHead data-column data-view-standard data-view-preise data-view-bestand data-view-all className="w-48 text-right">Aktionen</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -161,7 +220,7 @@ export default async function ConsignmentPage() {
                 )}
                 {rows.map((row) => (
                   <TableRow key={`${row.source}:${row.id}`}>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell data-column data-view-standard data-view-preise data-view-bestand data-view-all className="font-mono text-xs">
                       <div>{row.sku}</div>
                       {row.source === "legacy" && (
                         <span className="text-[10px] uppercase text-muted-foreground">
@@ -169,8 +228,8 @@ export default async function ConsignmentPage() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell>{row.partner}</TableCell>
-                    <TableCell className="max-w-64">
+                    <TableCell data-column data-view-standard data-view-all>{row.partner}</TableCell>
+                    <TableCell data-column data-view-standard data-view-preise data-view-bestand data-view-all className="sx-cell-primary max-w-64">
                       <div className="truncate font-medium">{row.title}</div>
                       {row.subtitle && (
                         <div className="truncate text-xs text-muted-foreground">
@@ -178,13 +237,13 @@ export default async function ConsignmentPage() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">
                       {row.quantity} / {row.quantityReceived}
                     </TableCell>
-                    <TableCell className="text-right">{row.soldQuantity}</TableCell>
-                    <TableCell className="text-right">{row.returnedQuantity}</TableCell>
-                    <TableCell className="text-right">{row.defectiveQuantity}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.soldQuantity}</TableCell>
+                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.returnedQuantity}</TableCell>
+                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.defectiveQuantity}</TableCell>
+                    <TableCell data-column data-view-standard data-view-preise data-view-all className="text-xs">
                       {row.costGrossCents != null ? (
                         <>
                           <div>Brutto {formatEuro(row.costGrossCents)}</div>
@@ -198,14 +257,14 @@ export default async function ConsignmentPage() {
                         <span className="text-muted-foreground">–</span>
                       )}
                     </TableCell>
-                    <TableCell className="max-w-56 text-xs text-muted-foreground">
+                    <TableCell data-column data-view-preise data-view-all className="max-w-56 text-xs text-muted-foreground">
                       {row.priceTiers.length
                         ? row.priceTiers
                             .map((tier) => `${tier.label}: ${formatEuro(tier.cents)}`)
                             .join(" · ")
                         : "–"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-column data-view-bestand data-view-all>
                       <Badge variant={row.source === "legacy" ? "secondary" : "outline"}>
                         {row.status}
                       </Badge>
@@ -215,21 +274,24 @@ export default async function ConsignmentPage() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <ConsignmentRowActions
-                        item={{
-                          id: row.id,
-                          sku: row.sku,
-                          source: row.source,
-                          inventoryPositionId: row.source === "inventory" ? row.id : undefined,
-                          quantity: row.quantity,
-                          soldQuantity: row.soldQuantity,
-                          returnedQuantity: row.returnedQuantity,
-                          defectiveQuantity: row.defectiveQuantity,
-                          linkedSaleIds: row.linkedSaleIds,
-                        }}
-                        saleOptions={saleOptions}
-                      />
+                    <TableCell data-column data-view-standard data-view-preise data-view-bestand data-view-all>
+                      <div className="flex justify-end gap-1">
+                        <ConsignmentDetailDrawer row={row} />
+                        <ConsignmentRowActions
+                          item={{
+                            id: row.id,
+                            sku: row.sku,
+                            source: row.source,
+                            inventoryPositionId: row.source === "inventory" ? row.id : undefined,
+                            quantity: row.quantity,
+                            soldQuantity: row.soldQuantity,
+                            returnedQuantity: row.returnedQuantity,
+                            defectiveQuantity: row.defectiveQuantity,
+                            linkedSaleIds: row.linkedSaleIds,
+                          }}
+                          saleOptions={saleOptions}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -238,6 +300,7 @@ export default async function ConsignmentPage() {
           </div>
         </CardContent>
       </Card>
+      </CompactTableShell>
     </div>
   );
 }

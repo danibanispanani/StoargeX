@@ -327,3 +327,35 @@
 .sx-datatable tbody tr[data-selected="true"] .sx-sticky-1 {
   background: color-mix(in oklab, var(--accent) 88%, var(--card));
 }
+
+/* Kompakte Ansichten: Spalten werden pro gespeicherter Ansicht clientseitig
+   ausgeblendet; die Daten bleiben in "Alle Spalten" vollständig erreichbar. */
+.compact-table-shell [data-slot="table-container"] {
+  max-height: min(72vh, 46rem);
+  scrollbar-gutter: stable both-edges;
+}
+.compact-table-shell .sx-datatable {
+  min-width: max-content;
+}
+.compact-table-shell .sx-datatable td,
+.compact-table-shell .sx-datatable th {
+  vertical-align: top;
+}
+.compact-table-shell [data-column] {
+  animation: sx-fade 0.12s ease;
+}
+.sx-cell-primary {
+  max-width: 18rem;
+  white-space: normal;
+}
+.sx-cell-money {
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  .compact-table-shell [data-slot="table-container"] {
+    max-height: 68vh;
+  }
+  .sx-cell-primary {
+    max-width: 14rem;
+  }
+}

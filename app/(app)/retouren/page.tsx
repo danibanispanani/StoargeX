@@ -7,6 +7,12 @@ import { ReturnStatusSelect } from "@/components/returns/return-status-select";
 import { ReturnWorkflowActions } from "@/components/returns/return-workflow-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
+import {
+  DetailDrawer,
+  DetailGrid,
+  DetailSection,
+} from "@/components/table/detail-drawer";
 import {
   Table,
   TableBody,
@@ -154,6 +160,49 @@ export default async function ReturnsPage() {
       .join(" · ");
   }
 
+  function ReturnDetailDrawer({ ret }: { ret: (typeof returns)[number] }) {
+    const relation = allocationLabel(ret);
+
+    return (
+      <DetailDrawer
+        title={ret.returnNumber ?? ret.id.slice(0, 8)}
+        description={`${ret.sale.orderNumber ?? "Verkauf"} · ${returnTitle(ret)}`}
+      >
+        <DetailSection title="Relation">
+          <p className="font-mono text-xs">
+            {ret.returnNumber ?? "R-…"} → {ret.sale.orderNumber ?? ret.sale.id.slice(0, 8)} →{" "}
+            {returnTitle(ret)} {relation ? `→ ${relation}` : ""}
+          </p>
+        </DetailSection>
+        <DetailSection title="Retoure">
+          <DetailGrid
+            items={[
+              { label: "Meldedatum", value: ret.requestedAt.toLocaleDateString("de-DE") },
+              { label: "Status", value: ret.status },
+              { label: "Problem", value: ret.reason ?? "–" },
+              { label: "Menge", value: ret.returnLines.reduce((sum, line) => sum + line.quantity, 0) || "Legacy" },
+              { label: "Eingelagert", value: ret.restocked ? "Ja" : "Nein" },
+            ]}
+          />
+        </DetailSection>
+        <DetailSection title="Finanzen">
+          <DetailGrid
+            items={[
+              { label: "Erstattung", value: formatEuro(ret.refundAmountCents) },
+              { label: "Zusatzkosten", value: formatEuro(ret.returnShippingCents) },
+              { label: "Verlust", value: formatEuro(ret.lossCents) },
+            ]}
+          />
+        </DetailSection>
+        {ret.notes && (
+          <DetailSection title="Kommentar">
+            <p>{ret.notes}</p>
+          </DetailSection>
+        )}
+      </DetailDrawer>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -170,32 +219,44 @@ export default async function ReturnsPage() {
         </div>
       </div>
 
+      <CompactTableShell
+        storageKey="retouren"
+        views={[
+          { value: "standard", label: "Standard" },
+          { value: "finanzen", label: "Finanzen" },
+          { value: "workflow", label: "Workflow" },
+          { value: "all", label: "Alle Spalten" },
+        ]}
+      >
       <Card>
         <CardContent>
-          <Table>
+          <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead>Retoure</TableHead>
-                <TableHead>Meldedatum</TableHead>
-                <TableHead>Verkauf</TableHead>
-                <TableHead>Artikel</TableHead>
-                <TableHead className="text-right">Erstattung</TableHead>
-                <TableHead className="text-right">Zusatzkosten</TableHead>
-                <TableHead className="text-right">Verlust</TableHead>
-                <TableHead>Status / Workflow</TableHead>
+                <TableHead data-column data-view-standard data-view-finanzen data-view-workflow data-view-all>R-Nummer</TableHead>
+                <TableHead data-column data-view-standard data-view-all>Meldedatum</TableHead>
+                <TableHead data-column data-view-standard data-view-workflow data-view-all>Verkauf</TableHead>
+                <TableHead data-column data-view-standard data-view-workflow data-view-all>Artikel</TableHead>
+                <TableHead data-column data-view-standard data-view-workflow data-view-all className="text-right">Menge</TableHead>
+                <TableHead data-column data-view-standard data-view-all>Problem</TableHead>
+                <TableHead data-column data-view-finanzen data-view-all className="text-right">Erstattung</TableHead>
+                <TableHead data-column data-view-finanzen data-view-all className="text-right">Zusatzkosten</TableHead>
+                <TableHead data-column data-view-standard data-view-finanzen data-view-all className="text-right">Verlust</TableHead>
+                <TableHead data-column data-view-standard data-view-workflow data-view-all>Status</TableHead>
+                <TableHead data-column data-view-standard data-view-finanzen data-view-workflow data-view-all>Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {returns.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
                     Noch keine Retouren erfasst.
                   </TableCell>
                 </TableRow>
               )}
               {returns.map((ret) => (
                 <TableRow key={ret.id}>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell data-column data-view-standard data-view-finanzen data-view-workflow data-view-all className="font-mono text-xs">
                     {ret.returnNumber ?? ret.id.slice(0, 8)}
                     {ret.returnLines.length === 0 && (
                       <div className="text-[10px] uppercase text-muted-foreground">
@@ -203,14 +264,14 @@ export default async function ReturnsPage() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell>{ret.requestedAt.toLocaleDateString("de-DE")}</TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-all>{ret.requestedAt.toLocaleDateString("de-DE")}</TableCell>
+                  <TableCell data-column data-view-standard data-view-workflow data-view-all>
                     <div className="font-mono text-xs">{ret.sale.orderNumber ?? "–"}</div>
                     <div className="text-xs text-muted-foreground">
                       {ret.sale.platform.name}
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-72">
+                  <TableCell data-column data-view-standard data-view-workflow data-view-all className="sx-cell-primary max-w-72">
                     <div className="truncate font-medium">{returnTitle(ret)}</div>
                     {allocationLabel(ret) && (
                       <div className="truncate font-mono text-xs text-muted-foreground">
@@ -223,20 +284,31 @@ export default async function ReturnsPage() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell data-column data-view-standard data-view-workflow data-view-all className="text-right">
+                    {ret.returnLines.reduce((sum, line) => sum + line.quantity, 0) || "–"}
+                  </TableCell>
+                  <TableCell data-column data-view-standard data-view-all className="max-w-44 truncate">
+                    {ret.reason ?? "–"}
+                  </TableCell>
+                  <TableCell data-column data-view-finanzen data-view-all className="sx-cell-money text-right">
                     {formatEuro(ret.refundAmountCents)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell data-column data-view-finanzen data-view-all className="sx-cell-money text-right">
                     {formatEuro(ret.returnShippingCents)}
                   </TableCell>
-                  <TableCell className="text-right font-medium text-destructive">
+                  <TableCell data-column data-view-standard data-view-finanzen data-view-all className="sx-cell-money text-right font-medium text-destructive">
                     {formatEuro(ret.lossCents)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-column data-view-standard data-view-workflow data-view-all>
+                    <div className="flex items-center gap-2">
+                      <ReturnStatusSelect returnId={ret.id} currentStatus={ret.status} />
+                      {ret.restocked && <Badge variant="outline">eingelagert</Badge>}
+                    </div>
+                  </TableCell>
+                  <TableCell data-column data-view-standard data-view-finanzen data-view-workflow data-view-all>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <ReturnStatusSelect returnId={ret.id} currentStatus={ret.status} />
-                        {ret.restocked && <Badge variant="outline">eingelagert</Badge>}
+                        <ReturnDetailDrawer ret={ret} />
                         <EditReturnDialog
                           ret={{
                             id: ret.id,
@@ -261,6 +333,7 @@ export default async function ReturnsPage() {
           </Table>
         </CardContent>
       </Card>
+      </CompactTableShell>
     </div>
   );
 }
