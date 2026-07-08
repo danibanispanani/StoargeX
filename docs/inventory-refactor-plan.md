@@ -39,6 +39,12 @@
 > `ConsignmentInventory` bleibt additiv für Bestandsdaten erhalten und wird in
 > der Seite als Legacy-Übergang angezeigt.
 
+> **Phase 5 abgeschlossen** (Migration `20260708110000_sales_lines_allocations_phase5`):
+> Neue Verkäufe schreiben `SaleLine` und `SaleLineAllocation`, allokieren
+> Eigenbestand per FIFO, erlauben Eigenbestand und Konsignation im selben
+> Verkauf und buchen Bestand ausschließlich über `SALE_OUT`-Movements. Storno
+> neuer Verkäufe läuft über `REVERSAL`; Legacy-`SaleItem` bleibt lesbar.
+
 ---
 
 ## 1. Ist-Architektur (Kurzform)
@@ -377,12 +383,16 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       umgestellt. **Abgeschlossen** in Migration
       `20260707140000_owned_purchase_batches_phase3` und
       [lib/services/owned-purchase-service.ts](../lib/services/owned-purchase-service.ts).
-- [ ] **Phase 3b** – Verkauf, Retouren, Schulden und Import auf neue
-      Inventory-Domain umstellen.
+- [ ] **Phase 3b** – Retouren, Schulden und Import auf neue Inventory-Domain
+      umstellen.
 - [x] **Phase 4** – Konsignationsbestand auf getrennte UI mit gemeinsamer
       `InventoryPosition(CONSIGNMENT)`-Struktur umgestellt. **Abgeschlossen**
       in Migration `20260708100000_consignment_inventory_positions_phase4` und
       [lib/services/consignment-service.ts](../lib/services/consignment-service.ts).
+- [x] **Phase 5** – Verkauf auf `SaleLine` und `SaleLineAllocation`
+      umgestellt. **Abgeschlossen** in Migration
+      `20260708110000_sales_lines_allocations_phase5` und
+      [lib/services/sales-service.ts](../lib/services/sales-service.ts).
 - [ ] **Phase 5** – Feature-Flag on; Playwright-Smoke; Load-Test der neuen
       Aggregationen (`loadDashboardKpis` etc.).
 - [ ] **Phase 6** – Alt-Spalten droppen, Rollback-Plan (git revert +

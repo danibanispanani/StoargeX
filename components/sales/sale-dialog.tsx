@@ -21,23 +21,25 @@ import {
 } from "@/components/ui/sheet";
 
 export interface SellableItem {
-  ref: string; // "stock:<id>" | "consignment:<id>"
-  label: string; // "L-26-001 · Fire TV Stick (4K) · XL"
-  source: "Lager" | "Konsignation";
+  ref: string;
+  label: string;
+  source: "Eigenbestand" | "Konsignation";
+  available: number;
+  partner?: string | null;
 }
 
 export interface ShippingRateOption {
   id: string;
   carrierName: string;
   name: string;
-  countries: string[]; // leer = alle Länder
+  countries: string[];
   baseCents: number;
 }
 
 export interface EditableSale {
   id: string;
   orderNumber: string;
-  soldAt: string; // yyyy-mm-dd
+  soldAt: string;
   itemLabels: string[];
   platformId: string;
   saleGross: string;
@@ -48,9 +50,14 @@ export interface EditableSale {
   feeInclVat: boolean;
   platformFeeNet: string;
   payoutRecipient: string;
-  status: string; // PENDING | COMPLETED
+  status: string;
   invoiceDone: boolean;
   notes: string;
+}
+
+interface SelectedSellable {
+  item: SellableItem;
+  quantity: number;
 }
 
 const STATIC_SHIPPING = ["Abholung", "Vinted", "Sonstiges"];
@@ -71,7 +78,7 @@ export function SaleDialog({
   trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<SellableItem[]>([]);
+  const [selected, setSelected] = useState<SelectedSellable[]>([]);
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,17 +109,16 @@ export function SaleDialog({
   }, [state, sale]);
 
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const needle = query.trim().toLowerCase();
     const available = items.filter(
-      (item) => !selected.some((s) => s.ref === item.ref)
+      (item) => !selected.some((selection) => selection.item.ref === item.ref)
     );
-    if (!q) return available.slice(0, 8);
+    if (!needle) return available.slice(0, 10);
     return available
-      .filter((item) => item.label.toLowerCase().includes(q))
-      .slice(0, 8);
+      .filter((item) => item.label.toLowerCase().includes(needle))
+      .slice(0, 10);
   }, [items, query, selected]);
 
-  // Versandarten: Tarife des gewählten Landes + statische Optionen
   const countryRates = useMemo(
     () =>
       shippingRates.filter(
@@ -126,16 +132,31 @@ export function SaleDialog({
   function applyRate(value: string) {
     setShippingMethod(value);
     const rate = countryRates.find((r) => `${r.carrierName} ${r.name}` === value);
-    if (rate) {
-      setShippingCost((rate.baseCents / 100).toFixed(2).replace(".", ","));
-    } else if (STATIC_SHIPPING.includes(value)) {
-      setShippingCost("0,00");
-    }
+    if (rate) setShippingCost((rate.baseCents / 100).toFixed(2).replace(".", ","));
+    else if (STATIC_SHIPPING.includes(value)) setShippingCost("0,00");
+  }
+
+  function updateQuantity(ref: string, quantity: number) {
+    setSelected((prev) =>
+      prev.map((selection) =>
+        selection.item.ref === ref
+          ? {
+              ...selection,
+              quantity: Math.min(
+                Math.max(1, Number.isFinite(quantity) ? quantity : 1),
+                selection.item.available
+              ),
+            }
+          : selection
+      )
+    );
   }
 
   const feeNetPreview = (() => {
     try {
-      return formatEuro(feeNetCents(feeGross.trim() ? euroToCents(feeGross) : 0, feeInclVat));
+      return formatEuro(
+        feeNetCents(feeGross.trim() ? euroToCents(feeGross) : 0, feeInclVat)
+      );
     } catch {
       return "–";
     }
@@ -155,8 +176,8 @@ export function SaleDialog({
           </SheetTitle>
           <SheetDescription>
             {sale
-              ? "Beträge, Status und Details sind änderbar; die Positionen bleiben fix."
-              : "Ein Verkauf kann mehrere Artikel aus Lager und Konsignation enthalten. Steuern, Netto und Gewinn werden automatisch berechnet."}
+              ? "Administrative Felder sind änderbar; Positionen und Mengen bleiben fix."
+              : "Wähle verfügbare L- oder K-Positionen. Eigenbestand wird bei Bedarf per FIFO über gleiche Produkte allokiert."}
           </SheetDescription>
         </SheetHeader>
         <form action={formAction} className="space-y-4">
@@ -166,7 +187,6 @@ export function SaleDialog({
             </Alert>
           )}
 
-          {/* Artikel-Auswahl */}
           {sale ? (
             <div className="space-y-1">
               <Label>Positionen</Label>
@@ -180,34 +200,55 @@ export function SaleDialog({
             </div>
           ) : (
             <div className="relative space-y-2">
-              <Label htmlFor="sale-item-search">Artikel (Lager & Konsignation) *</Label>
+              <Label htmlFor="sale-item-search">Bestand auswählen *</Label>
               {selected.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selected.map((item) => (
-                    <Badge key={item.ref} variant="secondary" className="gap-1">
-                      <span className="font-mono text-xs">{item.label}</span>
-                      <button
-                        type="button"
-                        aria-label={`${item.label} entfernen`}
-                        onClick={() =>
-                          setSelected((prev) => prev.filter((s) => s.ref !== item.ref))
+                <div className="space-y-2">
+                  {selected.map((selection) => (
+                    <div
+                      key={selection.item.ref}
+                      className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-2 py-1"
+                    >
+                      <Badge variant="secondary" className="gap-1">
+                        <span className="font-mono text-xs">{selection.item.label}</span>
+                        <button
+                          type="button"
+                          aria-label={`${selection.item.label} entfernen`}
+                          onClick={() =>
+                            setSelected((prev) =>
+                              prev.filter((item) => item.item.ref !== selection.item.ref)
+                            )
+                          }
+                          className="ml-1 text-muted-foreground hover:text-foreground"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {selection.item.available} verfügbar
+                      </span>
+                      <input type="hidden" name="itemRefs" value={selection.item.ref} />
+                      <Input
+                        name="itemQuantities"
+                        type="number"
+                        min={1}
+                        max={selection.item.available}
+                        value={selection.quantity}
+                        onChange={(event) =>
+                          updateQuantity(selection.item.ref, Number(event.target.value))
                         }
-                        className="ml-1 text-muted-foreground hover:text-foreground"
-                      >
-                        ×
-                      </button>
-                      <input type="hidden" name="itemRefs" value={item.ref} />
-                    </Badge>
+                        className="h-7 w-20"
+                      />
+                    </div>
                   ))}
                 </div>
               )}
               <Input
                 id="sale-item-search"
                 value={query}
-                placeholder="Suche nach LagerID, Model, Größe…"
+                placeholder="Suche nach L-/K-Nummer, Produkt, Variante, Größe, EAN, Partner…"
                 autoComplete="off"
-                onChange={(e) => {
-                  setQuery(e.target.value);
+                onChange={(event) => {
+                  setQuery(event.target.value);
                   setPickerOpen(true);
                 }}
                 onFocus={() => setPickerOpen(true)}
@@ -216,21 +257,29 @@ export function SaleDialog({
                 }}
               />
               {pickerOpen && matches.length > 0 && (
-                <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+                <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
                   {matches.map((item) => (
                     <li key={item.ref}>
                       <button
                         type="button"
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-accent"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
+                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
                           if (blurTimer.current) clearTimeout(blurTimer.current);
-                          setSelected((prev) => [...prev, item]);
+                          setSelected((prev) => [...prev, { item, quantity: 1 }]);
                           setQuery("");
                         }}
                       >
-                        <span className="font-mono text-xs">{item.label}</span>
-                        <Badge variant="outline">{item.source}</Badge>
+                        <span>
+                          <span className="block font-mono text-xs">{item.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {item.available} verfügbar
+                          </span>
+                        </span>
+                        <Badge variant="outline">
+                          {item.source}
+                          {item.partner ? ` · ${item.partner}` : ""}
+                        </Badge>
                       </button>
                     </li>
                   ))}
@@ -238,34 +287,15 @@ export function SaleDialog({
               )}
               {items.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Kein verkaufsfähiger Bestand – erst im Lager oder in der
-                  Konsignation Artikel eintragen.
+                  Kein verkaufsfähiger Bestand vorhanden.
                 </p>
               )}
             </div>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="sale-date">Verkaufsdatum</Label>
-              <Input
-                id="sale-date"
-                name="soldAt"
-                type="date"
-                defaultValue={sale?.soldAt ?? today}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sale-gross">VK brutto (€) *</Label>
-              <Input
-                id="sale-gross"
-                name="saleGross"
-                required
-                inputMode="decimal"
-                defaultValue={sale?.saleGross}
-                placeholder="z.B. 49,99"
-              />
-            </div>
+            <Field id="sale-date" name="soldAt" label="Verkaufsdatum" type="date" defaultValue={sale?.soldAt ?? today} />
+            <Field id="sale-gross" name="saleGross" label="VK brutto (€) *" required inputMode="decimal" defaultValue={sale?.saleGross} placeholder="z.B. 49,99" />
             <div className="space-y-2">
               <Label htmlFor="sale-platform">Plattform *</Label>
               <SearchablePlatformSelect
@@ -283,14 +313,14 @@ export function SaleDialog({
                 required
                 maxLength={2}
                 value={country}
-                onChange={(e) => setCountry(e.target.value.toUpperCase())}
+                onChange={(event) => setCountry(event.target.value.toUpperCase())}
                 list="sale-countries"
                 className="uppercase"
               />
               <datalist id="sale-countries">
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name}
+                {COUNTRIES.map((countryOption) => (
+                  <option key={countryOption.code} value={countryOption.code}>
+                    {countryOption.name}
                   </option>
                 ))}
               </datalist>
@@ -300,15 +330,12 @@ export function SaleDialog({
               <select
                 id="sale-shipping-method"
                 value={shippingMethod}
-                onChange={(e) => applyRate(e.target.value)}
+                onChange={(event) => applyRate(event.target.value)}
                 className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
                 <option value="">Versandart wählen…</option>
                 {countryRates.map((rate) => (
-                  <option
-                    key={rate.id}
-                    value={`${rate.carrierName} ${rate.name}`}
-                  >
+                  <option key={rate.id} value={`${rate.carrierName} ${rate.name}`}>
                     {rate.carrierName} {rate.name} ({formatEuro(rate.baseCents)})
                   </option>
                 ))}
@@ -319,59 +346,25 @@ export function SaleDialog({
                 ))}
               </select>
               <input type="hidden" name="shippingMethod" value={shippingMethod} />
-              <p className="text-xs text-muted-foreground">
-                Tarife gefiltert nach Land „{country || "–"}&ldquo; · Preis
-                überschreibbar
-              </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="sale-shipping-cost">Versand netto (€)</Label>
-              <Input
-                id="sale-shipping-cost"
-                name="shippingCost"
-                inputMode="decimal"
-                value={shippingCost}
-                onChange={(e) => setShippingCost(e.target.value)}
-                placeholder="z.B. 5,49"
-              />
-            </div>
+            <Field id="sale-shipping-cost" name="shippingCost" label="Versand netto (€)" inputMode="decimal" value={shippingCost} onChange={(event) => setShippingCost(event.target.value)} placeholder="z.B. 5,49" />
           </div>
 
-          {/* Plattformgebühren */}
           <div className="space-y-3 rounded-md border p-3">
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="sale-fee-gross">Plattformgebühren brutto (€)</Label>
-                <Input
-                  id="sale-fee-gross"
-                  name="platformFeeGross"
-                  inputMode="decimal"
-                  value={feeGross}
-                  onChange={(e) => setFeeGross(e.target.value)}
-                  placeholder="z.B. 5,50"
-                />
-              </div>
+              <Field id="sale-fee-gross" name="platformFeeGross" label="Plattformgebühren brutto (€)" inputMode="decimal" value={feeGross} onChange={(event) => setFeeGross(event.target.value)} placeholder="z.B. 5,50" />
               <div className="space-y-2">
                 <Label>Netto (berechnet)</Label>
                 <p className="flex h-9 items-center font-mono text-sm">{feeNetPreview}</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="sale-fee-net">Netto manuell (optional)</Label>
-                <Input
-                  id="sale-fee-net"
-                  name="platformFeeNetManual"
-                  inputMode="decimal"
-                  defaultValue={sale?.platformFeeNet}
-                  placeholder="überschreibt Berechnung"
-                />
-              </div>
+              <Field id="sale-fee-net" name="platformFeeNetManual" label="Netto manuell (optional)" inputMode="decimal" defaultValue={sale?.platformFeeNet} placeholder="überschreibt Berechnung" />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 name="feeInclVat"
                 checked={feeInclVat}
-                onChange={(e) => setFeeInclVat(e.target.checked)}
+                onChange={(event) => setFeeInclVat(event.target.checked)}
                 className="size-4"
               />
               Gebühren inkl. MwSt (Netto = Brutto / 1,19)
@@ -379,21 +372,12 @@ export function SaleDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="sale-payout">Auszahlung</Label>
-              <Input
-                id="sale-payout"
-                name="payoutRecipient"
-                list="payout-options"
-                defaultValue={sale?.payoutRecipient}
-                placeholder="wählen oder eintippen"
-              />
-              <datalist id="payout-options">
-                {payoutOptions.map((option) => (
-                  <option key={option} value={option} />
-                ))}
-              </datalist>
-            </div>
+            <Field id="sale-payout" name="payoutRecipient" label="Auszahlung" list="payout-options" defaultValue={sale?.payoutRecipient} placeholder="wählen oder eintippen" />
+            <datalist id="payout-options">
+              {payoutOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
             <div className="space-y-2">
               <Label htmlFor="sale-status">Gesamtstatus</Label>
               <select
@@ -420,10 +404,7 @@ export function SaleDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="sale-notes">Kommentar</Label>
-            <Input id="sale-notes" name="notes" defaultValue={sale?.notes} placeholder="optional" />
-          </div>
+          <Field id="sale-notes" name="notes" label="Kommentar" defaultValue={sale?.notes} placeholder="optional" />
 
           <Button
             type="submit"
@@ -435,6 +416,25 @@ export function SaleDialog({
         </form>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function Field({
+  id,
+  name,
+  label,
+  className,
+  ...props
+}: React.ComponentProps<typeof Input> & {
+  id: string;
+  name: string;
+  label: string;
+}) {
+  return (
+    <div className={`space-y-2 ${className ?? ""}`}>
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} name={name} {...props} />
+    </div>
   );
 }
 

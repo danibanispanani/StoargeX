@@ -246,6 +246,8 @@ model Organization {
   consignmentLots           ConsignmentLot[]
   inventoryMovements        InventoryMovement[]
   inventoryPositionListings InventoryPositionListing[]
+  saleLines                 SaleLine[]
+  saleLineAllocations       SaleLineAllocation[]
 
   @@map("organizations")
 }
@@ -525,6 +527,7 @@ model Product {
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   purchaseLines      PurchaseLine[]
   inventoryPositions InventoryPosition[]
+  saleLines          SaleLine[]
 
   @@unique([organizationId, name, variant])
   @@index([organizationId])
@@ -573,6 +576,7 @@ model Sale {
   carrier      Carrier?               @relation(fields: [carrierId], references: [id], onDelete: SetNull)
   taxRate      TaxRate?               @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   items        SaleItem[]
+  saleLines    SaleLine[]
   returns      Return[]
   consignments ConsignmentInventory[]
 
@@ -897,12 +901,13 @@ model InventoryPosition {
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product        Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
-  ownedLot       OwnedStockLot?
-  consignmentLot ConsignmentLot?
-  movements      InventoryMovement[]
-  listings       InventoryPositionListing[]
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product         Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  ownedLot        OwnedStockLot?
+  consignmentLot  ConsignmentLot?
+  movements       InventoryMovement[]
+  listings        InventoryPositionListing[]
+  saleAllocations SaleLineAllocation[]
 
   @@unique([organizationId, inventoryNumber])
   @@index([organizationId])
@@ -1017,4 +1022,52 @@ model InventoryMovement {
   @@index([organizationId, referenceType, referenceId])
   @@index([createdById])
   @@map("inventory_movements")
+}
+
+model SaleLine {
+  id                  String   @id @default(cuid())
+  organizationId      String   @map("organization_id")
+  saleId              String   @map("sale_id")
+  productId           String   @map("product_id")
+  descriptionSnapshot String   @map("description_snapshot")
+  variantSnapshot     String?  @map("variant_snapshot")
+  sizeSnapshot        String?  @map("size_snapshot")
+  quantity            Int
+  unitGrossPrice      Decimal  @map("unit_gross_price") @db.Decimal(12, 2)
+  grossAmount         Decimal  @map("gross_amount") @db.Decimal(12, 2)
+  netAmount           Decimal  @map("net_amount") @db.Decimal(12, 2)
+  comment             String?
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sale         Sale                 @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  allocations  SaleLineAllocation[]
+
+  @@index([organizationId])
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_lines")
+}
+
+model SaleLineAllocation {
+  id                            String        @id @default(cuid())
+  organizationId                String        @map("organization_id")
+  saleLineId                    String        @map("sale_line_id")
+  inventoryPositionId           String        @map("inventory_position_id")
+  quantity                      Int
+  unitCostNetSnapshot           Decimal       @map("unit_cost_net_snapshot") @db.Decimal(12, 2)
+  inventoryTypeSnapshot         InventoryType @map("inventory_type_snapshot")
+  consignmentSettlementSnapshot Decimal?      @map("consignment_settlement_snapshot") @db.Decimal(12, 2)
+  createdAt                     DateTime      @default(now()) @map("created_at")
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  saleLine          SaleLine          @relation(fields: [saleLineId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([saleLineId])
+  @@index([inventoryPositionId])
+  @@map("sale_line_allocations")
 }

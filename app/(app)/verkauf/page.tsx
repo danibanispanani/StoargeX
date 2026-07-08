@@ -6,6 +6,7 @@ import { SaleDialog, type EditableSale, type SellableItem } from "@/components/s
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
 import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { InvoiceSelect, SaleStatusSelect } from "@/components/sales/sale-inline-selects";
+import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,6 +63,32 @@ export default async function SalesPage({
             { orderNumber: { contains: params.q, mode: "insensitive" as const } },
             { notes: { contains: params.q, mode: "insensitive" as const } },
             {
+              saleLines: {
+                some: {
+                  OR: [
+                    {
+                      descriptionSnapshot: {
+                        contains: params.q,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                    {
+                      allocations: {
+                        some: {
+                          inventoryPosition: {
+                            inventoryNumber: {
+                              contains: params.q,
+                              mode: "insensitive" as const,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            {
               items: {
                 some: {
                   stockItem: {
@@ -73,29 +100,30 @@ export default async function SalesPage({
                 },
               },
             },
-            {
-              items: {
-                some: {
-                  consignment: {
-                    OR: [
-                      { itemTitle: { contains: params.q, mode: "insensitive" as const } },
-                      { sku: { contains: params.q, mode: "insensitive" as const } },
-                    ],
-                  },
-                },
-              },
-            },
           ],
         }
       : {}),
   };
 
-  const [sales, platforms, payoutOptions, rates, stockItems, consignments] =
+  const [sales, platforms, payoutOptions, rates, sellablePositions] =
     await Promise.all([
       db.sale.findMany({
         where,
         include: {
           platform: { select: { name: true } },
+          saleLines: {
+            include: {
+              allocations: {
+                include: {
+                  inventoryPosition: {
+                    include: {
+                      consignmentLot: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
           items: {
             include: {
               stockItem: { select: { sku: true, title: true, variant: true, size: true } },
@@ -123,76 +151,95 @@ export default async function SalesPage({
           baseCents: true,
         },
       }),
-      db.stockItem.findMany({
-        where: { status: { notIn: ["SOLD", "CANCELLED", "WRITTEN_OFF"] } },
-        orderBy: { sku: "desc" },
-        select: { id: true, sku: true, title: true, variant: true, size: true },
-        take: 500,
-      }),
-      db.consignmentInventory.findMany({
-        where: { quantity: { gt: 0 } },
-        orderBy: { sku: "desc" },
-        select: { id: true, sku: true, itemTitle: true },
+      db.inventoryPosition.findMany({
+        where: {
+          active: true,
+          quantityAvailable: { gt: 0 },
+        },
+        include: {
+          product: true,
+          consignmentLot: true,
+        },
+        orderBy: [{ inventoryType: "asc" }, { receivedAt: "asc" }],
         take: 500,
       }),
     ]);
 
-  const sellable: SellableItem[] = [
-    ...stockItems.map((item) => ({
-      ref: `stock:${item.id}`,
-      label: [item.sku, item.title, item.variant, item.size]
-        .filter(Boolean)
-        .join(" · "),
-      source: "Lager" as const,
-    })),
-    ...consignments.map((c) => ({
-      ref: `consignment:${c.id}`,
-      label: `${c.sku} · ${c.itemTitle}`,
-      source: "Konsignation" as const,
-    })),
-  ];
+  const sellable: SellableItem[] = sellablePositions.map((position) => ({
+    ref: `inventory:${position.id}`,
+    label: [
+      position.inventoryNumber,
+      position.product.name,
+      position.product.variant,
+      position.product.size,
+      position.product.ean,
+      position.consignmentLot?.partnerCompany,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    source: position.inventoryType === "OWNED" ? "Eigenbestand" : "Konsignation",
+    available: position.quantityAvailable,
+    partner: position.consignmentLot?.partnerCompany ?? null,
+  }));
 
   const rows = sales.map((sale) => {
-    const itemInfos = sale.items.map((item) =>
-      item.stockItem
-        ? {
-            sku: item.stockItem.sku,
-            model: item.stockItem.title,
-            variant: item.stockItem.variant ?? "",
-            size: item.stockItem.size ?? "",
-          }
-        : {
-            sku: item.consignment?.sku ?? "?",
-            model: item.consignment?.itemTitle ?? "?",
-            variant: "",
-            size: "",
-          }
-    );
-    const ekNetCents = sale.items.reduce((sum, i) => sum + i.ekNetCents, 0);
-    const taxCents = sale.salePriceCents - sale.saleNetCents;
-    const marginPercent =
-      sale.saleNetCents > 0 ? (sale.profitCents / sale.saleNetCents) * 100 : 0;
-    return { sale, itemInfos, ekNetCents, taxCents, marginPercent };
+    const hasNewLines = sale.saleLines.length > 0;
+    const itemInfos = hasNewLines
+      ? sale.saleLines.map((line) => ({
+          sku: line.allocations
+            .map((allocation) => allocation.inventoryPosition.inventoryNumber)
+            .join(", "),
+          model: line.descriptionSnapshot,
+          variant: line.variantSnapshot ?? "",
+          size: line.sizeSnapshot ?? "",
+          quantity: line.quantity,
+        }))
+      : sale.items.map((item) =>
+          item.stockItem
+            ? {
+                sku: item.stockItem.sku,
+                model: item.stockItem.title,
+                variant: item.stockItem.variant ?? "",
+                size: item.stockItem.size ?? "",
+                quantity: 1,
+              }
+            : {
+                sku: item.consignment?.sku ?? "?",
+                model: item.consignment?.itemTitle ?? "?",
+                variant: "",
+                size: "",
+                quantity: 1,
+              }
+        );
+    const ekNetCents = hasNewLines
+      ? sale.saleLines.reduce(
+          (sum, line) =>
+            sum +
+            line.allocations.reduce(
+              (lineSum, allocation) =>
+                lineSum +
+                allocation.quantity *
+                  Math.round(Number(allocation.unitCostNetSnapshot) * 100),
+              0
+            ),
+          0
+        )
+      : sale.items.reduce((sum, item) => sum + item.ekNetCents, 0);
+    return { sale, itemInfos, ekNetCents, hasNewLines };
   });
 
   const sum = rows.reduce(
-    (acc, r) => ({
-      gross: acc.gross + r.sale.salePriceCents,
-      tax: acc.tax + r.taxCents,
-      net: acc.net + r.sale.saleNetCents,
-      ek: acc.ek + r.ekNetCents,
-      feeGross: acc.feeGross + r.sale.platformFeeCents,
-      feeNet: acc.feeNet + r.sale.platformFeeNetCents,
-      shipping: acc.shipping + r.sale.shippingCostCents,
-      profit: acc.profit + r.sale.profitCents,
-      qty: acc.qty + r.sale.quantity,
+    (acc, row) => ({
+      gross: acc.gross + row.sale.salePriceCents,
+      profit: acc.profit + row.sale.profitCents,
+      qty: acc.qty + row.sale.quantity,
     }),
-    { gross: 0, tax: 0, net: 0, ek: 0, feeGross: 0, feeNet: 0, shipping: 0, profit: 0, qty: 0 }
+    { gross: 0, profit: 0, qty: 0 }
   );
 
   const shippingMethodOptions = [
     ...new Set([
-      ...rates.map((r) => `${r.carrierName} ${r.name}`),
+      ...rates.map((rate) => `${rate.carrierName} ${rate.name}`),
       "Abholung",
       "Vinted",
       "Sonstiges",
@@ -205,7 +252,7 @@ export default async function SalesPage({
       id: sale.id,
       orderNumber: sale.orderNumber ?? sale.id.slice(0, 8),
       soldAt: sale.soldAt.toISOString().slice(0, 10),
-      itemLabels: row.itemInfos.map((i) => `${i.sku} ${i.model}`),
+      itemLabels: row.itemInfos.map((item) => `${item.sku} ${item.model}`),
       platformId: sale.platformId,
       saleGross: (sale.salePriceCents / 100).toFixed(2).replace(".", ","),
       buyerCountry: sale.buyerCountry,
@@ -260,39 +307,24 @@ export default async function SalesPage({
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead className="sx-sticky-0">OrderID</TableHead>
+                <TableHead className="sx-sticky-0">Verkauf</TableHead>
                 <TableHead>Datum</TableHead>
-                <TableHead>LagerID(s)</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Colorway/Version</TableHead>
-                <TableHead>Größe</TableHead>
+                <TableHead>Artikel</TableHead>
                 <TableHead className="text-right">Menge</TableHead>
                 <TableHead className="text-right">VK brutto</TableHead>
-                <TableHead className="text-right">Steuern</TableHead>
-                <TableHead className="text-right">VK netto</TableHead>
-                <TableHead className="text-right">EK netto</TableHead>
-                <TableHead className="text-right">PF-Geb. brutto</TableHead>
-                <TableHead className="text-right">PF-Geb. netto</TableHead>
-                <TableHead className="text-right">Versand netto</TableHead>
-                <TableHead className="text-right">Marge</TableHead>
                 <TableHead className="text-right">Gewinn</TableHead>
-                <TableHead>Gesamtstatus</TableHead>
-                <TableHead>Rechnung</TableHead>
                 <TableHead>Plattform</TableHead>
-                <TableHead>Versandart</TableHead>
-                <TableHead>Land</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Rechnung</TableHead>
                 <TableHead>Auszahlung</TableHead>
-                <TableHead>Kommentar</TableHead>
-                <TableHead className="w-20" />
+                <TableHead className="w-40 text-right">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={24} className="py-8 text-center text-muted-foreground">
-                    Keine Verkäufe gefunden. Über „Verkauf erfassen&ldquo;
-                    verknüpfst du einen oder mehrere Artikel aus Lager und
-                    Konsignation mit einem Verkauf.
+                  <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
+                    Keine Verkäufe gefunden.
                   </TableCell>
                 </TableRow>
               )}
@@ -300,46 +332,26 @@ export default async function SalesPage({
                 <TableRow key={row.sale.id}>
                   <TableCell className="sx-sticky-0 font-mono text-xs">
                     {row.sale.orderNumber ?? "–"}
+                    {!row.hasNewLines && (
+                      <div className="text-[10px] uppercase text-muted-foreground">
+                        Legacy
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {row.sale.soldAt.toLocaleDateString("de-DE")}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {row.itemInfos.map((i) => i.sku).join(", ")}
-                  </TableCell>
-                  <TableCell className="max-w-44 truncate font-medium">
-                    {[...new Set(row.itemInfos.map((i) => i.model))].join(", ")}
-                  </TableCell>
-                  <TableCell className="max-w-32 truncate">
-                    {[...new Set(row.itemInfos.map((i) => i.variant).filter(Boolean))].join(", ") || "–"}
-                  </TableCell>
-                  <TableCell>
-                    {[...new Set(row.itemInfos.map((i) => i.size).filter(Boolean))].join(", ") || "–"}
+                  <TableCell className="max-w-96">
+                    <div className="truncate font-medium">
+                      {[...new Set(row.itemInfos.map((item) => item.model))].join(", ")}
+                    </div>
+                    <div className="truncate font-mono text-xs text-muted-foreground">
+                      {row.itemInfos.map((item) => item.sku).join(" · ")}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">{row.sale.quantity}</TableCell>
                   <TableCell className="text-right font-mono">
                     {formatEuro(row.sale.salePriceCents)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEuro(row.taxCents)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEuro(row.sale.saleNetCents)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEuro(row.ekNetCents)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEuro(row.sale.platformFeeCents)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEuro(row.sale.platformFeeNetCents)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEuro(row.sale.shippingCostCents)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {row.marginPercent.toFixed(1).replace(".", ",")} %
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -350,6 +362,12 @@ export default async function SalesPage({
                     )}
                   >
                     {formatEuro(row.sale.profitCents)}
+                    <div className="text-xs font-normal text-muted-foreground">
+                      EK {formatEuro(row.ekNetCents)}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{row.sale.platform.name}</Badge>
                   </TableCell>
                   <TableCell>
                     <SaleStatusSelect saleId={row.sale.id} status={row.sale.status} />
@@ -357,45 +375,33 @@ export default async function SalesPage({
                   <TableCell>
                     <InvoiceSelect saleId={row.sale.id} done={row.sale.invoiceCreated} />
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{row.sale.platform.name}</Badge>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {row.sale.shippingMethod ?? "–"}
-                  </TableCell>
-                  <TableCell>{row.sale.buyerCountry}</TableCell>
                   <TableCell>{row.sale.payoutRecipient ?? "–"}</TableCell>
-                  <TableCell className="max-w-36 truncate">
-                    {row.sale.notes ?? "–"}
-                  </TableCell>
                   <TableCell>
-                    <SaleDialog
-                      sale={toEditable(row)}
-                      items={sellable}
-                      platforms={platforms}
-                      payoutOptions={payoutOptions}
-                      shippingRates={rates}
-                      trigger={
-                        <Button variant="ghost" size="sm">
-                          Bearbeiten
-                        </Button>
-                      }
-                    />
+                    <div className="flex justify-end gap-1">
+                      <SaleDialog
+                        sale={toEditable(row)}
+                        items={sellable}
+                        platforms={platforms}
+                        payoutOptions={payoutOptions}
+                        shippingRates={rates}
+                        trigger={
+                          <Button variant="ghost" size="sm">
+                            Bearbeiten
+                          </Button>
+                        }
+                      />
+                      {row.hasNewLines && row.sale.status !== "CANCELLED" && (
+                        <CancelSaleButton saleId={row.sale.id} />
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
               {rows.length > 0 && (
                 <TableRow className="bg-muted/50 font-medium">
-                  <TableCell colSpan={6}>Summe ({rows.length} Verkäufe)</TableCell>
+                  <TableCell colSpan={3}>Summe ({rows.length} Verkäufe)</TableCell>
                   <TableCell className="text-right">{sum.qty}</TableCell>
                   <TableCell className="text-right font-mono">{formatEuro(sum.gross)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatEuro(sum.tax)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatEuro(sum.net)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatEuro(sum.ek)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatEuro(sum.feeGross)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatEuro(sum.feeNet)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatEuro(sum.shipping)}</TableCell>
-                  <TableCell />
                   <TableCell
                     className={cn(
                       "text-right font-mono",
@@ -404,7 +410,7 @@ export default async function SalesPage({
                   >
                     {formatEuro(sum.profit)}
                   </TableCell>
-                  <TableCell colSpan={8} />
+                  <TableCell colSpan={5} />
                 </TableRow>
               )}
             </TableBody>

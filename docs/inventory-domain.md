@@ -120,3 +120,33 @@ Bestandsänderungen neuer Konsignationsware laufen ausschließlich über
 
 Damit ist Konsignationsware getrennt sichtbar, aber später über dieselbe
 Verkaufs- und Retourenlogik wie eigener Bestand verwendbar.
+
+## Verkauf ab Phase 5
+
+Neue Verkäufe schreiben keine direkten `StockItem`- oder
+`ConsignmentInventory`-Bestandsänderungen mehr. Der neue Pfad ist:
+
+`Sale(orderNumber=V-YY-NNNN) -> SaleLine -> SaleLineAllocation -> InventoryMovement(SALE_OUT)`
+
+`Sale.orderNumber` bleibt aus Kompatibilitätsgründen das bestehende Feld für die
+sichtbare Verkaufsnummer; fachlich enthält es jetzt die V-Nummer aus
+`DocumentSequence(SALE)`.
+
+- `SaleLine` speichert Produkt-Snapshots (`descriptionSnapshot`,
+  `variantSnapshot`, `sizeSnapshot`), damit spätere Produktänderungen alte
+  Verkaufsbelege nicht verfälschen.
+- `SaleLineAllocation` ist die echte Verbindung zum Bestand. Sie speichert
+  `inventoryPositionId`, Menge, `inventoryTypeSnapshot` und
+  `unitCostNetSnapshot`.
+- Eigenbestand wird standardmäßig FIFO über verfügbare `OWNED`-Positionen
+  desselben Produkts allokiert.
+- Konsignationsbestand wird nur aus der eindeutig gewählten K-Position
+  allokiert; verschiedene Partner werden nicht automatisch gemischt.
+- Der Wareneinsatz und damit Marge/Gewinn basieren auf den Cost-Snapshots der
+  Allocations, nicht auf aktuellen Produkt- oder Lot-Werten.
+- Storno neuer Verkäufe läuft über `REVERSAL` der zugehörigen
+  `SALE_OUT`-Movements und ist über Idempotency-Keys doppelsicher.
+
+Legacy-Verkäufe mit `SaleItem` bleiben lesbar. Sie werden nicht destruktiv
+migriert und können nicht automatisch über den neuen Reversal-Pfad storniert
+werden.
