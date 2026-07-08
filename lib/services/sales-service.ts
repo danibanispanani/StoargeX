@@ -14,6 +14,7 @@ import {
 import { reserveDocumentNumber } from "@/lib/services/document-number-service";
 import { reverseMovement, sell } from "@/lib/services/inventory-service";
 import { centsToDecimalString } from "@/lib/services/owned-purchase-service";
+import { ensureSaleDebt } from "@/lib/services/debt-service";
 
 type SalesTransaction = Prisma.TransactionClient;
 type SalesPrismaClient = Pick<PrismaClient, "$transaction">;
@@ -368,20 +369,17 @@ async function createInventorySaleInTransaction(
   }
 
   if (input.debt?.create) {
-    await tx.debt.create({
-      data: {
-        organizationId: input.organizationId,
-        debtDate: input.soldAt,
-        refId: saleNumber,
-        description: input.debt.description,
-        kind: "VERKAUF",
-        quantity: sale.quantity,
-        amountCents: input.saleGrossCents,
-        debtorName: input.debt.debtorName,
-        creditorName: input.debt.creditorName,
-        status: "OPEN",
-        entryStatus: "IO",
-      },
+    await ensureSaleDebt({
+      organizationId: input.organizationId,
+      createdById: input.createdById,
+      saleId: sale.id,
+      saleNumber,
+      soldAt: input.soldAt,
+      payoutRecipient: input.payoutRecipient,
+      saleGrossCents: input.saleGrossCents,
+      quantity: sale.quantity,
+      description: input.debt.description,
+      tx,
     });
   }
 

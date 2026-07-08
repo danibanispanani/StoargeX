@@ -102,6 +102,13 @@ enum DebtKind {
   SONSTIGES
 }
 
+enum DebtType {
+  PURCHASE
+  SALE
+  MANUAL
+  OTHER
+}
+
 // Buchhaltungs-Marker: I.O / Fehlt
 enum DebtEntry {
   IO
@@ -250,6 +257,9 @@ model Organization {
   saleLineAllocations       SaleLineAllocation[]
   returnLines               ReturnLine[]
   returnAllocations         ReturnAllocation[]
+  debtPurchaseLinks         DebtPurchaseLink[]
+  debtSaleLinks             DebtSaleLink[]
+  debtInventoryLinks        DebtInventoryLink[]
 
   @@map("organizations")
 }
@@ -581,6 +591,7 @@ model Sale {
   saleLines    SaleLine[]
   returns      Return[]
   consignments ConsignmentInventory[]
+  debtLinks    DebtSaleLink[]
 
   @@index([organizationId])
   @@index([organizationId, soldAt])
@@ -708,8 +719,10 @@ model ConsignmentInventory {
 model Debt {
   id             String     @id @default(cuid())
   organizationId String     @map("organization_id")
+  debtNumber     String?    @map("debt_number")
   debtDate       DateTime   @default(now()) @map("debt_date") // Datum der Forderung
   refId          String?    @map("ref_id") // Lager- oder Order-ID
+  type           DebtType   @default(MANUAL) @map("debt_type")
   kind           DebtKind   @default(SONSTIGES) // Kauf / Verkauf / Sonstiges
   quantity       Int        @default(1) // Menge
   entryStatus    DebtEntry  @default(IO) @map("entry_status") // I.O / Fehlt
@@ -725,11 +738,65 @@ model Debt {
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseLink   DebtPurchaseLink?
+  saleLink       DebtSaleLink?
+  inventoryLinks DebtInventoryLink[]
 
+  @@unique([organizationId, debtNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, type])
   @@map("debts")
+}
+
+model DebtPurchaseLink {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  debtId         String   @unique @map("debt_id")
+  purchaseId     String   @unique @map("purchase_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  debt         Debt         @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  purchase     Purchase     @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, purchaseId])
+  @@map("debt_purchase_links")
+}
+
+model DebtSaleLink {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  debtId         String   @unique @map("debt_id")
+  saleId         String   @unique @map("sale_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  debt         Debt         @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, saleId])
+  @@map("debt_sale_links")
+}
+
+model DebtInventoryLink {
+  id                  String   @id @default(cuid())
+  organizationId      String   @map("organization_id")
+  debtId              String   @map("debt_id")
+  inventoryPositionId String   @map("inventory_position_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  debt              Debt              @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+
+  @@unique([debtId, inventoryPositionId])
+  @@index([organizationId])
+  @@index([organizationId, inventoryPositionId])
+  @@map("debt_inventory_links")
 }
 
 model Task {
@@ -893,9 +960,10 @@ model Purchase {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User           @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User               @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   lines        PurchaseLine[]
+  debtLinks    DebtPurchaseLink[]
 
   @@unique([organizationId, purchaseNumber])
   @@index([organizationId])
@@ -960,6 +1028,7 @@ model InventoryPosition {
   movements       InventoryMovement[]
   listings        InventoryPositionListing[]
   saleAllocations SaleLineAllocation[]
+  debtLinks       DebtInventoryLink[]
 
   @@unique([organizationId, inventoryNumber])
   @@index([organizationId])

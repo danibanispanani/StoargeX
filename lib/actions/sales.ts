@@ -11,7 +11,7 @@ import {
   feeNetCents,
   resolveTaxRatePercent,
 } from "@/lib/calculations";
-import { paymentMethodCreatesDebt } from "@/lib/constants";
+import { shouldCreateSaleDebt } from "@/lib/services/debt-service";
 import type { ActionState } from "@/lib/actions/team";
 import {
   cancelInventorySale,
@@ -195,7 +195,7 @@ export async function createSaleAction(
       notes: data.notes || null,
       debt: data.payoutRecipient
         ? {
-            create: paymentMethodCreatesDebt(data.payoutRecipient),
+            create: shouldCreateSaleDebt(data.payoutRecipient),
             description: "Verkauf über Inventory-Allocation",
             debtorName: data.payoutRecipient,
             creditorName: "GbR",
@@ -205,7 +205,7 @@ export async function createSaleAction(
 
     revalidateSalesViews();
     const debtHint =
-      data.payoutRecipient && paymentMethodCreatesDebt(data.payoutRecipient)
+      data.payoutRecipient && shouldCreateSaleDebt(data.payoutRecipient)
         ? " · Schulden-Eintrag angelegt"
         : "";
     return {

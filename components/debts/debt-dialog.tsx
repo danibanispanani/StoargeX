@@ -94,8 +94,8 @@ export function DebtDialog({
               <Input id="debt-date" name="debtDate" type="date" defaultValue={debt?.debtDate ?? today} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="debt-ref">ID (Lager-/Order-ID)</Label>
-              <Input id="debt-ref" name="refId" defaultValue={debt?.refId} placeholder="z.B. L-26-042" />
+              <Label htmlFor="debt-ref">Legacy-Bezug (optional)</Label>
+              <Input id="debt-ref" name="refId" defaultValue={debt?.refId} placeholder="z.B. alte Lager-/Order-ID" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="debt-kind">Art</Label>

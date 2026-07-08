@@ -174,3 +174,47 @@ K-Position die Ware ursprünglich verkauft wurde.
 
 Legacy-Retouren ohne `ReturnLine` bleiben in `/retouren` lesbar und editierbar,
 werden aber nicht automatisch über den neuen Movement-Workflow gebucht.
+
+## Schulden ab Phase 7
+
+Neue Schulden erhalten eine eigene SaaS-Nummer aus `DocumentSequence(DEBT)`:
+
+`Debt(debtNumber=SCH-YY-NNNN)`
+
+Die alte `refId` bleibt nur für importierte Legacy-Daten und manuelle Hinweise
+erhalten. Neue automatische Schulden werden technisch relational verknüpft:
+
+- Einkaufs-Schulden: `Debt -> DebtPurchaseLink -> Purchase`
+- Verkaufs-Schulden: `Debt -> DebtSaleLink -> Sale`
+- Historische oder ergänzende Bestandsbezüge: `Debt -> DebtInventoryLink -> InventoryPosition`
+
+`Debt.type` unterscheidet die fachliche Herkunft:
+
+- `PURCHASE`: Einkauf wurde privat durch Richard oder Daniel bezahlt.
+- `SALE`: Verkaufserlös wurde an ein privates Konto von Richard oder Daniel ausgezahlt.
+- `MANUAL`: manuell angelegte Schuld ohne Ursprungsrelation.
+- `OTHER`: reserviert für spätere Sonderfälle.
+
+Kauf-Automatismus:
+
+- Nur `paymentMethod = Richard` oder `paymentMethod = Daniel` erzeugt eine
+  automatische Schuld.
+- Schuldner ist `GbR`, Empfänger ist die private Person.
+- Betrag ist die Bruttosumme des gesamten `Purchase`.
+- Ein Einkauf mit mehreren `PurchaseLine`s erzeugt genau eine Schuld.
+- `DebtPurchaseLink.purchaseId` ist eindeutig und macht wiederholte Aufrufe
+  idempotent.
+
+Verkaufs-Automatismus:
+
+- Private Auszahlungsempfänger werden aktuell aus den vorhandenen Namen/Aliassen
+  abgeleitet (`Richard`, `Daniel`, `... R`, `... D`).
+- Schuldner ist die private Person, Empfänger ist `GbR`.
+- Die Betragsbasis bleibt wie im Bestandssystem: `Sale.salePriceCents`
+  beziehungsweise VK brutto.
+- `DebtSaleLink.saleId` ist eindeutig und verhindert doppelte Schulden pro
+  Verkauf.
+
+Beim Wechsel auf `SETTLED` setzt der zentrale Debt-Service `settledAt` und
+`paidCents`, schreibt AuditLog und verändert den zugrunde liegenden Einkauf
+oder Verkauf nicht.

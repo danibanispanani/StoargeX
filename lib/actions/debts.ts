@@ -7,6 +7,7 @@ import { requireOrg } from "@/lib/org";
 import { writeAuditLog } from "@/lib/audit";
 import { euroToCents } from "@/lib/calculations";
 import type { ActionState } from "@/lib/actions/team";
+import { createManualDebt, settleDebt } from "@/lib/services/debt-service";
 
 const debtSchema = z.object({
   debtDate: z.string().optional().or(z.literal("")),
@@ -92,25 +93,28 @@ export async function createDebtAction(
   const result = parseDebtForm(formData);
   if ("error" in result) return { error: result.error };
 
-  const debt = await db.debt.create({
-    data: {
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
+    await createManualDebt({
       organizationId: organization.id,
-      ...debtValues(result.data, result.amountCents),
-    },
-  });
-
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId,
-    action: "debt.create",
-    entityType: "Debt",
-    entityId: debt.id,
-    after: {
-      debtor: debt.debtorName,
-      creditor: debt.creditorName,
-      amountCents: debt.amountCents,
-      kind: debt.kind,
-    },
+      createdById: userId,
+      tx,
+      payload: {
+        date: result.data.debtDate ? new Date(result.data.debtDate) : new Date(),
+        legacyRefId: result.data.refId || null,
+        description: result.data.description,
+        type: "MANUAL",
+        kind: result.data.kind,
+        quantity: result.data.quantity,
+        amountCents: result.amountCents,
+        debtorName: result.data.debtorName.trim(),
+        creditorName: result.data.creditorName.trim(),
+        status: result.data.status,
+        entryStatus: result.data.entryStatus,
+        settledAt: result.data.settledAt ? new Date(result.data.settledAt) : null,
+        notes: result.data.notes || null,
+      },
+    });
   });
 
   revalidatePath("/schulden");
@@ -125,7 +129,9 @@ export async function updateDebtAction(
 ): Promise<ActionState> {
   const { db, organization, userId } = await requireOrg("MEMBER");
 
-  const existing = await db.debt.findFirst({ where: { id: debtId } });
+  const existing = await db.debt.findFirst({
+    where: { id: debtId, organizationId: organization.id },
+  });
   if (!existing) return { error: "Eintrag nicht gefunden." };
 
   const result = parseDebtForm(formData);
@@ -160,24 +166,20 @@ export async function updateDebtStatusAction(
   const parsed = z.enum(["OPEN", "SETTLED", "OTHER"]).safeParse(status);
   if (!parsed.success) return { error: "Ungültiger Status." };
 
-  const existing = await db.debt.findFirst({ where: { id: debtId } });
+  const existing = await db.debt.findFirst({
+    where: { id: debtId, organizationId: organization.id },
+  });
   if (!existing) return { error: "Eintrag nicht gefunden." };
 
-  await db.debt.update({
-    where: { id: debtId },
-    data: {
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
+    await settleDebt({
+      organizationId: organization.id,
+      debtId,
       status: parsed.data,
-      settledAt: parsed.data === "SETTLED" ? existing.settledAt ?? new Date() : null,
-      paidCents: parsed.data === "SETTLED" ? existing.amountCents : 0,
-    },
-  });
-
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId,
-    action: parsed.data === "SETTLED" ? "debt.settle" : "debt.status_change",
-    entityType: "Debt",
-    entityId: debtId,
+      userId,
+      tx,
+    });
   });
 
   revalidatePath("/schulden");
@@ -189,12 +191,14 @@ export async function updateDebtEntryAction(
   debtId: string,
   entryStatus: DebtEntry
 ): Promise<ActionState> {
-  const { db } = await requireOrg("MEMBER");
+  const { db, organization } = await requireOrg("MEMBER");
 
   const parsed = z.nativeEnum(DebtEntry).safeParse(entryStatus);
   if (!parsed.success) return { error: "Ungültiger Wert." };
 
-  const existing = await db.debt.findFirst({ where: { id: debtId } });
+  const existing = await db.debt.findFirst({
+    where: { id: debtId, organizationId: organization.id },
+  });
   if (!existing) return { error: "Eintrag nicht gefunden." };
 
   await db.debt.update({
@@ -210,7 +214,9 @@ export async function updateDebtEntryAction(
 export async function deleteDebtAction(debtId: string): Promise<ActionState> {
   const { db, organization, userId } = await requireOrg("ADMIN");
 
-  const existing = await db.debt.findFirst({ where: { id: debtId } });
+  const existing = await db.debt.findFirst({
+    where: { id: debtId, organizationId: organization.id },
+  });
   if (!existing) return { error: "Eintrag nicht gefunden." };
 
   await db.debt.delete({ where: { id: debtId } });

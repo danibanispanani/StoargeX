@@ -51,6 +51,13 @@
 > oder Defekt ausschließlich über `RETURN_*`-Movements. Legacy-Retouren bleiben
 > lesbar.
 
+> **Phase 7 abgeschlossen** (Migration `20260708130000_debt_relations_phase7`):
+> Neue Schulden erhalten `SCH-{JJ}-{NNNN}` aus `DocumentSequence(DEBT)`,
+> automatische Einkaufs-/Verkaufs-Schulden sind über `DebtPurchaseLink` bzw.
+> `DebtSaleLink` relational mit ihrem Ursprung verknüpft und idempotent. Die
+> Schuldenseite zeigt den Bezug als Link auf Einkauf oder Verkauf; `refId`
+> bleibt nur als Legacy-Hinweis erhalten.
+
 ---
 
 ## 1. Ist-Architektur (Kurzform)
@@ -389,7 +396,7 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       umgestellt. **Abgeschlossen** in Migration
       `20260707140000_owned_purchase_batches_phase3` und
       [lib/services/owned-purchase-service.ts](../lib/services/owned-purchase-service.ts).
-- [ ] **Phase 3b** – Schulden und Import auf neue Inventory-Domain umstellen.
+- [ ] **Phase 3b** – Import auf neue Inventory-Domain umstellen.
 - [x] **Phase 4** – Konsignationsbestand auf getrennte UI mit gemeinsamer
       `InventoryPosition(CONSIGNMENT)`-Struktur umgestellt. **Abgeschlossen**
       in Migration `20260708100000_consignment_inventory_positions_phase4` und
@@ -402,6 +409,10 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       umgestellt. **Abgeschlossen** in Migration
       `20260708120000_return_lines_allocations_phase6` und
       [lib/services/returns-service.ts](../lib/services/returns-service.ts).
+- [x] **Phase 7** – Schulden relational mit `DebtPurchaseLink`,
+      `DebtSaleLink` und `DebtInventoryLink` verknüpft. **Abgeschlossen** in
+      Migration `20260708130000_debt_relations_phase7` und
+      [lib/services/debt-service.ts](../lib/services/debt-service.ts).
 - [ ] **Phase 5** – Feature-Flag on; Playwright-Smoke; Load-Test der neuen
       Aggregationen (`loadDashboardKpis` etc.).
 - [ ] **Phase 6** – Alt-Spalten droppen, Rollback-Plan (git revert +

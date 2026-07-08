@@ -2,6 +2,7 @@ import type {
   DebtEntry,
   DebtKind,
   DebtStatus,
+  DebtType,
   EntryStatus,
   ReturnStatus,
   SaleStatus,
@@ -152,6 +153,13 @@ export const DEBT_KIND_LABELS: Record<DebtKind, string> = {
   KAUF: "Kauf",
   VERKAUF: "Verkauf",
   SONSTIGES: "Sonstiges",
+};
+
+export const DEBT_TYPE_LABELS: Record<DebtType, string> = {
+  PURCHASE: "Einkauf",
+  SALE: "Verkauf",
+  MANUAL: "Manuell",
+  OTHER: "Sonstiges",
 };
 
 export const DEBT_STATUS: Record<DebtStatus, StatusStyle> = {

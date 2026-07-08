@@ -1,5 +1,6 @@
 import type {
   EntryStatus,
+  Debt,
   InventoryPosition,
   Prisma,
   PrismaClient,
@@ -11,6 +12,7 @@ import { prisma as defaultPrisma } from "@/lib/prisma";
 import { calcPurchaseNetCents } from "@/lib/calculations";
 import { reserveDocumentNumber } from "@/lib/services/document-number-service";
 import { receiveOwnedStock } from "@/lib/services/inventory-service";
+import { ensurePurchaseDebt } from "@/lib/services/debt-service";
 
 type PurchaseTransaction = Prisma.TransactionClient;
 type PurchasePrismaClient = Pick<PrismaClient, "$transaction">;
@@ -62,6 +64,7 @@ export interface CreateOwnedPurchaseResult {
   purchase: Purchase;
   purchaseNumber: string;
   lines: CreatedOwnedPurchaseLine[];
+  debt: Debt | null;
 }
 
 export type DerivedOwnedStockStatus =
@@ -297,7 +300,19 @@ async function createOwnedPurchaseInTransaction(
     },
   });
 
-  return { purchase, purchaseNumber, lines: createdLines };
+  const debt = await ensurePurchaseDebt({
+    organizationId: input.organizationId,
+    createdById: input.createdById,
+    purchaseId: purchase.id,
+    purchaseNumber,
+    purchaseDate: input.purchaseDate,
+    vendor: input.vendor,
+    paymentMethod: input.paymentMethod,
+    totalGrossCents: plans.reduce((sum, line) => sum + line.totalGrossCents, 0),
+    tx,
+  });
+
+  return { purchase, purchaseNumber, lines: createdLines, debt };
 }
 
 async function resolveProduct(

@@ -149,9 +149,11 @@ export async function createStockItemAction(
 
     revalidatePath("/lager");
     revalidatePath("/produkte");
+    if (created.debt) revalidatePath("/schulden");
     const inventoryText = created.lines.map((line) => line.inventoryNumber).join(", ");
+    const debtHint = created.debt ? " · Schulden-Eintrag angelegt" : "";
     return {
-      success: `Wareneingang ${created.purchaseNumber} gespeichert âœ“ (${inventoryText}, ${data.quantity} StÃ¼ck)`,
+      success: `Wareneingang ${created.purchaseNumber} gespeichert âœ“ (${inventoryText}, ${data.quantity} StÃ¼ck)${debtHint}`,
     };
   } catch (error) {
     return {
