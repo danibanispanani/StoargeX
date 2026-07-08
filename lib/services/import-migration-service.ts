@@ -95,12 +95,21 @@ export async function runMigrationImport(input: {
   const existingHashes = await loadExistingRowHashes(input.tx, input.organizationId, input.rows);
   const context = await loadImportContext(input.tx, input.organizationId);
   const plannedRows = planRows(input.table, input.rows, existingHashes, context, errors, summary);
-  const validRows = plannedRows.filter((row) => row.status !== "ERROR" && row.status !== "UNCHANGED");
+  const validRows = plannedRows.filter((row) => isImportableRow(input.table, row));
 
   if (input.dryRun) {
     return {
-      validCount: plannedRows.length - summary.errors,
+      validCount: validRows.length,
       errors: errors.slice(0, 50),
+      summary,
+    };
+  }
+
+  if (hasBlockingRows(input.table, plannedRows)) {
+    return {
+      validCount: validRows.length,
+      errors: errors.slice(0, 50),
+      importedCount: 0,
       summary,
     };
   }
@@ -166,7 +175,7 @@ export async function runMigrationImport(input: {
   }
 
   return {
-    validCount: plannedRows.length - summary.errors,
+    validCount: validRows.length,
     errors: errors.slice(0, 50),
     importedCount,
     batchId: batch.id,
@@ -247,7 +256,7 @@ function planRows(
   errors: Array<{ row: number; message: string }>,
   summary: ImportSummary
 ): PlannedRow[] {
-  return rows.map((row, index) => {
+  const plannedRows: PlannedRow[] = rows.map((row, index) => {
     const rowNumber = index + 1;
     const rowHash = hashRow(row);
     const legacyReference = primaryLegacyReference(table, row, rowNumber);
@@ -291,6 +300,12 @@ function planRows(
       warnings: validation.warnings,
     };
   });
+
+  if (table === "verkauf") {
+    markSaleStockReviewRows(plannedRows, context, summary);
+  }
+
+  return plannedRows;
 }
 
 async function commitStockImport(
@@ -418,7 +433,7 @@ async function commitSalesImport(
 
   for (const planned of plannedRows) {
     const row = planned.row;
-    const references = parseLegacyReferences(row.lagerids || row.lagerid);
+    const references = saleStockReferences(row);
     const mappedPositions = references
       .map((reference) => context.inventoryByLegacy.get(reference))
       .filter((position): position is ImportInventoryMapping => Boolean(position));
@@ -692,8 +707,67 @@ interface ImportContext {
 
 interface ImportInventoryMapping {
   inventoryPositionId: string;
+  inventoryNumber: string;
   inventoryType: "OWNED" | "CONSIGNMENT";
+  quantityAvailable: number;
   unitCostNetCents: number;
+}
+
+function isImportableRow(table: TableKey, row: PlannedRow): boolean {
+  if (row.status === "ERROR" || row.status === "UNCHANGED") return false;
+  if (table === "verkauf" && (row.status === "REVIEW_REQUIRED" || row.status === "CONFLICT")) {
+    return false;
+  }
+  return true;
+}
+
+function hasBlockingRows(table: TableKey, rows: PlannedRow[]): boolean {
+  return rows.some((row) => !isImportableRow(table, row) && row.status !== "ERROR" && row.status !== "UNCHANGED");
+}
+
+function markSaleStockReviewRows(
+  plannedRows: PlannedRow[],
+  context: ImportContext,
+  summary: ImportSummary
+): void {
+  const usedByPosition = new Map<string, number>();
+
+  for (const planned of plannedRows) {
+    if (planned.status === "ERROR" || planned.status === "UNCHANGED") continue;
+
+    const references = saleStockReferences(planned.row);
+    const mappedPositions = references
+      .map((reference) => context.inventoryByLegacy.get(reference))
+      .filter((position): position is ImportInventoryMapping => Boolean(position));
+
+    const conflicts = mappedPositions
+      .map((position) => {
+        const used = usedByPosition.get(position.inventoryPositionId) ?? 0;
+        const nextUsed = used + 1;
+        if (nextUsed <= position.quantityAvailable) return null;
+        return `${position.inventoryNumber} hat ${position.quantityAvailable} verfügbar, würde aber ${nextUsed}× verwendet.`;
+      })
+      .filter((message): message is string => Boolean(message));
+
+    if (conflicts.length > 0) {
+      const message = `Review nötig: ${conflicts.join(" ")}`;
+      planned.status = "REVIEW_REQUIRED";
+      planned.warnings = [...(planned.warnings ?? []), message];
+      updateReview(summary, planned.rowNumber, {
+        status: "REVIEW_REQUIRED",
+        message,
+        warnings: planned.warnings,
+      });
+      continue;
+    }
+
+    for (const position of mappedPositions) {
+      usedByPosition.set(
+        position.inventoryPositionId,
+        (usedByPosition.get(position.inventoryPositionId) ?? 0) + 1
+      );
+    }
+  }
 }
 
 function validateRow(
@@ -720,7 +794,7 @@ function validateRow(
   }
   if (table === "verkauf") {
     needMoney("vk_brutto", "VK brutto");
-    const refs = parseLegacyReferences(row.lagerids || row.lagerid);
+    const refs = saleStockReferences(row);
     const linked = refs.filter((ref) => context.inventoryByLegacy.has(ref)).length;
     const status = relationStatusFor(refs.length, linked);
     if (status === "UNRESOLVED") warnings.push("Kein eindeutiger Bestandsbezug; Verkauf wird historisch ohne Allocation importiert.");
@@ -744,6 +818,11 @@ function validateRow(
   }
   if (table === "aufgaben" && !row.aufgabe?.trim()) errors.push("Aufgabe fehlt.");
   return { status: errors.length ? "ERROR" : "NEW", message: `Zeile ${rowNumber} wird importiert.`, warnings, errors, targetEntity: table === "aufgaben" ? "TASK" : "LEGACY_ONLY" };
+}
+
+function saleStockReferences(row: ImportRow): string[] {
+  if (row.import_resolution === "historical") return [];
+  return parseLegacyReferences(row.resolved_lagerids || row.lagerids || row.lagerid);
 }
 
 async function loadImportContext(tx: Tx, organizationId: string): Promise<ImportContext> {
@@ -770,7 +849,9 @@ async function loadImportContext(tx: Tx, organizationId: string): Promise<Import
     const unitCost = position.ownedLot?.unitPriceNet ?? position.consignmentLot?.costNet ?? null;
     inventoryByLegacy.set(normalizeLegacy(ref.legacyReference), {
       inventoryPositionId: position.id,
+      inventoryNumber: position.inventoryNumber,
       inventoryType: position.inventoryType,
+      quantityAvailable: position.quantityAvailable,
       unitCostNetCents: decimalToCents(unitCost),
     });
   }
@@ -851,18 +932,37 @@ async function resolveProduct(
 
 function addReview(summary: ImportSummary, item: ImportReviewItem) {
   summary.review.push(item);
-  if (item.status === "UNCHANGED") summary.unchanged++;
-  else if (item.status === "UPDATE_AVAILABLE") summary.updateAvailable++;
-  else if (item.status === "NEW") summary.newRows++;
-  else if (item.status === "CONFLICT") summary.conflicts++;
-  else if (item.status === "LINKED") summary.linked++;
-  else if (item.status === "PARTIALLY_LINKED") summary.partiallyLinked++;
-  else if (item.status === "UNRESOLVED") summary.unresolved++;
-  else if (item.status === "REVIEW_REQUIRED") summary.reviewRequired++;
-  else if (item.status === "ERROR") summary.errors++;
+  incrementStatus(summary, item.status, 1);
   if (item.targetEntity) {
     summary.targetCounts[item.targetEntity] = (summary.targetCounts[item.targetEntity] ?? 0) + 1;
   }
+}
+
+function updateReview(
+  summary: ImportSummary,
+  rowNumber: number,
+  patch: Pick<ImportReviewItem, "status" | "message"> & Pick<Partial<ImportReviewItem>, "warnings" | "errors">
+) {
+  const item = summary.review.find((reviewItem) => reviewItem.row === rowNumber);
+  if (!item) return;
+  incrementStatus(summary, item.status, -1);
+  item.status = patch.status;
+  item.message = patch.message;
+  item.warnings = patch.warnings;
+  item.errors = patch.errors;
+  incrementStatus(summary, item.status, 1);
+}
+
+function incrementStatus(summary: ImportSummary, status: ImportRowStatus, amount: 1 | -1) {
+  if (status === "UNCHANGED") summary.unchanged += amount;
+  else if (status === "UPDATE_AVAILABLE") summary.updateAvailable += amount;
+  else if (status === "NEW") summary.newRows += amount;
+  else if (status === "CONFLICT") summary.conflicts += amount;
+  else if (status === "LINKED") summary.linked += amount;
+  else if (status === "PARTIALLY_LINKED") summary.partiallyLinked += amount;
+  else if (status === "UNRESOLVED") summary.unresolved += amount;
+  else if (status === "REVIEW_REQUIRED") summary.reviewRequired += amount;
+  else if (status === "ERROR") summary.errors += amount;
 }
 
 function relationStatusFor(totalRefs: number, linkedRefs: number): "LINKED" | "PARTIALLY_LINKED" | "UNRESOLVED" {
@@ -893,6 +993,7 @@ function primaryLegacyReference(table: TableKey, row: ImportRow, rowNumber: numb
 
 function hashRow(row: ImportRow): string {
   const canonical = Object.keys(row)
+    .filter((key) => !["import_resolution", "resolved_lagerids"].includes(key))
     .sort()
     .map((key) => [key, row[key]?.trim() ?? ""])
     .map(([key, value]) => `${key}=${value}`)

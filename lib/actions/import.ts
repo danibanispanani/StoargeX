@@ -22,6 +22,13 @@ export interface ImportResult {
   error?: string;
 }
 
+export interface ImportInventoryOption {
+  inventoryNumber: string;
+  label: string;
+  quantityAvailable: number;
+  inventoryType: "OWNED" | "CONSIGNMENT";
+}
+
 type Row = Record<string, string>;
 
 const requestSchema = z.object({
@@ -90,6 +97,13 @@ export async function importRowsAction(
       });
     }, { maxWait: 30000, timeout: 600000 });
 
+    if (!dryRun && hasBlockingReview(result.summary)) {
+      return {
+        ...result,
+        error: "Import gestoppt: Es gibt Review- oder Konfliktzeilen. Bitte zuerst prüfen.",
+      };
+    }
+
     if (!dryRun && (result.importedCount ?? 0) > 0) {
       await writeAuditLog({
         organizationId: organization.id,
@@ -115,6 +129,58 @@ export async function importRowsAction(
       error: error instanceof Error ? error.message : "Import fehlgeschlagen.",
     };
   }
+}
+
+export async function getImportInventoryOptionsAction(): Promise<ImportInventoryOption[]> {
+  const { db } = await requireOrg("MEMBER");
+  const positions = await db.inventoryPosition.findMany({
+    where: {
+      active: true,
+      quantityAvailable: { gt: 0 },
+    },
+    orderBy: [
+      { inventoryNumber: "asc" },
+    ],
+    take: 500,
+    include: {
+      product: {
+        select: {
+          name: true,
+          variant: true,
+          size: true,
+        },
+      },
+      consignmentLot: {
+        select: {
+          partnerCompany: true,
+        },
+      },
+    },
+  });
+
+  return positions.map((position) => {
+    const productParts = [
+      position.product.name,
+      position.product.variant,
+      position.product.size,
+    ].filter(Boolean);
+    const source =
+      position.inventoryType === "CONSIGNMENT"
+        ? `Konsignation${position.consignmentLot?.partnerCompany ? ` · ${position.consignmentLot.partnerCompany}` : ""}`
+        : "Eigenbestand";
+
+    return {
+      inventoryNumber: position.inventoryNumber,
+      label: `${position.inventoryNumber} · ${productParts.join(" · ")} · ${position.quantityAvailable} verfügbar · ${source}`,
+      quantityAvailable: position.quantityAvailable,
+      inventoryType: position.inventoryType,
+    };
+  });
+}
+
+function hasBlockingReview(summary?: ImportSummary) {
+  if (!summary) return false;
+  return summary.reviewRequired > 0 || summary.conflicts > 0;
 }
 
 function validateRequiredFields(table: TableKey, rows: Row[]) {

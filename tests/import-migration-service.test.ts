@@ -10,7 +10,7 @@ import {
 
 function dryRunTx(options: {
   existingHashes?: string[];
-  inventoryRefs?: Array<{ legacyReference: string; targetEntityId: string }>;
+  inventoryRefs?: Array<{ legacyReference: string; targetEntityId: string; quantityAvailable?: number }>;
   saleRefs?: Array<{ legacyReference: string; targetEntityId: string }>;
 } = {}) {
   const existing = new Set(options.existingHashes ?? []);
@@ -48,7 +48,9 @@ function dryRunTx(options: {
       findMany: async () =>
         (options.inventoryRefs ?? []).map((ref) => ({
           id: ref.targetEntityId,
+          inventoryNumber: ref.legacyReference,
           inventoryType: "OWNED",
+          quantityAvailable: ref.quantityAvailable ?? 1,
           ownedLot: { unitPriceNet: "30.00" },
           consignmentLot: null,
         })),
@@ -141,6 +143,82 @@ describe("import migration pipeline", () => {
       inventoryRefs: [{ legacyReference: "L-26-100", targetEntityId: "inv-1" }],
     }));
     expect(result.summary.linked).toBe(1);
+  });
+
+  it("Dry Run: Verkauf mit kumulierter Überbuchung braucht Review", async () => {
+    const result = await dryRun("verkauf", [
+      {
+        orderid: "OLD-5",
+        lagerids: "L-26-200",
+        model: "Fire TV Stick",
+        vk_brutto: "59,99",
+      },
+      {
+        orderid: "OLD-6",
+        lagerids: "L-26-200",
+        model: "Fire TV Stick",
+        vk_brutto: "59,99",
+      },
+    ], dryRunTx({
+      inventoryRefs: [{ legacyReference: "L-26-200", targetEntityId: "inv-200", quantityAvailable: 1 }],
+    }));
+
+    expect(result.validCount).toBe(1);
+    expect(result.summary.linked).toBe(1);
+    expect(result.summary.reviewRequired).toBe(1);
+    expect(result.summary.review[1].message).toMatch(/Review nötig/);
+  });
+
+  it("Dry Run: Review-Verkauf kann historisch ohne Bestand freigegeben werden", async () => {
+    const result = await dryRun("verkauf", [
+      {
+        orderid: "OLD-7",
+        lagerids: "L-26-201",
+        model: "Fire TV Stick",
+        vk_brutto: "59,99",
+      },
+      {
+        orderid: "OLD-8",
+        lagerids: "L-26-201",
+        import_resolution: "historical",
+        model: "Fire TV Stick",
+        vk_brutto: "59,99",
+      },
+    ], dryRunTx({
+      inventoryRefs: [{ legacyReference: "L-26-201", targetEntityId: "inv-201", quantityAvailable: 1 }],
+    }));
+
+    expect(result.validCount).toBe(2);
+    expect(result.summary.linked).toBe(1);
+    expect(result.summary.unresolved).toBe(1);
+    expect(result.summary.reviewRequired).toBe(0);
+  });
+
+  it("Dry Run: Review-Verkauf kann auf Ersatzbestand umgebucht werden", async () => {
+    const result = await dryRun("verkauf", [
+      {
+        orderid: "OLD-9",
+        lagerids: "L-26-202",
+        model: "Fire TV Stick",
+        vk_brutto: "59,99",
+      },
+      {
+        orderid: "OLD-10",
+        lagerids: "L-26-202",
+        resolved_lagerids: "L-26-203",
+        model: "Fire TV Stick",
+        vk_brutto: "59,99",
+      },
+    ], dryRunTx({
+      inventoryRefs: [
+        { legacyReference: "L-26-202", targetEntityId: "inv-202", quantityAvailable: 1 },
+        { legacyReference: "L-26-203", targetEntityId: "inv-203", quantityAvailable: 1 },
+      ],
+    }));
+
+    expect(result.validCount).toBe(2);
+    expect(result.summary.linked).toBe(2);
+    expect(result.summary.reviewRequired).toBe(0);
   });
 
   it("Dry Run: Retoure mit Order-Referenz wird teilweise verknüpft", async () => {
