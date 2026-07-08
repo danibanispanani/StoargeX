@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import type { ComponentProps } from "react";
 import { toast } from "sonner";
 import { createConsignmentItemAction } from "@/lib/actions/consignment";
 import type { ActionState } from "@/lib/actions/team";
@@ -36,73 +37,129 @@ export function CreateConsignmentDialog() {
       <DialogTrigger asChild>
         <Button>Konsignationsartikel anlegen</Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Konsignationsartikel anlegen</DialogTitle>
           <DialogDescription>
-            Ware einer Partnerfirma mit eigener SKU. Preisebenen als JSON,
-            z.B. VK Standard / VK Aktion.
+            Neue Ware erhält eine K-Nummer und wird als InventoryPosition mit
+            ConsignmentLot und Eingangsbuchung gespeichert.
           </DialogDescription>
         </DialogHeader>
-        <form action={formAction} className="space-y-4">
+        <form action={formAction} className="space-y-5">
           {state?.error && (
             <Alert variant="destructive">
               <AlertDescription>{state.error}</AlertDescription>
             </Alert>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="con-partner">Partnerfirma *</Label>
-              <Input id="con-partner" name="consignorName" required placeholder="z.B. Elektro Müller GmbH" />
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium">Partner und Artikel</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field id="con-partner" name="consignorName" label="Partnerfirma *" required placeholder="z.B. Pattfield" />
+              <Field id="con-contact" name="consignorContact" label="Kontakt" placeholder="mail@partner.de" />
+              <Field id="con-title" name="itemTitle" label="Name *" required placeholder="z.B. Fire TV Stick" className="sm:col-span-2" />
+              <Field id="con-variant" name="variant" label="Sonstiges / Variante" placeholder="4K · 2024" />
+              <Field id="con-ean" name="ean" label="EAN" />
+              <Field id="con-sku" name="sku" label="Externe SKU / Bezeichnung" placeholder="Partner-SKU optional" />
+              <Field id="con-ident" name="identificationNumber" label="Identifikationsnummer" />
+              <Field id="con-category" name="category" label="Kategorie" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="con-contact">Kontakt</Label>
-              <Input id="con-contact" name="consignorContact" placeholder="mail@partner.de" />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="con-title">Artikelbezeichnung *</Label>
-              <Input id="con-title" name="itemTitle" required placeholder="z.B. Bosch Akkuschrauber 18V" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="con-sku">SKU (leer = automatisch)</Label>
-              <Input id="con-sku" name="sku" placeholder="K-2026-001" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="con-qty">Bestand</Label>
-              <Input id="con-qty" name="quantity" type="number" min={0} defaultValue={1} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="con-commission">Provision (%)</Label>
-              <Input id="con-commission" name="commissionPercent" type="number" step="0.01" min="0" max="100" placeholder="20" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="con-payout">Fester Auszahlungsbetrag (€)</Label>
-              <Input id="con-payout" name="agreedPayout" inputMode="decimal" placeholder="alternativ zur Provision" />
-            </div>
-          </div>
+          </section>
 
-          <div className="space-y-2">
-            <Label htmlFor="con-tiers">Preisebenen (JSON, optional)</Label>
-            <textarea
-              id="con-tiers"
-              name="priceTiersJson"
-              rows={3}
-              placeholder='[{"label":"VK Standard","cents":4999},{"label":"VK Aktion","cents":3999}]'
-              className="border-input w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
-            />
-          </div>
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium">Bestand</h3>
+            <div className="grid gap-3 sm:grid-cols-5">
+              <NumberField id="con-qty-received" name="quantityReceived" label="Erhalten *" min={1} defaultValue={1} />
+              <NumberField id="con-qty-available" name="quantityAvailable" label="Verfügbar" min={0} placeholder="auto" />
+              <NumberField id="con-qty-sold" name="soldQuantity" label="Verkauft" min={0} defaultValue={0} />
+              <NumberField id="con-qty-return" name="returnedQuantity" label="Retoure/Prüfung" min={0} defaultValue={0} />
+              <NumberField id="con-qty-defect" name="defectiveQuantity" label="Defekt" min={0} defaultValue={0} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Wenn „Verfügbar“ leer bleibt, wird es aus erhalten minus verkauft,
+              Retoure/Prüfung und defekt berechnet.
+            </p>
+          </section>
 
-          <div className="space-y-2">
-            <Label htmlFor="con-notes">Notizen</Label>
-            <Input id="con-notes" name="notes" placeholder="optional" />
-          </div>
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium">Finanzen</h3>
+            <div className="grid gap-3 sm:grid-cols-5">
+              <Field id="con-cost-gross" name="costGross" label="EK brutto (€)" inputMode="decimal" />
+              <Field id="con-cost-net" name="costNet" label="EK netto (€)" inputMode="decimal" />
+              <Field id="con-settlement" name="settlementAmount" label="Endbetrag (€)" inputMode="decimal" />
+              <Field id="con-shipping" name="shippingCost" label="Versand (€)" inputMode="decimal" />
+              <Field id="con-rrp" name="realRrpGross" label="Reale OVP (€)" inputMode="decimal" />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="con-tiers">Channel-Preise (JSON, optional)</Label>
+              <textarea
+                id="con-tiers"
+                name="priceTiersJson"
+                rows={3}
+                placeholder='[{"label":"eBay R","cents":4999},{"label":"StockX","cents":5499}]'
+                className="border-input w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
+              />
+            </div>
+            <Field id="con-notes" name="notes" label="Kommentar" placeholder="optional" />
+          </section>
 
           <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Wird gespeichert…" : "Artikel anlegen"}
+            {pending ? "Wird gespeichert…" : "Konsignationsbestand anlegen"}
           </Button>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Field({
+  id,
+  name,
+  label,
+  className,
+  ...props
+}: ComponentProps<typeof Input> & {
+  id: string;
+  name: string;
+  label: string;
+}) {
+  return (
+    <div className={`space-y-2 ${className ?? ""}`}>
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} name={name} {...props} />
+    </div>
+  );
+}
+
+function NumberField({
+  id,
+  name,
+  label,
+  min,
+  defaultValue,
+  placeholder,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  min: number;
+  defaultValue?: number;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        name={name}
+        type="number"
+        min={min}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+      />
+    </div>
   );
 }

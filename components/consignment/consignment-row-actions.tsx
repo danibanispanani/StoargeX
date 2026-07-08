@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   linkConsignmentSalesAction,
+  moveConsignmentInventoryAction,
   updateConsignmentCountsAction,
 } from "@/lib/actions/consignment";
 import type { ActionState } from "@/lib/actions/team";
@@ -23,6 +24,8 @@ import {
 interface ConsignmentRow {
   id: string;
   sku: string;
+  source: "inventory" | "legacy";
+  inventoryPositionId?: string;
   quantity: number;
   soldQuantity: number;
   returnedQuantity: number;
@@ -37,11 +40,110 @@ export function ConsignmentRowActions({
   item: ConsignmentRow;
   saleOptions: Array<{ id: string; label: string }>;
 }) {
+  if (item.source === "inventory" && item.inventoryPositionId) {
+    return (
+      <div className="flex justify-end gap-1">
+        <MovementDialog item={item} operation="SELL" label="Verkauf" />
+        <MovementDialog item={item} operation="RETURN_INSPECTION" label="Retoure" />
+        <MovementDialog item={item} operation="DEFECTIVE" label="Defekt" />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex gap-1">
+    <div className="flex justify-end gap-1">
       <CountsDialog item={item} />
       <LinkSalesDialog item={item} saleOptions={saleOptions} />
     </div>
+  );
+}
+
+function MovementDialog({
+  item,
+  operation,
+  label,
+}: {
+  item: ConsignmentRow;
+  operation: "SELL" | "RETURN_INSPECTION" | "DEFECTIVE";
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const boundAction = moveConsignmentInventoryAction.bind(
+    null,
+    item.inventoryPositionId ?? item.id
+  );
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    boundAction,
+    null
+  );
+
+  useEffect(() => {
+    if (open) {
+      setIdempotencyKey(
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random()}`
+      );
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (state?.success) {
+      toast.success(state.success);
+      setOpen(false);
+    }
+  }, [state]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm">
+          {label}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            {label} buchen – {item.sku}
+          </DialogTitle>
+          <DialogDescription>
+            Neue Konsignationsbestände werden ausschließlich über
+            InventoryMovement gebucht.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="space-y-4">
+          {state?.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{state.error}</AlertDescription>
+            </Alert>
+          )}
+          <input type="hidden" name="operation" value={operation} />
+          <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+          <div className="space-y-2">
+            <Label htmlFor={`move-qty-${item.id}-${operation}`}>Menge</Label>
+            <Input
+              id={`move-qty-${item.id}-${operation}`}
+              name="quantity"
+              type="number"
+              min={1}
+              defaultValue={1}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`move-comment-${item.id}-${operation}`}>Kommentar</Label>
+            <Input
+              id={`move-comment-${item.id}-${operation}`}
+              name="comment"
+              placeholder="optional"
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={pending}>
+            {pending ? "Bucht…" : "Buchen"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -64,14 +166,15 @@ function CountsDialog({ item }: { item: ConsignmentRow }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
-          Bestände
+          Legacy-Bestände
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Bestände – {item.sku}</DialogTitle>
+          <DialogTitle>Legacy-Bestände – {item.sku}</DialogTitle>
           <DialogDescription>
-            Aktuelle Zähler für Bestand, verkauft, retourniert und defekt.
+            Direkte Zählerbearbeitung ist nur für alte ConsignmentInventory-Zeilen
+            verfügbar.
           </DialogDescription>
         </DialogHeader>
         <form action={formAction} className="space-y-4">
@@ -81,22 +184,10 @@ function CountsDialog({ item }: { item: ConsignmentRow }) {
             </Alert>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label htmlFor={`qty-${item.id}`}>Bestand</Label>
-              <Input id={`qty-${item.id}`} name="quantity" type="number" min={0} defaultValue={item.quantity} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`sold-${item.id}`}>Verkauft</Label>
-              <Input id={`sold-${item.id}`} name="soldQuantity" type="number" min={0} defaultValue={item.soldQuantity} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`ret-${item.id}`}>Retourniert</Label>
-              <Input id={`ret-${item.id}`} name="returnedQuantity" type="number" min={0} defaultValue={item.returnedQuantity} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`def-${item.id}`}>Defekt</Label>
-              <Input id={`def-${item.id}`} name="defectiveQuantity" type="number" min={0} defaultValue={item.defectiveQuantity} />
-            </div>
+            <LegacyNumber id={`qty-${item.id}`} name="quantity" label="Bestand" value={item.quantity} />
+            <LegacyNumber id={`sold-${item.id}`} name="soldQuantity" label="Verkauft" value={item.soldQuantity} />
+            <LegacyNumber id={`ret-${item.id}`} name="returnedQuantity" label="Retourniert" value={item.returnedQuantity} />
+            <LegacyNumber id={`def-${item.id}`} name="defectiveQuantity" label="Defekt" value={item.defectiveQuantity} />
           </div>
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? "Speichert…" : "Speichern"}
@@ -104,6 +195,25 @@ function CountsDialog({ item }: { item: ConsignmentRow }) {
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function LegacyNumber({
+  id,
+  name,
+  label,
+  value,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} name={name} type="number" min={0} defaultValue={value} />
+    </div>
   );
 }
 
@@ -147,10 +257,10 @@ function LinkSalesDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Verkäufe verknüpfen – {item.sku}</DialogTitle>
+          <DialogTitle>Legacy-Verkäufe verknüpfen – {item.sku}</DialogTitle>
           <DialogDescription>
-            Verknüpfte Sale-Einträge fließen in die separate Umsatz-/Margen-
-            Auswertung dieses Konsignationsartikels ein.
+            Neue Konsignationsware wird später über SaleLineAllocation verknüpft;
+            dieser Dialog bleibt für Altdaten.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">

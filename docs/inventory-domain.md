@@ -91,3 +91,32 @@ Für 10 gleiche Artikel entsteht genau eine fachliche Einkaufsposition und eine 
 - eine `PURCHASE_RECEIPT`-Bewegung mit `quantity=10`.
 
 Unterschiedliche Einkaufspreise, andere Händler oder mehrere fachliche Positionen bleiben getrennte `PurchaseLine`-/Lot-Kombinationen. Alte `StockItem`-Daten bleiben für Übergang, Export und spätere Migration erhalten, werden bei neuen Wareneingängen aber nicht mehr parallel erzeugt.
+
+## Konsignationsbestand ab Phase 4
+
+Neue Konsignationszugänge bleiben fachlich im separaten Modul `/konsignation`,
+werden technisch aber über dieselbe Inventory-Domain geführt:
+
+`Product -> InventoryPosition(CONSIGNMENT) -> ConsignmentLot -> InventoryMovement(CONSIGNMENT_RECEIPT)`
+
+Für einen Pattfield-Zugang mit 20 Stück entsteht:
+
+- ein `Product` aus Name, Variante, EAN und Kategorie oder ein bestehender Produktbezug,
+- eine `InventoryPosition` mit `inventoryType=CONSIGNMENT` und K-Nummer im Format `K-YY-NNNN`,
+- ein `ConsignmentLot` mit Partnerfirma, externer SKU, Identifikationsnummer, EK, Endbetrag, Versand, realer OVP, Channel-Preisen und Kommentar,
+- eine `CONSIGNMENT_RECEIPT`-Bewegung mit der erhaltenen Menge.
+
+Pattfield ist nur ein Datenwert in `partnerCompany`, kein hartcodierter Spezialfall.
+Weitere Konsignationspartner nutzen dieselbe Struktur. Legacy-Daten in
+`ConsignmentInventory` bleiben lesbar und bearbeitbar, neue Einträge werden aber
+nicht mehr parallel in die Legacy-Tabelle geschrieben.
+
+Bestandsänderungen neuer Konsignationsware laufen ausschließlich über
+`lib/services/inventory-service.ts`:
+
+- Verkaufsvorbereitung oder manueller Abgang: `SALE_OUT` (`AVAILABLE -> null`).
+- Physische Retoure: `RETURN_RECEIPT` (`null -> INSPECTION`) und Reduktion von `quantitySold`.
+- Defektmarkierung: `RETURN_DEFECTIVE` (`INSPECTION -> DEFECTIVE`).
+
+Damit ist Konsignationsware getrennt sichtbar, aber später über dieselbe
+Verkaufs- und Retourenlogik wie eigener Bestand verwendbar.

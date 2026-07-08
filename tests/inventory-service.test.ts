@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   getInventoryTimeline,
   markReturnDefective,
+  receiveConsignmentStock,
   receiveOwnedStock,
   receiveReturn,
   restockReturn,
@@ -498,5 +499,54 @@ describe("inventory service", () => {
     expect(client.position("pos-a").quantityAvailable).toBe(5);
     expect(client.position("pos-a").quantitySold).toBe(0);
     expect(client.movementCount()).toBe(1);
+  });
+
+  it("reduziert Konsignationsbestand, führt Retouren in Prüfung und markiert Defekte", async () => {
+    client = new MemoryInventoryClient([
+      makePosition({
+        id: "k-pos",
+        inventoryType: "CONSIGNMENT",
+        inventoryNumber: "K-26-0001",
+      }),
+    ]);
+
+    await receiveConsignmentStock({
+      organizationId: "org-a",
+      inventoryPositionId: "k-pos",
+      quantity: 20,
+      idempotencyKey: "k-receipt-20",
+      prisma: prisma(client),
+    });
+    await sell({
+      organizationId: "org-a",
+      inventoryPositionId: "k-pos",
+      quantity: 3,
+      requiredInventoryType: "CONSIGNMENT",
+      idempotencyKey: "k-sale-3",
+      prisma: prisma(client),
+    });
+    await receiveReturn({
+      organizationId: "org-a",
+      inventoryPositionId: "k-pos",
+      quantity: 1,
+      requiredInventoryType: "CONSIGNMENT",
+      idempotencyKey: "k-return-1",
+      prisma: prisma(client),
+    });
+    await markReturnDefective({
+      organizationId: "org-a",
+      inventoryPositionId: "k-pos",
+      quantity: 1,
+      requiredInventoryType: "CONSIGNMENT",
+      idempotencyKey: "k-defective-1",
+      prisma: prisma(client),
+    });
+
+    const position = client.position("k-pos");
+    expect(position.quantityReceived).toBe(21);
+    expect(position.quantityAvailable).toBe(17);
+    expect(position.quantitySold).toBe(2);
+    expect(position.quantityInspection).toBe(0);
+    expect(position.quantityDefective).toBe(1);
   });
 });

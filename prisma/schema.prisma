@@ -975,6 +975,7 @@ model ConsignmentLot {
   costNet              Decimal? @map("cost_net") @db.Decimal(12, 2)
   settlementAmount     Decimal? @map("settlement_amount") @db.Decimal(12, 2)
   shippingCost         Decimal? @map("shipping_cost") @db.Decimal(12, 2)
+  realRrpGross         Decimal? @map("real_rrp_gross") @db.Decimal(12, 2)
   // Preisebenen je Verkaufskanal: [{ "channel": "eBay R", "priceGross": 49.99 }, ...]
   channelPrices        Json     @default("[]") @map("channel_prices")
   comment              String?

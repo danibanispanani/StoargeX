@@ -32,6 +32,13 @@
 > Legacy-Zeilen gemeinsam; Verkauf, Retouren, Konsignation, Schulden und Import
 > bleiben für spätere Phasen unverändert.
 
+> **Phase 4 abgeschlossen** (Migration `20260708100000_consignment_inventory_positions_phase4`):
+> Neue Konsignationsware bleibt auf `/konsignation` als eigener Bereich, wird
+> technisch aber als `InventoryPosition(CONSIGNMENT) -> ConsignmentLot` mit
+> K-Nummer und `CONSIGNMENT_RECEIPT`-Movement geschrieben. Das alte
+> `ConsignmentInventory` bleibt additiv für Bestandsdaten erhalten und wird in
+> der Seite als Legacy-Übergang angezeigt.
+
 ---
 
 ## 1. Ist-Architektur (Kurzform)
@@ -370,10 +377,12 @@ Aktuelle Test-Basis: **44 grün, alles reine Rechenlogik** (`tests/calculations.
       umgestellt. **Abgeschlossen** in Migration
       `20260707140000_owned_purchase_batches_phase3` und
       [lib/services/owned-purchase-service.ts](../lib/services/owned-purchase-service.ts).
-- [ ] **Phase 3b** – Verkauf, Retouren, Konsignation, Schulden und Import auf
-      neue Inventory-Domain umstellen.
-- [ ] **Phase 4** – UI-Umbau je Modul; jede Seite mit Vitest-Snapshot-Tests
-      der Zahlen abgesichert.
+- [ ] **Phase 3b** – Verkauf, Retouren, Schulden und Import auf neue
+      Inventory-Domain umstellen.
+- [x] **Phase 4** – Konsignationsbestand auf getrennte UI mit gemeinsamer
+      `InventoryPosition(CONSIGNMENT)`-Struktur umgestellt. **Abgeschlossen**
+      in Migration `20260708100000_consignment_inventory_positions_phase4` und
+      [lib/services/consignment-service.ts](../lib/services/consignment-service.ts).
 - [ ] **Phase 5** – Feature-Flag on; Playwright-Smoke; Load-Test der neuen
       Aggregationen (`loadDashboardKpis` etc.).
 - [ ] **Phase 6** – Alt-Spalten droppen, Rollback-Plan (git revert +
