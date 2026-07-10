@@ -18,6 +18,7 @@ import {
 } from "@/lib/import-export";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -73,6 +74,7 @@ function ImportDialog({ table }: { table: TableKey }) {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [reviewResolutions, setReviewResolutions] = useState<Record<number, ReviewResolution>>({});
   const [inventoryOptions, setInventoryOptions] = useState<ImportInventoryOption[]>([]);
+  const [consignmentPartnerFallback, setConsignmentPartnerFallback] = useState("");
   const [pending, startTransition] = useTransition();
 
   function reset() {
@@ -86,6 +88,7 @@ function ImportDialog({ table }: { table: TableKey }) {
     setImportMessage(null);
     setReviewResolutions({});
     setInventoryOptions([]);
+    setConsignmentPartnerFallback("");
   }
 
   async function handleFile(file: File) {
@@ -150,6 +153,9 @@ function ImportDialog({ table }: { table: TableKey }) {
       }
       if (resolution?.mode === "inventory" && resolution.inventoryNumber) {
         row.resolved_lagerids = resolution.inventoryNumber;
+      }
+      if (table === "konsignation" && !row.partner.trim()) {
+        row.default_partner = consignmentPartnerFallback.trim() || "Unbekannt";
       }
       return row;
     });
@@ -238,6 +244,26 @@ function ImportDialog({ table }: { table: TableKey }) {
               </p>
             )}
           </div>
+
+          {table === "konsignation" && rawRows.length > 0 && (
+            <div className="space-y-2 rounded-md border p-3">
+              <label htmlFor="consignment-partner-fallback" className="text-sm font-medium">
+                Partner-Fallback
+              </label>
+              <Input
+                id="consignment-partner-fallback"
+                value={consignmentPartnerFallback}
+                onChange={(event) => {
+                  setConsignmentPartnerFallback(event.target.value);
+                  setCheckResult(null);
+                }}
+                placeholder="z.B. MixMarkt; leer = Unbekannt"
+              />
+              <p className="text-xs text-muted-foreground">
+                Wird nur fÃ¼r Zeilen verwendet, in denen die Partner-Spalte leer ist.
+              </p>
+            </div>
+          )}
 
           {headers.length > 0 && (
             <div className="space-y-2 rounded-md border p-3">

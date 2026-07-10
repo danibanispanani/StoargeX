@@ -12,11 +12,13 @@ describe("consignment stock planning", () => {
       createdById: "user-a",
       partnerCompany: "Pattfield",
       productName: "Fire TV Stick",
+      brand: "Pattfield",
       quantityReceived: 20,
       channelPrices: [{ label: "eBay R", cents: 4999 }],
     });
 
     expect(plan.partnerCompany).toBe("Pattfield");
+    expect(plan.brand).toBe("Pattfield");
     expect(plan.quantityReceived).toBe(20);
     expect(plan.quantityAvailable).toBe(20);
     expect(plan.channelPrices).toEqual([{ label: "eBay R", cents: 4999 }]);

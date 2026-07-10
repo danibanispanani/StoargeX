@@ -58,6 +58,7 @@ export function CreateConsignmentDialog() {
               <Field id="con-partner" name="consignorName" label="Partnerfirma *" required placeholder="z.B. Pattfield" />
               <Field id="con-contact" name="consignorContact" label="Kontakt" placeholder="mail@partner.de" />
               <Field id="con-title" name="itemTitle" label="Name *" required placeholder="z.B. Fire TV Stick" className="sm:col-span-2" />
+              <Field id="con-brand" name="brand" label="Marke" placeholder="z.B. Amazon" />
               <Field id="con-variant" name="variant" label="Sonstiges / Variante" placeholder="4K · 2024" />
               <Field id="con-ean" name="ean" label="EAN" />
               <Field id="con-sku" name="sku" label="Externe SKU / Bezeichnung" placeholder="Partner-SKU optional" />
@@ -93,16 +94,6 @@ export function CreateConsignmentDialog() {
           </section>
 
           <section className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="con-tiers">Channel-Preise (JSON, optional)</Label>
-              <textarea
-                id="con-tiers"
-                name="priceTiersJson"
-                rows={3}
-                placeholder='[{"label":"eBay R","cents":4999},{"label":"StockX","cents":5499}]'
-                className="border-input w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
-              />
-            </div>
             <Field id="con-notes" name="notes" label="Kommentar" placeholder="optional" />
           </section>
 

@@ -126,14 +126,15 @@ export function paymentMethodCreatesDebt(zm: string): boolean {
 export const RETURN_STATUS: Record<ReturnStatus, StatusStyle> = {
   REQUESTED: { label: "Angekündigt", className: TONE.warn },
   REJECTED: { label: "Storniert", className: TONE.neutral },
-  RESTOCKED: { label: "Gelagert", className: TONE.info },
-  REFUNDED: { label: "Erstattet", className: TONE.positive },
+  RECEIVED: { label: "Angekommen", className: TONE.info },
+  RESTOCKED: { label: "Weiterverkaufbar", className: TONE.positive },
+  REFUNDED: { label: "Ausgezahlt", className: TONE.positive },
   CONFLICT: { label: "Konflikt", className: TONE.negative },
-  RECEIVED: { label: "Angekündigt", className: TONE.warn },
 };
 
 export const RETURN_STATUS_OPTIONS: ReturnStatus[] = [
   "REQUESTED",
+  "RECEIVED",
   "REJECTED",
   "RESTOCKED",
   "REFUNDED",

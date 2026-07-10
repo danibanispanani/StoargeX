@@ -113,9 +113,9 @@ export async function applyReturnWorkflowAction(
     return {
       success:
         operation === "RECEIVE"
-          ? `Retoure ${ret.returnNumber ?? ""} in Prüfung gebucht.`
+          ? `Retoure ${ret.returnNumber ?? ""} als angekommen gebucht.`
           : operation === "RESTOCK"
-            ? `Retoure ${ret.returnNumber ?? ""} wieder verfügbar gebucht.`
+            ? `Retoure ${ret.returnNumber ?? ""} wieder weiterverkaufbar gebucht.`
             : `Retoure ${ret.returnNumber ?? ""} als defekt gebucht.`,
     };
   } catch (error) {

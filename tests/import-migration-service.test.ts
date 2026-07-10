@@ -113,6 +113,16 @@ describe("import migration pipeline", () => {
     expect(detectHeaderRowIndex(IMPORT_TABLES.konsignation.fields, rows)).toBe(2);
   });
 
+  it("erkennt Pattfield-Schreibweise Indifikationsnr.", () => {
+    const identificationField = IMPORT_TABLES.konsignation.fields.find((field) => field.key === "identifikationsnr");
+    expect(identificationField?.aliases).toContain("indifikationsnr.");
+  });
+
+  it("erkennt Marke als Konsignationsspalte", () => {
+    const brandField = IMPORT_TABLES.konsignation.fields.find((field) => field.key === "marke");
+    expect(brandField?.aliases).toContain("brand");
+  });
+
   it("Dry Run: Lager ohne Legacy-ID wird als neu geplant", async () => {
     const result = await dryRun("lager", [{
       model: "Fire TV Stick",
@@ -131,6 +141,44 @@ describe("import migration pipeline", () => {
       vk_brutto: "59,99",
     }]);
     expect(result.summary.unresolved).toBe(1);
+  });
+
+  it("Dry Run: Pattfield-Mengen nutzen Restlager plus historische Buckets", async () => {
+    const result = await dryRun("konsignation", [{
+      nr: "1",
+      bezeichnung: "PE-12VB",
+      name: "12V Ersatzakku",
+      mm_stk: "33",
+      lager: "12",
+      verkauft: "1",
+      retoure: "1",
+      defekt: "12",
+      restlager: "0",
+      ek_brutto: "5,28 €",
+      ek_netto: "4,44 €",
+    }]);
+
+    expect(result.validCount).toBe(1);
+    expect(result.summary.newRows).toBe(1);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("Dry Run: Pattfield-Nullbestandszeilen werden übersprungen statt Import-Crash", async () => {
+    const result = await dryRun("konsignation", [{
+      nr: "8",
+      bezeichnung: "PE-AHE 20 Li",
+      name: "Pattfield A Hochentast.",
+      mm_stk: "15",
+      lager: "0",
+      verkauft: "0",
+      retoure: "0",
+      defekt: "0",
+      restlager: "0",
+    }]);
+
+    expect(result.validCount).toBe(0);
+    expect(result.summary.errors).toBe(1);
+    expect(result.errors[0].message).toMatch(/Keine importierbare/);
   });
 
   it("Dry Run: Verkauf mit eindeutiger Legacy-Lagerreferenz wird linked", async () => {

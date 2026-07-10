@@ -15,8 +15,8 @@ export function ReturnWorkflowActions({
 }) {
   return (
     <div className="flex flex-wrap gap-1">
-      <WorkflowButton returnId={returnId} operation="RECEIVE" label="Eingang" disabled={disabled} />
-      <WorkflowButton returnId={returnId} operation="RESTOCK" label="Verfügbar" disabled={disabled} />
+      <WorkflowButton returnId={returnId} operation="RECEIVE" label="Angekommen" disabled={disabled} />
+      <WorkflowButton returnId={returnId} operation="RESTOCK" label="Weiterverkaufbar" disabled={disabled} />
       <WorkflowButton returnId={returnId} operation="DEFECTIVE" label="Defekt" disabled={disabled} />
     </div>
   );

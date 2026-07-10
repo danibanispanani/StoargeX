@@ -572,6 +572,7 @@ model Product {
   id                String   @id @default(cuid())
   organizationId    String   @map("organization_id")
   name              String
+  brand             String?
   variant           String? // Variante/Version
   size              String? // Größe (Phase-1-Ergänzung fürs neue Datenmodell)
   category          String?

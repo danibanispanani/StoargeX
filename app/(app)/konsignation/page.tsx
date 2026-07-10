@@ -1,5 +1,5 @@
 import { requireOrg } from "@/lib/org";
-import { formatEuro, parseSurcharges } from "@/lib/calculations";
+import { formatEuro } from "@/lib/calculations";
 import { deriveConsignmentStockStatus } from "@/lib/services/consignment-service";
 import { CreateConsignmentDialog } from "@/components/consignment/create-consignment-dialog";
 import { ImportExportBar } from "@/components/import-export/import-export-bar";
@@ -24,7 +24,7 @@ import {
 export default async function ConsignmentPage() {
   const { db } = await requireOrg();
 
-  const [inventoryPositions, legacyItems, recentSales] = await Promise.all([
+  const [inventoryPositions, legacyItems] = await Promise.all([
     db.inventoryPosition.findMany({
       where: { inventoryType: "CONSIGNMENT" },
       include: {
@@ -38,11 +38,6 @@ export default async function ConsignmentPage() {
       orderBy: { createdAt: "desc" },
       take: 200,
     }),
-    db.sale.findMany({
-      include: { stockItem: { select: { title: true } } },
-      orderBy: { soldAt: "desc" },
-      take: 500,
-    }),
   ]);
 
   const allLinkedIds = [...new Set(legacyItems.flatMap((item) => item.linkedSaleIds))];
@@ -53,21 +48,46 @@ export default async function ConsignmentPage() {
       })
     : [];
   const saleById = new Map(linkedSales.map((sale) => [sale.id, sale]));
+  const consignmentLotIds = inventoryPositions
+    .map((position) => position.consignmentLot?.id)
+    .filter((id): id is string => Boolean(id));
+  const sourceReferences = consignmentLotIds.length
+    ? await db.sourceReference.findMany({
+        where: {
+          targetEntity: "CONSIGNMENT_LOT",
+          targetEntityId: { in: consignmentLotIds },
+        },
+        select: { targetEntityId: true, warnings: true },
+      })
+    : [];
+  const csvInfoByLotId = new Map(
+    sourceReferences.map((reference) => [
+      reference.targetEntityId,
+      reference.warnings.filter((warning) => warning.startsWith("CSV: ")),
+    ])
+  );
 
   const inventoryRows = inventoryPositions
     .filter((position) => position.consignmentLot)
     .map((position) => {
       const lot = position.consignmentLot!;
-      const priceTiers = parseSurcharges(lot.channelPrices);
+      const commentInfo = splitLegacyComment(lot.comment);
       return {
         source: "inventory" as const,
         id: position.id,
         sku: position.inventoryNumber,
         partner: lot.partnerCompany,
         title: position.product.name,
-        subtitle: [position.product.variant, position.product.category, position.product.ean]
+        subtitle: [lot.externalSku ?? position.product.variant, position.product.ean]
           .filter(Boolean)
           .join(" · "),
+        brand: position.product.brand,
+        modelCode: lot.externalSku ?? position.product.variant,
+        extraInfo: commentInfo.comment,
+        csvInfo: [...(csvInfoByLotId.get(lot.id) ?? []), ...commentInfo.csvInfo],
+        category: position.product.category,
+        ean: position.product.ean,
+        identificationNumber: lot.identificationNumber,
         quantity: position.quantityAvailable,
         quantityReceived: position.quantityReceived,
         soldQuantity: position.quantitySold,
@@ -75,7 +95,6 @@ export default async function ConsignmentPage() {
         defectiveQuantity: position.quantityDefective,
         costGrossCents: decimalToCents(lot.costGross),
         costNetCents: decimalToCents(lot.costNet),
-        priceTiers,
         linkedSaleIds: [] as string[],
         linkedCount: 0,
         revenueCents: 0,
@@ -95,6 +114,13 @@ export default async function ConsignmentPage() {
       partner: item.consignorName,
       title: item.itemTitle,
       subtitle: "Legacy ConsignmentInventory",
+      brand: null,
+      modelCode: item.sku,
+      extraInfo: item.consignorContact,
+      csvInfo: [] as string[],
+      category: null,
+      ean: null,
+      identificationNumber: null,
       quantity: item.quantity,
       quantityReceived:
         item.quantity + item.soldQuantity + item.returnedQuantity + item.defectiveQuantity,
@@ -103,7 +129,6 @@ export default async function ConsignmentPage() {
       defectiveQuantity: item.defectiveQuantity,
       costGrossCents: item.agreedPayoutCents,
       costNetCents: null,
-      priceTiers: parseSurcharges(item.priceTiers),
       linkedSaleIds: item.linkedSaleIds,
       linkedCount: linked.length,
       revenueCents: linked.reduce((sum, sale) => sum + sale.salePriceCents, 0),
@@ -114,13 +139,6 @@ export default async function ConsignmentPage() {
 
   const rows = [...inventoryRows, ...legacyRows];
 
-  const saleOptions = recentSales.map((sale) => ({
-    id: sale.id,
-    label: `${sale.orderNumber ?? sale.id.slice(0, 8)} – ${
-      sale.stockItem?.title ?? "Mehrartikel-Verkauf"
-    } (${formatEuro(sale.salePriceCents)})`,
-  }));
-
   function ConsignmentDetailDrawer({ row }: { row: (typeof rows)[number] }) {
     return (
       <DetailDrawer title={row.sku} description={`${row.partner} · ${row.title}`}>
@@ -128,8 +146,18 @@ export default async function ConsignmentPage() {
           <DetailGrid
             items={[
               { label: "Partner", value: row.partner },
+              { label: "Marke", value: row.brand ?? "-" },
               { label: "Artikel", value: row.title },
-              { label: "Zusatzinfo", value: row.subtitle || "–" },
+              { label: "Bezeichnung/SKU", value: row.modelCode || "-" },
+              { label: "Zusatzinfo", value: row.extraInfo || "-" },
+              {
+                label: "Historische CSV-Info",
+                value: row.csvInfo.length
+                  ? row.csvInfo.map((info) => info.replace(/^CSV: /, "")).join(" · ")
+                  : "-",
+              },
+              { label: "Kategorie", value: row.category || "-" },
+              { label: "Identifikation", value: row.identificationNumber || "-" },
               { label: "Quelle", value: row.source === "legacy" ? "Legacy" : "InventoryPosition" },
             ]}
           />
@@ -137,27 +165,21 @@ export default async function ConsignmentPage() {
         <DetailSection title="Bestand">
           <DetailGrid
             items={[
-              { label: "Verfügbar", value: row.quantity },
+              { label: "Verfuegbar", value: row.quantity },
               { label: "Erhalten", value: row.quantityReceived },
               { label: "Verkauft", value: row.soldQuantity },
-              { label: "Prüfung", value: row.returnedQuantity },
+              { label: "Pruefung", value: row.returnedQuantity },
               { label: "Defekt", value: row.defectiveQuantity },
               { label: "Status", value: row.status },
             ]}
           />
         </DetailSection>
-        <DetailSection title="Finanzen und Channel-Preise">
+        <DetailSection title="Finanzen">
           <DetailGrid
             items={[
-              { label: "EK brutto", value: row.costGrossCents != null ? formatEuro(row.costGrossCents) : "–" },
-              { label: "EK netto", value: row.costNetCents != null ? formatEuro(row.costNetCents) : "–" },
-              {
-                label: "Preise",
-                value: row.priceTiers.length
-                  ? row.priceTiers.map((tier) => `${tier.label}: ${formatEuro(tier.cents)}`).join(" · ")
-                  : "–",
-              },
-              { label: "Verknüpfte Verkäufe", value: row.linkedCount },
+              { label: "EK brutto", value: row.costGrossCents != null ? formatEuro(row.costGrossCents) : "-" },
+              { label: "EK netto", value: row.costNetCents != null ? formatEuro(row.costNetCents) : "-" },
+              { label: "Verknuepfte Verkaeufe", value: row.linkedCount },
             ]}
           />
         </DetailSection>
@@ -171,7 +193,7 @@ export default async function ConsignmentPage() {
         <div>
           <h1 className="text-2xl font-semibold">Konsignation</h1>
           <p className="text-sm text-muted-foreground">
-            Eigener Bereich für Fremdbestand. Neue Einträge laufen über K-Nummer,
+            Eigener Bereich fuer Fremdbestand. Neue Eintraege laufen ueber K-Nummer,
             InventoryPosition, ConsignmentLot und Movement-Historie.
           </p>
         </div>
@@ -185,124 +207,143 @@ export default async function ConsignmentPage() {
         storageKey="konsignation"
         views={[
           { value: "standard", label: "Standard" },
-          { value: "preise", label: "Channel-Preise" },
           { value: "bestand", label: "Bestand" },
           { value: "all", label: "Alle Spalten" },
         ]}
       >
-      <Card>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table className="sx-datatable">
-              <TableHeader>
-                <TableRow>
-                  <TableHead data-column data-view-standard data-view-preise data-view-bestand data-view-all>K-Nummer</TableHead>
-                  <TableHead data-column data-view-standard data-view-all>Partner</TableHead>
-                  <TableHead data-column data-view-standard data-view-preise data-view-bestand data-view-all>Artikel</TableHead>
-                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Bestand</TableHead>
-                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Verkauft</TableHead>
-                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Prüfung</TableHead>
-                  <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Defekt</TableHead>
-                  <TableHead data-column data-view-standard data-view-preise data-view-all>EK</TableHead>
-                  <TableHead data-column data-view-preise data-view-all>Channel-Preise</TableHead>
-                  <TableHead data-column data-view-bestand data-view-all>Status</TableHead>
-                  <TableHead data-column data-view-standard data-view-preise data-view-bestand data-view-all className="w-48 text-right">Aktionen</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.length === 0 && (
+        <Card>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table className="sx-datatable">
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
-                      Noch keine Konsignationsware erfasst. Neue Ware wird als
-                      K-Position im gemeinsamen Inventory geführt.
-                    </TableCell>
+                    <TableHead data-column data-view-standard data-view-bestand data-view-all>K-Nummer</TableHead>
+                    <TableHead data-column data-view-standard data-view-all>Partner</TableHead>
+                    <TableHead data-column data-view-standard data-view-bestand data-view-all>Artikel</TableHead>
+                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Bestand</TableHead>
+                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Verkauft</TableHead>
+                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Pruefung</TableHead>
+                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Defekt</TableHead>
+                    <TableHead data-column data-view-standard data-view-all>EK</TableHead>
+                    <TableHead data-column data-view-bestand data-view-all>Status</TableHead>
+                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="w-48 text-right">Aktionen</TableHead>
                   </TableRow>
-                )}
-                {rows.map((row) => (
-                  <TableRow key={`${row.source}:${row.id}`}>
-                    <TableCell data-column data-view-standard data-view-preise data-view-bestand data-view-all className="font-mono text-xs">
-                      <div>{row.sku}</div>
-                      {row.source === "legacy" && (
-                        <span className="text-[10px] uppercase text-muted-foreground">
-                          Legacy
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell data-column data-view-standard data-view-all>{row.partner}</TableCell>
-                    <TableCell data-column data-view-standard data-view-preise data-view-bestand data-view-all className="sx-cell-primary max-w-64">
-                      <div className="truncate font-medium">{row.title}</div>
-                      {row.subtitle && (
-                        <div className="truncate text-xs text-muted-foreground">
-                          {row.subtitle}
+                </TableHeader>
+                <TableBody>
+                  {rows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="py-8 text-center text-muted-foreground">
+                        Noch keine Konsignationsware erfasst. Neue Ware wird als
+                        K-Position im gemeinsamen Inventory gefuehrt.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {rows.map((row) => (
+                    <TableRow key={`${row.source}:${row.id}`}>
+                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="font-mono text-xs">
+                        <div>{row.sku}</div>
+                        {row.source === "legacy" && (
+                          <span className="text-[10px] uppercase text-muted-foreground">
+                            Legacy
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell data-column data-view-standard data-view-all>{row.partner}</TableCell>
+                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="sx-cell-primary max-w-64">
+                        <div className="truncate font-medium">{row.title}</div>
+                        {row.subtitle && (
+                          <div className="truncate text-xs text-muted-foreground">
+                            {row.subtitle}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">
+                        {row.quantity} / {row.quantityReceived}
+                      </TableCell>
+                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.soldQuantity}</TableCell>
+                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.returnedQuantity}</TableCell>
+                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.defectiveQuantity}</TableCell>
+                      <TableCell data-column data-view-standard data-view-all className="text-xs">
+                        {row.costNetCents != null || row.costGrossCents != null ? (
+                          <>
+                            {row.costNetCents != null && (
+                              <div>Netto {formatEuro(row.costNetCents)}</div>
+                            )}
+                            {row.costGrossCents != null && (
+                              <div className="text-muted-foreground">
+                                Brutto {formatEuro(row.costGrossCents)}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell data-column data-view-bestand data-view-all>
+                        <Badge variant={row.source === "legacy" ? "secondary" : "outline"}>
+                          {row.status}
+                        </Badge>
+                        {row.linkedCount > 0 && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {formatEuro(row.revenueCents)} · Marge {formatEuro(row.profitCents)}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell data-column data-view-standard data-view-bestand data-view-all>
+                        <div className="flex justify-end gap-1">
+                          <ConsignmentDetailDrawer row={row} />
+                          <ConsignmentRowActions
+                            item={{
+                              id: row.id,
+                              sku: row.sku,
+                              source: row.source,
+                              inventoryPositionId: row.source === "inventory" ? row.id : undefined,
+                              partner: row.partner,
+                              title: row.title,
+                              brand: row.brand,
+                              modelCode: row.modelCode,
+                              extraInfo: row.extraInfo,
+                              category: row.category,
+                              ean: row.ean,
+                              identificationNumber: row.identificationNumber,
+                              costGrossCents: row.costGrossCents,
+                              costNetCents: row.costNetCents,
+                              quantity: row.quantity,
+                              soldQuantity: row.soldQuantity,
+                              returnedQuantity: row.returnedQuantity,
+                              defectiveQuantity: row.defectiveQuantity,
+                              linkedSaleIds: row.linkedSaleIds,
+                            }}
+                          />
                         </div>
-                      )}
-                    </TableCell>
-                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">
-                      {row.quantity} / {row.quantityReceived}
-                    </TableCell>
-                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.soldQuantity}</TableCell>
-                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.returnedQuantity}</TableCell>
-                    <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.defectiveQuantity}</TableCell>
-                    <TableCell data-column data-view-standard data-view-preise data-view-all className="text-xs">
-                      {row.costGrossCents != null ? (
-                        <>
-                          <div>Brutto {formatEuro(row.costGrossCents)}</div>
-                          {row.costNetCents != null && (
-                            <div className="text-muted-foreground">
-                              Netto {formatEuro(row.costNetCents)}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">–</span>
-                      )}
-                    </TableCell>
-                    <TableCell data-column data-view-preise data-view-all className="max-w-56 text-xs text-muted-foreground">
-                      {row.priceTiers.length
-                        ? row.priceTiers
-                            .map((tier) => `${tier.label}: ${formatEuro(tier.cents)}`)
-                            .join(" · ")
-                        : "–"}
-                    </TableCell>
-                    <TableCell data-column data-view-bestand data-view-all>
-                      <Badge variant={row.source === "legacy" ? "secondary" : "outline"}>
-                        {row.status}
-                      </Badge>
-                      {row.linkedCount > 0 && (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {formatEuro(row.revenueCents)} · Marge {formatEuro(row.profitCents)}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell data-column data-view-standard data-view-preise data-view-bestand data-view-all>
-                      <div className="flex justify-end gap-1">
-                        <ConsignmentDetailDrawer row={row} />
-                        <ConsignmentRowActions
-                          item={{
-                            id: row.id,
-                            sku: row.sku,
-                            source: row.source,
-                            inventoryPositionId: row.source === "inventory" ? row.id : undefined,
-                            quantity: row.quantity,
-                            soldQuantity: row.soldQuantity,
-                            returnedQuantity: row.returnedQuantity,
-                            defectiveQuantity: row.defectiveQuantity,
-                            linkedSaleIds: row.linkedSaleIds,
-                          }}
-                          saleOptions={saleOptions}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       </CompactTableShell>
     </div>
   );
+}
+
+function splitLegacyComment(comment: string | null): { comment: string | null; csvInfo: string[] } {
+  if (!comment) return { comment: null, csvInfo: [] };
+  const parts = comment
+    .split(" · ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const csvPrefixes = ["MM Stk.:", "Lager:", "Historische Retoure:"];
+  const csvInfo = parts
+    .filter((part) => csvPrefixes.some((prefix) => part.startsWith(prefix)))
+    .map((part) => `CSV: ${part}`);
+  const editableComment = parts
+    .filter((part) => !csvPrefixes.some((prefix) => part.startsWith(prefix)))
+    .join(" · ");
+
+  return { comment: editableComment || null, csvInfo };
 }
 
 function decimalToCents(value: unknown): number | null {

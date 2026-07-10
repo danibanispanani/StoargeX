@@ -37,6 +37,11 @@ yarn-error.log*
 # claude code (user-local)
 .claude/settings.local.json
 
+# agent tooling (local installs / generated skill bundles)
+/.agents/skills/
+/skills-lock.json
+/.tmp-*
+
 # hochgeladene Artikelbilder (Laufzeitdaten)
 /public/uploads/
 

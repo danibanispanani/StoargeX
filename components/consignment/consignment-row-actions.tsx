@@ -3,9 +3,9 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
-  linkConsignmentSalesAction,
-  moveConsignmentInventoryAction,
-  updateConsignmentCountsAction,
+  adjustConsignmentStockAction,
+  deleteConsignmentItemAction,
+  updateConsignmentItemAction,
 } from "@/lib/actions/consignment";
 import type { ActionState } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,16 @@ interface ConsignmentRow {
   sku: string;
   source: "inventory" | "legacy";
   inventoryPositionId?: string;
+  partner: string;
+  title: string;
+  brand?: string | null;
+  modelCode?: string | null;
+  extraInfo?: string | null;
+  category?: string | null;
+  ean?: string | null;
+  identificationNumber?: string | null;
+  costGrossCents?: number | null;
+  costNetCents?: number | null;
   quantity: number;
   soldQuantity: number;
   returnedQuantity: number;
@@ -33,172 +43,168 @@ interface ConsignmentRow {
   linkedSaleIds: string[];
 }
 
-export function ConsignmentRowActions({
-  item,
-  saleOptions,
-}: {
-  item: ConsignmentRow;
-  saleOptions: Array<{ id: string; label: string }>;
-}) {
-  if (item.source === "inventory" && item.inventoryPositionId) {
-    return (
-      <div className="flex justify-end gap-1">
-        <MovementDialog item={item} operation="SELL" label="Verkauf" />
-        <MovementDialog item={item} operation="RETURN_INSPECTION" label="Retoure" />
-        <MovementDialog item={item} operation="DEFECTIVE" label="Defekt" />
-      </div>
-    );
-  }
-
+export function ConsignmentRowActions({ item }: { item: ConsignmentRow }) {
   return (
     <div className="flex justify-end gap-1">
-      <CountsDialog item={item} />
-      <LinkSalesDialog item={item} saleOptions={saleOptions} />
+      <EditDialog item={item} />
+      <DeleteDialog item={item} />
     </div>
   );
 }
 
-function MovementDialog({
-  item,
-  operation,
+function EditDialog({ item }: { item: ConsignmentRow }) {
+  const [open, setOpen] = useState(false);
+  const boundAction = updateConsignmentItemAction.bind(null, item.inventoryPositionId ?? item.id);
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(boundAction, null);
+  const boundAdjustmentAction = item.inventoryPositionId
+    ? adjustConsignmentStockAction.bind(null, item.inventoryPositionId)
+    : async () => ({ error: "Bestandskorrektur ist nur fuer Inventory-Positionen verfuegbar." });
+  const [adjustmentState, adjustmentFormAction, adjustmentPending] = useActionState<ActionState, FormData>(
+    boundAdjustmentAction,
+    null
+  );
+
+  useEffect(() => {
+    if (state?.success) {
+      toast.success(state.success);
+      setOpen(false);
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (adjustmentState?.success) {
+      toast.success(adjustmentState.success);
+      setOpen(false);
+    }
+  }, [adjustmentState]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm">Bearbeiten</Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Konsignationsartikel bearbeiten - {item.sku}</DialogTitle>
+          <DialogDescription>
+            Stammdaten korrigieren. Verkauf, Retoure und Defekt laufen ueber Verkauf
+            und Retouren.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="space-y-4">
+          {state?.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{state.error}</AlertDescription>
+            </Alert>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField id={`partner-${item.id}`} name="partner" label="Partner" value={item.partner} />
+            <TextField id={`title-${item.id}`} name="title" label="Artikel" value={item.title} />
+            <TextField id={`brand-${item.id}`} name="brand" label="Marke" value={item.brand ?? ""} />
+            <TextField id={`sku-${item.id}`} name="sku" label="Bezeichnung/SKU" value={item.modelCode ?? item.sku} />
+            <TextField id={`variant-${item.id}`} name="variant" label="Zusatzinfo/Variante" value="" />
+            <TextField id={`ean-${item.id}`} name="ean" label="EAN" value={item.ean ?? ""} />
+            <TextField id={`ident-${item.id}`} name="identificationNumber" label="Identifikation" value={item.identificationNumber ?? ""} />
+            <TextField id={`category-${item.id}`} name="category" label="Kategorie" value={item.category ?? ""} />
+            <TextField id={`gross-${item.id}`} name="costGross" label="EK brutto" value={formatCentsInput(item.costGrossCents)} />
+            <TextField id={`net-${item.id}`} name="costNet" label="EK netto" value={formatCentsInput(item.costNetCents)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`comment-${item.id}`}>Details / Kommentar</Label>
+            <Input id={`comment-${item.id}`} name="comment" defaultValue={item.extraInfo ?? ""} />
+          </div>
+          <Button type="submit" className="w-full" disabled={pending}>
+            {pending ? "Speichert..." : "Speichern"}
+          </Button>
+        </form>
+
+        {item.source === "inventory" && (
+          <form action={adjustmentFormAction} className="space-y-4 border-t pt-4">
+            {adjustmentState?.error && (
+              <Alert variant="destructive">
+                <AlertDescription>{adjustmentState.error}</AlertDescription>
+              </Alert>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <NumberField
+                id={`adjust-qty-${item.id}`}
+                name="targetQuantityAvailable"
+                label="Bestand korrigieren"
+                value={item.quantity}
+              />
+              <TextField
+                id={`adjust-comment-${item.id}`}
+                name="adjustmentComment"
+                label="Grund"
+                value=""
+              />
+            </div>
+            <Button type="submit" variant="outline" className="w-full" disabled={adjustmentPending}>
+              {adjustmentPending ? "Bucht..." : "Bestandskorrektur buchen"}
+            </Button>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteDialog({ item }: { item: ConsignmentRow }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  function remove() {
+    startTransition(async () => {
+      const result = await deleteConsignmentItemAction(item.inventoryPositionId ?? item.id);
+      if (result?.error) toast.error(result.error);
+      else if (result?.success) {
+        toast.success(result.success);
+        setOpen(false);
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-destructive">Loeschen</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Konsignationsartikel loeschen?</DialogTitle>
+          <DialogDescription>
+            Loeschen ist nur moeglich, solange keine Verkaeufe, Retouren oder Schulden
+            mit dieser Position verknuepft sind.
+          </DialogDescription>
+        </DialogHeader>
+        <Button variant="destructive" onClick={remove} disabled={pending}>
+          {pending ? "Loescht..." : `${item.sku} loeschen`}
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TextField({
+  id,
+  name,
   label,
+  value,
 }: {
-  item: ConsignmentRow;
-  operation: "SELL" | "RETURN_INSPECTION" | "DEFECTIVE";
+  id: string;
+  name: string;
   label: string;
+  value: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [idempotencyKey, setIdempotencyKey] = useState("");
-  const boundAction = moveConsignmentInventoryAction.bind(
-    null,
-    item.inventoryPositionId ?? item.id
-  );
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    boundAction,
-    null
-  );
-
-  useEffect(() => {
-    if (open) {
-      setIdempotencyKey(
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`
-      );
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (state?.success) {
-      toast.success(state.success);
-      setOpen(false);
-    }
-  }, [state]);
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          {label}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>
-            {label} buchen – {item.sku}
-          </DialogTitle>
-          <DialogDescription>
-            Neue Konsignationsbestände werden ausschließlich über
-            InventoryMovement gebucht.
-          </DialogDescription>
-        </DialogHeader>
-        <form action={formAction} className="space-y-4">
-          {state?.error && (
-            <Alert variant="destructive">
-              <AlertDescription>{state.error}</AlertDescription>
-            </Alert>
-          )}
-          <input type="hidden" name="operation" value={operation} />
-          <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
-          <div className="space-y-2">
-            <Label htmlFor={`move-qty-${item.id}-${operation}`}>Menge</Label>
-            <Input
-              id={`move-qty-${item.id}-${operation}`}
-              name="quantity"
-              type="number"
-              min={1}
-              defaultValue={1}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`move-comment-${item.id}-${operation}`}>Kommentar</Label>
-            <Input
-              id={`move-comment-${item.id}-${operation}`}
-              name="comment"
-              placeholder="optional"
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Bucht…" : "Buchen"}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <div className="space-y-1">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} name={name} defaultValue={value} />
+    </div>
   );
 }
 
-function CountsDialog({ item }: { item: ConsignmentRow }) {
-  const [open, setOpen] = useState(false);
-  const boundAction = updateConsignmentCountsAction.bind(null, item.id);
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    boundAction,
-    null
-  );
-
-  useEffect(() => {
-    if (state?.success) {
-      toast.success(state.success);
-      setOpen(false);
-    }
-  }, [state]);
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          Legacy-Bestände
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Legacy-Bestände – {item.sku}</DialogTitle>
-          <DialogDescription>
-            Direkte Zählerbearbeitung ist nur für alte ConsignmentInventory-Zeilen
-            verfügbar.
-          </DialogDescription>
-        </DialogHeader>
-        <form action={formAction} className="space-y-4">
-          {state?.error && (
-            <Alert variant="destructive">
-              <AlertDescription>{state.error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <LegacyNumber id={`qty-${item.id}`} name="quantity" label="Bestand" value={item.quantity} />
-            <LegacyNumber id={`sold-${item.id}`} name="soldQuantity" label="Verkauft" value={item.soldQuantity} />
-            <LegacyNumber id={`ret-${item.id}`} name="returnedQuantity" label="Retourniert" value={item.returnedQuantity} />
-            <LegacyNumber id={`def-${item.id}`} name="defectiveQuantity" label="Defekt" value={item.defectiveQuantity} />
-          </div>
-          <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Speichert…" : "Speichern"}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function LegacyNumber({
+function NumberField({
   id,
   name,
   label,
@@ -217,74 +223,6 @@ function LegacyNumber({
   );
 }
 
-function LinkSalesDialog({
-  item,
-  saleOptions,
-}: {
-  item: ConsignmentRow;
-  saleOptions: Array<{ id: string; label: string }>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set(item.linkedSaleIds));
-  const [pending, startTransition] = useTransition();
-
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function save() {
-    startTransition(async () => {
-      const result = await linkConsignmentSalesAction(item.id, [...selected]);
-      if (result?.error) toast.error(result.error);
-      else if (result?.success) {
-        toast.success(result.success);
-        setOpen(false);
-      }
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          Verkäufe ({item.linkedSaleIds.length})
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Legacy-Verkäufe verknüpfen – {item.sku}</DialogTitle>
-          <DialogDescription>
-            Neue Konsignationsware wird später über SaleLineAllocation verknüpft;
-            dieser Dialog bleibt für Altdaten.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          {saleOptions.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Noch keine Verkäufe vorhanden.
-            </p>
-          )}
-          {saleOptions.map((sale) => (
-            <label key={sale.id} className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={selected.has(sale.id)}
-                onChange={() => toggle(sale.id)}
-                className="mt-0.5 size-4"
-              />
-              {sale.label}
-            </label>
-          ))}
-        </div>
-        <Button onClick={save} disabled={pending} className="w-full">
-          {pending ? "Speichert…" : "Verknüpfung speichern"}
-        </Button>
-      </DialogContent>
-    </Dialog>
-  );
+function formatCentsInput(value: number | null | undefined) {
+  return value == null ? "" : (value / 100).toFixed(2).replace(".", ",");
 }

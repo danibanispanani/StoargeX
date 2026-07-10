@@ -29,6 +29,7 @@ export interface CreateConsignmentStockInput {
   externalSku?: string;
   productId?: string;
   productName: string;
+  brand?: string;
   variant?: string;
   ean?: string;
   identificationNumber?: string;
@@ -125,6 +126,7 @@ export function prepareConsignmentStock(
     partnerCompany: input.partnerCompany.trim(),
     externalSku: normalizeOptional(input.externalSku) ?? undefined,
     productName: input.productName.trim(),
+    brand: normalizeOptional(input.brand) ?? undefined,
     variant: normalizeOptional(input.variant) ?? undefined,
     ean: normalizeOptional(input.ean) ?? undefined,
     identificationNumber:
@@ -337,6 +339,7 @@ async function resolveProduct(
       organizationId: plan.organizationId,
       name: plan.productName,
       variant: plan.variant ?? null,
+      brand: plan.brand ?? null,
       ean: plan.ean ?? null,
       category: plan.category ?? null,
       defaultPriceCents: plan.costGrossCents ?? null,

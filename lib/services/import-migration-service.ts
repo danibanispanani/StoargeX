@@ -371,21 +371,21 @@ async function commitConsignmentImport(
   let imported = 0;
   for (const planned of plannedRows) {
     const row = planned.row;
-    const quantityReceived = parseIntSafe(row.mm_stk) ?? parseIntSafe(row.bestand) ?? parseIntSafe(row.lager) ?? 1;
-    const quantitySold = parseIntSafe(row.verkauft) ?? 0;
-    const quantityInspection = parseIntSafe(row.retoure) ?? parseIntSafe(row.retourniert) ?? 0;
-    const quantityDefective = parseIntSafe(row.defekt) ?? 0;
-    const quantityAvailable =
-      parseIntSafe(row.restlager) ??
-      parseIntSafe(row.lager) ??
-      Math.max(0, quantityReceived - quantitySold - quantityInspection - quantityDefective);
+    const {
+      quantityReceived,
+      quantityAvailable,
+      quantitySold,
+      quantityInspection,
+      quantityDefective,
+    } = deriveConsignmentImportQuantities(row);
     const created = await createConsignmentStock({
       organizationId: input.organizationId,
       createdById: input.createdById,
-      partnerCompany: row.partner?.trim() || "Pattfield",
-      externalSku: optionalUndefined(row.nr || row.sku),
+      partnerCompany: row.partner?.trim() || row.default_partner?.trim() || "Unbekannt",
+      externalSku: optionalUndefined(row.bezeichnung || row.sku || row.nr),
       productName: row.name?.trim() || row.artikel?.trim() || row.bezeichnung?.trim() || "Konsignationsartikel",
-      variant: optionalUndefined(row.sonstiges || row.colorway),
+      brand: optionalUndefined(row.marke || row.brand),
+      variant: optionalUndefined(row.bezeichnung || row.colorway),
       ean: optionalUndefined(row.ean),
       identificationNumber: optionalUndefined(row.identifikationsnr || row.identifikationsnummer),
       category: optionalUndefined(row.kategorie),
@@ -399,8 +399,7 @@ async function commitConsignmentImport(
       settlementAmountCents: parseEuroTolerant(row.endbetrag),
       shippingCostCents: parseEuroTolerant(row.versand),
       realRrpGrossCents: parseEuroTolerant(row.reale_ovp),
-      channelPrices: parseChannelPrices(row),
-      comment: optionalUndefined(row.kommentar),
+      comment: consignmentImportComment(row),
       tx: input.tx,
     });
     await createSourceReference(input.tx, {
@@ -814,6 +813,11 @@ function validateRow(
   }
   if (table === "konsignation") {
     if (!row.artikel?.trim() && !row.name?.trim() && !row.bezeichnung?.trim()) errors.push("Artikel fehlt.");
+    const quantities = deriveConsignmentImportQuantities(row);
+    if (quantities.quantityReceived < 1) {
+      errors.push("Keine importierbare Konsignationsmenge gefunden.");
+    }
+    warnings.push(...consignmentHistoricalCsvInfo(row));
     return { status: "NEW", message: "Neue K-Position wird importiert.", warnings, errors, targetEntity: "CONSIGNMENT_LOT" };
   }
   if (table === "aufgaben" && !row.aufgabe?.trim()) errors.push("Aufgabe fehlt.");
@@ -823,6 +827,41 @@ function validateRow(
 function saleStockReferences(row: ImportRow): string[] {
   if (row.import_resolution === "historical") return [];
   return parseLegacyReferences(row.resolved_lagerids || row.lagerids || row.lagerid);
+}
+
+function deriveConsignmentImportQuantities(row: ImportRow) {
+  const quantitySold = parseIntSafe(row.verkauft) ?? 0;
+  const quantityInspection = parseIntSafe(row.retoure) ?? parseIntSafe(row.retourniert) ?? 0;
+  const quantityDefective = parseIntSafe(row.defekt) ?? 0;
+  const quantityAvailable =
+    parseIntSafe(row.restlager) ??
+    parseIntSafe(row.bestand) ??
+    parseIntSafe(row.lager) ??
+    0;
+
+  return {
+    quantityReceived: quantityAvailable + quantitySold + quantityInspection + quantityDefective,
+    quantityAvailable,
+    quantitySold,
+    quantityInspection,
+    quantityDefective,
+  };
+}
+
+function consignmentImportComment(row: ImportRow): string | undefined {
+  const details = [
+    row.sonstiges?.trim() ? `Zusatzinfo: ${row.sonstiges.trim()}` : "",
+    row.kommentar?.trim() ? row.kommentar.trim() : "",
+  ].filter(Boolean);
+  return optionalUndefined(details.join(" · "));
+}
+
+function consignmentHistoricalCsvInfo(row: ImportRow): string[] {
+  return [
+    row.mm_stk?.trim() ? `CSV: MM Stk.: ${row.mm_stk.trim()}` : "",
+    row.lager?.trim() ? `CSV: Lager: ${row.lager.trim()}` : "",
+    row.retoure?.trim() ? `CSV: Historische Retoure: ${row.retoure.trim()}` : "",
+  ].filter(Boolean);
 }
 
 async function loadImportContext(tx: Tx, organizationId: string): Promise<ImportContext> {
@@ -1073,13 +1112,6 @@ function returnStatus(value: string | undefined): ReturnStatus {
 
 function invoiceDone(value: string | undefined): boolean {
   return ["erledigt", "ja", "true", "x", "✓"].includes(normalize(value));
-}
-
-function parseChannelPrices(row: ImportRow): Array<{ label: string; cents: number }> {
-  return Object.entries(row)
-    .filter(([key]) => key.toLowerCase().startsWith("vk") || key.toLowerCase().includes("preis"))
-    .map(([label, value]) => ({ label, cents: parseEuroTolerant(value) }))
-    .filter((item): item is { label: string; cents: number } => item.cents != null);
 }
 
 function importComment(group: PlannedRow[]): string {

@@ -419,7 +419,9 @@ async function applyReturnWorkflowInTransaction(
   }
 
   const nextStatus =
-    input.operation === "RESTOCK"
+    input.operation === "RECEIVE"
+      ? "RECEIVED"
+      : input.operation === "RESTOCK"
       ? "RESTOCKED"
       : input.operation === "DEFECTIVE"
         ? "CONFLICT"

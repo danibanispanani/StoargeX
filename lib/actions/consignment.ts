@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -7,18 +7,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { euroToCents } from "@/lib/calculations";
 import type { ActionState } from "@/lib/actions/team";
 import { createConsignmentStock } from "@/lib/services/consignment-service";
-import {
-  markReturnDefective,
-  receiveReturn,
-  sell,
-} from "@/lib/services/inventory-service";
-
-const priceTiersSchema = z.array(
-  z.object({
-    label: z.string().min(1).max(100),
-    cents: z.number().int().min(0),
-  })
-);
+import { adjust } from "@/lib/services/inventory-service";
 
 const optionalInt = z.preprocess(
   (value) => (value === "" || value == null ? undefined : value),
@@ -29,6 +18,7 @@ const consignmentSchema = z.object({
   consignorName: z.string().min(1, "Partnerfirma fehlt.").max(200),
   consignorContact: z.string().max(200).optional().or(z.literal("")),
   itemTitle: z.string().min(1, "Artikelbezeichnung fehlt.").max(300),
+  brand: z.string().max(120).optional().or(z.literal("")),
   variant: z.string().max(200).optional().or(z.literal("")),
   ean: z.string().max(80).optional().or(z.literal("")),
   identificationNumber: z.string().max(120).optional().or(z.literal("")),
@@ -44,24 +34,8 @@ const consignmentSchema = z.object({
   settlementAmount: z.string().optional().or(z.literal("")),
   shippingCost: z.string().optional().or(z.literal("")),
   realRrpGross: z.string().optional().or(z.literal("")),
-  priceTiersJson: z.string().optional().or(z.literal("")),
   notes: z.string().max(2000).optional().or(z.literal("")),
 });
-
-function parsePriceTiers(json: string | undefined) {
-  if (!json?.trim()) return { tiers: [] as z.infer<typeof priceTiersSchema> };
-  try {
-    const validated = priceTiersSchema.safeParse(JSON.parse(json));
-    if (!validated.success) {
-      return {
-        error: 'Preisebenen-JSON ungültig. Erwartet: [{"label":"VK Standard","cents":4999}]',
-      };
-    }
-    return { tiers: validated.data };
-  } catch {
-    return { error: "Preisebenen sind kein gültiges JSON." };
-  }
-}
 
 /** Neue Konsignationsartikel über InventoryPosition + ConsignmentLot anlegen. */
 export async function createConsignmentItemAction(
@@ -74,6 +48,7 @@ export async function createConsignmentItemAction(
     consignorName: formData.get("consignorName"),
     consignorContact: formData.get("consignorContact"),
     itemTitle: formData.get("itemTitle"),
+    brand: formData.get("brand"),
     variant: formData.get("variant"),
     ean: formData.get("ean"),
     identificationNumber: formData.get("identificationNumber"),
@@ -89,7 +64,6 @@ export async function createConsignmentItemAction(
     settlementAmount: formData.get("settlementAmount") ?? formData.get("agreedPayout"),
     shippingCost: formData.get("shippingCost"),
     realRrpGross: formData.get("realRrpGross"),
-    priceTiersJson: formData.get("priceTiersJson"),
     notes: formData.get("notes"),
   });
   if (!parsed.success) {
@@ -97,8 +71,6 @@ export async function createConsignmentItemAction(
   }
 
   const data = parsed.data;
-  const tiersResult = parsePriceTiers(data.priceTiersJson);
-  if ("error" in tiersResult) return { error: tiersResult.error };
 
   try {
     const result = await createConsignmentStock({
@@ -107,6 +79,7 @@ export async function createConsignmentItemAction(
       partnerCompany: data.consignorName,
       externalSku: data.sku,
       productName: data.itemTitle,
+      brand: data.brand,
       variant: data.variant,
       ean: data.ean,
       identificationNumber: data.identificationNumber,
@@ -121,7 +94,6 @@ export async function createConsignmentItemAction(
       settlementAmountCents: parseOptionalMoney(data.settlementAmount, "Endbetrag"),
       shippingCostCents: parseOptionalMoney(data.shippingCost, "Versand"),
       realRrpGrossCents: parseOptionalMoney(data.realRrpGross, "Reale OVP"),
-      channelPrices: tiersResult.tiers,
       comment:
         [data.consignorContact, data.notes].filter(Boolean).join(" · ") ||
         undefined,
@@ -193,83 +165,219 @@ export async function updateConsignmentCountsAction(
   return { success: "Legacy-Bestände aktualisiert." };
 }
 
-const inventoryMovementSchema = z.object({
-  operation: z.enum(["SELL", "RETURN_INSPECTION", "DEFECTIVE"]),
-  quantity: z.coerce.number().int().min(1).max(100000),
-  comment: z.string().max(500).optional().or(z.literal("")),
-  idempotencyKey: z.string().min(1).max(200).optional().or(z.literal("")),
+const stockAdjustmentSchema = z.object({
+  targetQuantityAvailable: z.coerce.number().int().min(0).max(100000),
+  comment: z.string().min(1, "Grund/Kommentar fehlt.").max(500),
 });
 
-/** Neue Konsignationsbestände nur über InventoryMovement verändern. */
-export async function moveConsignmentInventoryAction(
+export async function adjustConsignmentStockAction(
   inventoryPositionId: string,
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
   const { db, organization, userId } = await requireOrg("MEMBER");
 
-  const parsed = inventoryMovementSchema.safeParse({
-    operation: formData.get("operation"),
-    quantity: formData.get("quantity"),
-    comment: formData.get("comment"),
-    idempotencyKey: formData.get("idempotencyKey"),
+  const parsed = stockAdjustmentSchema.safeParse({
+    targetQuantityAvailable: formData.get("targetQuantityAvailable"),
+    comment: formData.get("adjustmentComment"),
   });
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Ungültige Bewegung." };
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Bestandskorrektur." };
   }
 
   const position = await db.inventoryPosition.findFirst({
-    where: {
-      id: inventoryPositionId,
-      inventoryType: "CONSIGNMENT",
-    },
-    select: { id: true, inventoryNumber: true },
+    where: { id: inventoryPositionId, inventoryType: "CONSIGNMENT" },
+    select: { id: true, quantityAvailable: true, inventoryNumber: true },
   });
   if (!position) return { error: "Konsignationsposition nicht gefunden." };
 
-  const data = parsed.data;
-  const common = {
-    organizationId: organization.id,
-    inventoryPositionId,
-    quantity: data.quantity,
-    referenceType: "ConsignmentLot",
-    referenceId: inventoryPositionId,
-    comment: data.comment || undefined,
-    createdById: userId,
-    requiredInventoryType: "CONSIGNMENT" as const,
-    idempotencyKey:
-      data.idempotencyKey ||
-      `consignment:${inventoryPositionId}:${data.operation}:${Date.now()}`,
-  };
+  const delta = parsed.data.targetQuantityAvailable - position.quantityAvailable;
+  if (delta === 0) return { success: "Bestand ist unverändert." };
 
   try {
-    if (data.operation === "SELL") {
-      await sell({
-        ...common,
-        referenceAction: "manual_consignment_sale_out",
-      });
-    } else if (data.operation === "RETURN_INSPECTION") {
-      await receiveReturn({
-        ...common,
-        referenceAction: "manual_consignment_return_receipt",
-      });
-    } else {
-      await markReturnDefective({
-        ...common,
-        referenceAction: "manual_consignment_return_defective",
-      });
-    }
+    await adjust({
+      organizationId: organization.id,
+      inventoryPositionId: position.id,
+      direction: delta > 0 ? "IN" : "OUT",
+      quantity: Math.abs(delta),
+      bucket: "AVAILABLE",
+      referenceType: "InventoryPosition",
+      referenceId: position.id,
+      referenceAction: "consignment_stock_adjustment",
+      comment: parsed.data.comment,
+      createdById: userId,
+      requiredInventoryType: "CONSIGNMENT",
+    });
   } catch (error) {
     return {
       error:
         error instanceof Error
           ? error.message
-          : "Bestandsbewegung fehlgeschlagen.",
+          : "Bestandskorrektur konnte nicht gebucht werden.",
     };
   }
 
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId,
+    action: "consignment.stock_adjustment",
+    entityType: "InventoryPosition",
+    entityId: position.id,
+    before: { quantityAvailable: position.quantityAvailable },
+    after: { quantityAvailable: parsed.data.targetQuantityAvailable, comment: parsed.data.comment },
+  });
+
   revalidatePath("/konsignation");
-  return { success: `Bestand ${position.inventoryNumber} aktualisiert.` };
+  return { success: `Bestand ${position.inventoryNumber} korrigiert.` };
+}
+
+const editConsignmentSchema = z.object({
+  partner: z.string().min(1, "Partner fehlt.").max(200),
+  title: z.string().min(1, "Artikel fehlt.").max(300),
+  brand: z.string().max(120).optional().or(z.literal("")),
+  sku: z.string().max(120).optional().or(z.literal("")),
+  variant: z.string().max(200).optional().or(z.literal("")),
+  ean: z.string().max(80).optional().or(z.literal("")),
+  identificationNumber: z.string().max(120).optional().or(z.literal("")),
+  category: z.string().max(200).optional().or(z.literal("")),
+  costGross: z.string().optional().or(z.literal("")),
+  costNet: z.string().optional().or(z.literal("")),
+  comment: z.string().max(2000).optional().or(z.literal("")),
+});
+
+export async function updateConsignmentItemAction(
+  itemId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+
+  const parsed = editConsignmentSchema.safeParse({
+    partner: formData.get("partner"),
+    title: formData.get("title"),
+    brand: formData.get("brand"),
+    sku: formData.get("sku"),
+    variant: formData.get("variant"),
+    ean: formData.get("ean"),
+    identificationNumber: formData.get("identificationNumber"),
+    category: formData.get("category"),
+    costGross: formData.get("costGross"),
+    costNet: formData.get("costNet"),
+    comment: formData.get("comment"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Eingaben." };
+  }
+  const data = parsed.data;
+
+  const position = await db.inventoryPosition.findFirst({
+    where: { id: itemId, inventoryType: "CONSIGNMENT" },
+    include: { consignmentLot: true },
+  });
+
+  if (position?.consignmentLot) {
+    await db.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id: position.productId },
+        data: {
+          name: data.title,
+          brand: optional(data.brand),
+          variant: optional(data.variant || data.sku),
+          ean: optional(data.ean),
+          category: optional(data.category),
+        },
+      });
+      await tx.consignmentLot.update({
+        where: { id: position.consignmentLot!.id },
+        data: {
+          partnerCompany: data.partner,
+          externalSku: optional(data.sku),
+          identificationNumber: optional(data.identificationNumber),
+          costGross: optionalDecimalFromInput(data.costGross, "EK brutto"),
+          costNet: optionalDecimalFromInput(data.costNet, "EK netto"),
+          comment: optional(data.comment),
+        },
+      });
+    });
+
+    await writeAuditLog({
+      organizationId: organization.id,
+      userId,
+      action: "consignment.update",
+      entityType: "InventoryPosition",
+      entityId: position.id,
+      after: data,
+    });
+    revalidatePath("/konsignation");
+    return { success: "Konsignationsartikel aktualisiert." };
+  }
+
+  const legacy = await db.consignmentInventory.findFirst({ where: { id: itemId } });
+  if (!legacy) return { error: "Konsignationsartikel nicht gefunden." };
+
+  await db.consignmentInventory.update({
+    where: { id: itemId },
+    data: {
+      consignorName: data.partner,
+      itemTitle: data.title,
+      sku: data.sku || legacy.sku,
+      consignorContact: optional(data.comment),
+    },
+  });
+  revalidatePath("/konsignation");
+  return { success: "Legacy-Konsignationsartikel aktualisiert." };
+}
+
+export async function deleteConsignmentItemAction(itemId: string): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("ADMIN");
+
+  const position = await db.inventoryPosition.findFirst({
+    where: { id: itemId, inventoryType: "CONSIGNMENT" },
+    include: {
+      consignmentLot: { select: { id: true } },
+      _count: { select: { saleAllocations: true, debtLinks: true } },
+    },
+  });
+
+  if (position) {
+    if (position._count.saleAllocations > 0 || position._count.debtLinks > 0) {
+      return {
+        error:
+          "Konsignationsartikel ist mit Verkäufen oder Schulden verknüpft und kann nicht gelöscht werden.",
+      };
+    }
+    await db.$transaction(async (tx) => {
+      if (position.consignmentLot) {
+        await tx.sourceReference.deleteMany({
+          where: {
+            organizationId: organization.id,
+            targetEntity: "CONSIGNMENT_LOT",
+            targetEntityId: position.consignmentLot.id,
+          },
+        });
+      }
+      await tx.inventoryPosition.delete({ where: { id: position.id } });
+    });
+    await writeAuditLog({
+      organizationId: organization.id,
+      userId,
+      action: "consignment.delete",
+      entityType: "InventoryPosition",
+      entityId: position.id,
+      before: { inventoryNumber: position.inventoryNumber },
+    });
+    revalidatePath("/konsignation");
+    return { success: "Konsignationsartikel gelöscht." };
+  }
+
+  const legacy = await db.consignmentInventory.findFirst({ where: { id: itemId } });
+  if (!legacy) return { error: "Konsignationsartikel nicht gefunden." };
+  if (legacy.linkedSaleIds.length > 0 || legacy.saleId) {
+    return { error: "Legacy-Konsignationsartikel ist mit Verkäufen verknüpft." };
+  }
+  await db.consignmentInventory.delete({ where: { id: itemId } });
+  revalidatePath("/konsignation");
+  return { success: "Legacy-Konsignationsartikel gelöscht." };
 }
 
 /**
@@ -317,3 +425,17 @@ function parseOptionalMoney(
     throw new Error(`${label} ist kein gültiger Euro-Betrag.`);
   }
 }
+function optional(value: string | undefined | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function optionalDecimalFromInput(
+  value: string | undefined,
+  label: string
+): string | undefined {
+  const cents = parseOptionalMoney(value, label);
+  return cents == null ? undefined : (cents / 100).toFixed(2);
+}
+
+
