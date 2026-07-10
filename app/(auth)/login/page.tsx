@@ -1,36 +1,32 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { LoginForm } from "@/components/auth/login-form";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { PublicAuthShell } from "@/components/marketing/marketing-shell";
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Anmelden</CardTitle>
-          <CardDescription>
-            Melde dich bei deiner Organisation an.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Suspense>
-            <LoginForm />
-          </Suspense>
-          <p className="text-sm text-muted-foreground">
-            Noch kein Konto?{" "}
-            <Link href="/registrieren" className="underline">
-              Organisation gründen
+    <PublicAuthShell
+      title="Zurück in euren Warenfluss."
+      description="Melde dich an, um Bewegungen, Verkäufe, Retouren und Auszahlungen im gemeinsamen Arbeitsstand weiterzuführen."
+      switchHref="/registrieren"
+      switchLabel="Noch kein Konto? Organisation gründen"
+    >
+      <div className="space-y-5">
+        <div>
+          <p className="public-section-kicker">Login</p>
+          <h2 className="mt-2 font-display text-2xl font-semibold">Anmelden</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Melde dich bei deiner Organisation an oder{" "}
+            <Link href="/" className="public-focus-link underline decoration-transparent">
+              gehe zurück zur Startseite
             </Link>
+            .
           </p>
-        </CardContent>
-      </Card>
-    </main>
+        </div>
+        <Suspense>
+          <LoginForm />
+        </Suspense>
+      </div>
+    </PublicAuthShell>
   );
 }

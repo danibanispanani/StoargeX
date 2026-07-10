@@ -21,8 +21,15 @@
   --cargo-amber: #d98e2b;
   --transit-teal: #1b8f86;
   --customs-red: #c0483b;
+  --paper: #f7f3e8;
+  --rail: #2b3038;
+  --stamp: #8f5b2d;
+  --mint-signal: #d8ece8;
+  --public-shell-end: var(--fog);
 
   --radius: 0.625rem;
+  --radius-public: 0.5rem;
+  --shadow-public-panel: 0 18px 60px -44px rgba(20, 23, 28, 0.45);
 
   /* Semantische Tokens – Light */
   --background: #f6f6f1;
@@ -87,6 +94,11 @@
   --chart-3: #8a93a0;
   --chart-4: var(--fog);
   --chart-5: #d65d4f;
+  --paper: #171b22;
+  --rail: #d8d4c8;
+  --stamp: #d6a061;
+  --mint-signal: #183531;
+  --public-shell-end: #11141a;
   --sidebar: #1c2028;
   --sidebar-foreground: var(--fog);
   --sidebar-primary: #2bb3a8;
@@ -140,6 +152,10 @@
   --color-cargo-amber: var(--cargo-amber);
   --color-transit-teal: var(--transit-teal);
   --color-customs-red: var(--customs-red);
+  --color-paper: var(--paper);
+  --color-rail: var(--rail);
+  --color-stamp: var(--stamp);
+  --color-mint-signal: var(--mint-signal);
   /* Typografie */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-space-grotesk), var(--font-inter), sans-serif;
@@ -186,6 +202,89 @@
   .hover-lift:hover {
     transform: translateY(-3px);
     box-shadow: 0 8px 24px -12px rgba(20, 23, 28, 0.35);
+  }
+
+  .public-shell {
+    min-height: 100vh;
+    background:
+      linear-gradient(90deg, color-mix(in oklab, var(--rail) 8%, transparent) 1px, transparent 1px),
+      linear-gradient(180deg, color-mix(in oklab, var(--rail) 7%, transparent) 1px, transparent 1px),
+      radial-gradient(circle at 16% 10%, color-mix(in oklab, var(--mint-signal) 62%, transparent), transparent 26rem),
+      linear-gradient(180deg, var(--paper), var(--background) 56%, var(--public-shell-end));
+    background-size: 3.5rem 3.5rem, 3.5rem 3.5rem, auto, auto;
+    color: var(--foreground);
+  }
+
+  .public-container {
+    width: min(100% - 2rem, 72rem);
+    margin-inline: auto;
+  }
+
+  .public-track-card {
+    border: 1px solid color-mix(in oklab, var(--rail) 18%, transparent);
+    border-radius: var(--radius-public);
+    background: color-mix(in oklab, var(--card) 88%, var(--paper));
+    box-shadow: var(--shadow-public-panel);
+  }
+
+  .public-ledger-panel {
+    border: 1px solid color-mix(in oklab, var(--rail) 24%, transparent);
+    border-radius: calc(var(--radius-public) + 0.25rem);
+    background:
+      linear-gradient(180deg, color-mix(in oklab, var(--paper) 70%, var(--card)), var(--card)),
+      repeating-linear-gradient(180deg, transparent 0 2.35rem, color-mix(in oklab, var(--rail) 10%, transparent) 2.35rem 2.42rem);
+    box-shadow: var(--shadow-public-panel);
+  }
+
+  .public-section-kicker {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--stamp);
+  }
+
+  .public-metadata {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--muted-foreground);
+  }
+
+  .public-focus-link {
+    text-underline-offset: 0.25rem;
+    transition:
+      color 0.18s ease,
+      text-decoration-color 0.18s ease;
+  }
+
+  .public-focus-link:hover {
+    color: var(--foreground);
+    text-decoration-color: var(--transit-teal);
+  }
+
+  .public-legal-prose {
+    color: var(--muted-foreground);
+  }
+
+  .public-legal-prose h2 {
+    margin-top: 2rem;
+    color: var(--foreground);
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+
+  .public-legal-prose p,
+  .public-legal-prose li {
+    margin-top: 0.75rem;
+    line-height: 1.75;
+  }
+
+  .public-legal-prose ul {
+    margin-top: 0.75rem;
+    padding-left: 1.25rem;
+    list-style: disc;
   }
 }
 

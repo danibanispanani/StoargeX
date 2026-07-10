@@ -57,12 +57,12 @@ export default async function HomePage() {
   if (session?.user) redirect("/dashboard");
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="public-shell flex min-h-screen flex-col">
       <MarketingNav />
 
       <main className="flex-1">
         {/* Hero mit Routenlinie */}
-        <section className="mx-auto max-w-6xl px-4 pt-16 pb-12 text-center sm:pt-24">
+        <section id="workflow" className="mx-auto max-w-6xl scroll-mt-24 px-4 pt-16 pb-12 text-center sm:pt-24">
           <Reveal>
             <h1 className="mx-auto max-w-3xl font-display text-4xl font-bold tracking-tight sm:text-5xl">
               Kaufen. Verkaufen.{" "}
@@ -108,7 +108,7 @@ export default async function HomePage() {
         </section>
 
         {/* Feature-Sektionen */}
-        <section className="mx-auto max-w-6xl px-4 py-16">
+        <section id="features" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-16">
           <Reveal>
             <h2 className="text-center font-display text-3xl font-bold">
               Fünf Module. Ein Warenfluss.
@@ -172,18 +172,23 @@ export default async function HomePage() {
         </section>
 
         {/* CTA */}
-        <section className="mx-auto max-w-6xl px-4 py-16 text-center">
+        <section id="pricing" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-16 text-center">
           <Reveal>
             <h2 className="font-display text-3xl font-bold">
-              Bereit für den nächsten Wareneingang?
+              Preise und Einstieg
             </h2>
             <p className="mx-auto mt-2 max-w-md text-muted-foreground">
-              Kostenlos starten, Organisation gründen, Team einladen –
-              in unter fünf Minuten.
+              Kostenlos starten, Organisation gründen, Team einladen. Den
+              vollständigen Planvergleich findest du auf der Pricing-Seite.
             </p>
-            <Button asChild size="lg" className="hover-lift mt-6">
-              <Link href="/registrieren">Jetzt kostenlos registrieren</Link>
-            </Button>
+            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <Button asChild size="lg" className="hover-lift">
+                <Link href="/registrieren">Jetzt kostenlos registrieren</Link>
+              </Button>
+              <Button asChild size="lg" variant="outline" className="hover-lift">
+                <Link href="/pricing">Planvergleich öffnen</Link>
+              </Button>
+            </div>
           </Reveal>
         </section>
       </main>

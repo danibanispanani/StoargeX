@@ -46,7 +46,7 @@ export default async function PricingPage({
   const { feature, erforderlich } = await searchParams;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="public-shell flex min-h-screen flex-col">
       <MarketingNav />
 
       <main className="flex-1">
