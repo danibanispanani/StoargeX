@@ -125,11 +125,11 @@ const TRUST = [
 ] as const;
 
 const FAQS = [
-  ["Für wen ist StorageX gedacht?", "Für kleine Handelsorganisationen und GbRs, die Ware über mehrere Kanäle bewegen und dafür mehr Zusammenhang als eine Tabellenmappe brauchen."],
+  ["Für wen ist StoargeX gedacht?", "Für kleine Handelsorganisationen und GbRs, die Ware über mehrere Kanäle bewegen und dafür mehr Zusammenhang als eine Tabellenmappe brauchen."],
   ["Kann ich kostenlos starten?", "Ja. Der Free-Tarif bildet den Einstieg für Lager, Verkauf, Retouren, Aufgaben und ein kleines Team ab."],
   ["Was passiert bei einer Retoure?", "Die Retoure bleibt mit dem Verkauf verbunden. Zustand, Verlust und eine mögliche Wiedereinlagerung werden als Teil des Warenflusses behandelt."],
   ["Wie funktioniert Konsignation?", "Konsignationsware bleibt einem Einlieferer zugeordnet. Verkauf, Anteil und Auszahlung können dadurch getrennt vom Eigenbestand nachvollzogen werden."],
-  ["Wie schützt StorageX Organisationsdaten?", "Die Oberfläche und Produktlogik sind auf Mandantentrennung, Rollen, 2FA, Audit-Log und kontrollierte Exporte ausgelegt."],
+  ["Wie schützt StoargeX Organisationsdaten?", "Die Oberfläche und Produktlogik sind auf Mandantentrennung, Rollen, 2FA, Audit-Log und kontrollierte Exporte ausgelegt."],
 ] as const;
 
 function SectionIntro({
@@ -220,7 +220,7 @@ export function LandingPage() {
                   <span>Bis das Geld ankommt.</span>
                 </h1>
                 <p className="landing-hero-lede">
-                  StorageX verbindet Einkauf, Bestand, Verkauf, Retoure und Auszahlung in einem operativen System – damit Zusammenhang nicht in Tabellen verloren geht.
+                  StoargeX verbindet Einkauf, Bestand, Verkauf, Retoure und Auszahlung in einem operativen System – damit Zusammenhang nicht in Tabellen verloren geht.
                 </p>
                 <div className="landing-hero-actions">
                   <Button asChild size="lg" className="rounded-md px-6">
@@ -291,7 +291,7 @@ export function LandingPage() {
         <section id="features" className="landing-section scroll-mt-24">
           <div className="public-container">
             <Reveal>
-              <SectionIntro index="03" eyebrow="Arbeitslagen" title="Nicht Features sammeln. Situationen beherrschen." text="StorageX ordnet typische Handelslagen nach Ware, Verantwortlichkeit und finanzieller Folge – mit dem jeweils passenden operativen Ausschnitt." />
+              <SectionIntro index="03" eyebrow="Arbeitslagen" title="Nicht Features sammeln. Situationen beherrschen." text="StoargeX ordnet typische Handelslagen nach Ware, Verantwortlichkeit und finanzieller Folge – mit dem jeweils passenden operativen Ausschnitt." />
             </Reveal>
             <div className="landing-use-cases">
               {USE_CASES.map(({ eyebrow, title, text, Icon, rows, tone }, index) => (
@@ -354,15 +354,15 @@ export function LandingPage() {
         <section id="about" className="landing-section landing-about scroll-mt-24">
           <div className="public-container landing-about-grid">
             <Reveal className="landing-about-copy">
-              <p className="landing-kicker">06 / Warum StorageX</p>
+              <p className="landing-kicker">06 / Warum StoargeX</p>
               <h2>Gebaut für Handel zwischen Tabellenchaos und Enterprise-ERP.</h2>
-              <p>StorageX richtet sich an Teams, deren Geschäft längst zusammenhängend arbeitet, deren Werkzeuge diese Beziehungen aber noch nicht abbilden. Die Leitidee ist deshalb bewusst operativ: Jede Bewegung soll lesbar bleiben – auch wenn Ware zurückkommt, den Eigentümer wechselt oder erst später ausgezahlt wird.</p>
+              <p>StoargeX richtet sich an Teams, deren Geschäft längst zusammenhängend arbeitet, deren Werkzeuge diese Beziehungen aber noch nicht abbilden. Die Leitidee ist deshalb bewusst operativ: Jede Bewegung soll lesbar bleiben – auch wenn Ware zurückkommt, den Eigentümer wechselt oder erst später ausgezahlt wird.</p>
               <Button asChild variant="outline" className="mt-7 rounded-md"><Link href="/about">Mehr über den Ansatz <ArrowRight className="ml-1 size-4" aria-hidden="true" /></Link></Button>
             </Reveal>
             <Reveal delay={100} className="landing-manifest">
               <div className="landing-manifest-head"><Barcode className="size-5" aria-hidden="true" /><span>TRANSIT LEDGER / MANIFEST</span></div>
               {["Beziehungen vor Einzelwerten", "Bewegungen vor Überschreibungen", "Kontrolle vor Automations-Show", "Operative Sprache vor SaaS-Slogans"].map((line, index) => <div key={line}><span>{String(index + 1).padStart(2, "0")}</span><strong>{line}</strong></div>)}
-              <div className="landing-manifest-sign"><PackageCheck className="size-5" aria-hidden="true" />StorageX Produktprinzip</div>
+              <div className="landing-manifest-sign"><PackageCheck className="size-5" aria-hidden="true" />StoargeX Produktprinzip</div>
             </Reveal>
           </div>
         </section>
@@ -372,7 +372,7 @@ export function LandingPage() {
             <Reveal>
               <p className="landing-kicker">07 / Fragebereich</p>
               <h2>Handel hat Sonderfälle. Genau dort beginnt ein gutes System.</h2>
-              <p>Der spätere Kontaktkanal soll keine Chat-Blase über der Seite sein, sondern wie eine weitere operative Station funktionieren: Frage erfassen, Kontext zuordnen, Antwort nachvollziehen.</p>
+              <p>Kein schwebendes Fremdwidget: Ordnet einen realen Sonderfall dem passenden Prozesskontext zu und bereitet die Frage als nachvollziehbaren Kontrollpunkt vor.</p>
             </Reveal>
             <Reveal delay={100}><QuestionConsole /></Reveal>
           </div>

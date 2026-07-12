@@ -1,65 +1,67 @@
-# Task Plan: Prompt D Auth Redesign
+# Task Plan: Prompt E Public Experience Polish
 
 ## Goal
-Redesign only Login and Register as a shared, production-ready Transit Gate experience aligned with the landing page, preserve all authentication behavior, validate it in real browsers and viewports, document it, pass every project gate, and commit the result.
+Polish the complete public experience across Landingpage, Auth, Footer, Legal pages, navigation, question interaction, motion, and responsive behavior; validate it end to end, document the result, pass every gate, and commit it.
 
 ## Current Phase
 Complete
 
 ## Phases
 
-### Phase 1: Recovery and Design Direction
-- [x] Confirm the clean Prompt C baseline and inspect both auth routes, shared shell, forms, actions, and tests
-- [x] Load Huashu, Better Icons, Browser Trace, planning, and surgical implementation guidance
-- [x] Check shadcn registry/audit guidance and tool availability
-- [x] Verify the final auth icon vocabulary with Better Icons
+### Phase 1: Recovery and Consistency Audit
+- [x] Confirm clean Prompt A–D baseline on a non-main branch
+- [x] Load ce-polish, ce-test-browser, Huashu motion guidance, Better Icons, Browser Trace, planning, and surgical-change guidance
+- [x] Inspect all public routes, shared styles, motion helpers, and interaction components
+- [x] Establish a concrete defect/polish list before editing
 - **Status:** complete
 
-### Phase 2: Shared Auth Implementation
-- [x] Build the shared asymmetric Transit Gate shell for Login and Register
-- [x] Improve form hierarchy, focus/error states, and mobile behavior without changing auth actions
-- [x] Verify all four required navigation paths
-- [x] Create `docs/auth-redesign-notes.md`
+### Phase 2: Public-System Polish
+- [x] Align navigation, Footer, legal/about surfaces, CTA language, links, cards, and spacing
+- [x] Refine controlled hero, reveal, route, CTA, Auth, and transition motion
+- [x] Upgrade the landing question element into a coherent lightweight interaction flow
+- [x] Preserve reduced-motion, keyboard, and form accessibility
+- [x] Create `docs/public-polish-report.md`
 - **Status:** complete
 
-### Phase 3: Static and Runtime Validation
-- [x] Run TypeScript and targeted lint
-- [x] Start Next.js and check the available next-devtools runtime integration
-- [x] Validate Login/Register routing, navigation, form states, console, network, and hydration
-- [x] Attempt Browser Trace once and document the sandboxed Windows launcher limitation
+### Phase 3: Runtime and Browser QA
+- [x] Start the Next.js dev server using the resolved project recipe
+- [x] Check next-devtools compatibility and shadcn audit guidance
+- [x] Run ce-test-browser scope across all affected public routes with Chrome DevTools
+- [x] Verify desktop, tablet, and mobile layouts, navigation, forms, links, question flow, console, network, and hydration
+- [x] Apply the existing Browser Trace limitation without repeating the known blocked Windows launcher
 - **Status:** complete with documented Browser Trace limitation
 
-### Phase 4: Responsive and Visual Polish
-- [x] Inspect desktop, tablet, and mobile layouts
-- [x] Inspect both auth routes and relevant theme states
-- [x] Fix scoped visual or accessibility defects found in browser QA
+### Phase 4: Accessibility and Performance
+- [x] Run Lighthouse accessibility/best-practices checks on representative Landing and Legal routes
+- [x] Capture a coarse performance trace and inspect motion behavior
+- [x] Fix scoped defects and rerun affected checks
 - **Status:** complete
 
 ### Phase 5: Shipping Gates
-- [x] Run full lint, tests, production build, and `git diff --check`
-- [x] Review the complete scoped diff
-- [x] Commit the Prompt D result
+- [x] Run TypeScript, full lint, all tests, production build, and `git diff --check`
+- [x] Review the final scoped diff
+- [x] Commit with a clear Prompt E message
 - **Status:** complete
 
 ## Design Decisions
 | Decision | Rationale |
 |---|---|
-| Use a Transit Gate / access-manifest metaphor | It extends the landing page's operational route system into authentication instead of adding a generic auth card. |
-| Keep one shared shell with route-specific context | Login and Register should feel related while communicating return versus initial setup clearly. |
-| Preserve existing actions and validation contracts | Prompt D is a presentation and UX task; the current NextAuth and server-action behavior is already robust. |
-| Use restrained CSS motion and existing UI primitives | Keeps the result responsive, accessible, and production-safe. |
+| Treat motion as physical continuity, not decoration | The Transit Ledger metaphor should feel like one system moving through gates, rails, and manifests. |
+| Use Expo-out style easing and small directional travel | Gives weight and clarity without continuous spectacle or layout-costly animation. |
+| Keep one memorable motion peak in the Hero/question flow | Huashu guidance favors restraint; the rest of the system should support comprehension. |
+| Extend existing components rather than add a new design layer | Prompt E is polish, not another redesign or architecture rewrite. |
 
 ## Constraints
-- Login, Register, their shared shell/styles, and auth redesign documentation only.
-- No auth-provider, database, middleware, landing-page, or application-flow changes.
-- Context7 and codebase-memory-mcp are unavailable as callable tools; this must not block delivery.
-- Next.js 15 may limit next-devtools runtime inspection; document the limitation and continue.
+- Public experience only; no inventory, auth backend, billing, middleware, or protected-app changes.
+- No invented AI backend, customer claims, legal text, or external integrations.
+- Preserve Prompt A–D architecture and interaction contracts.
+- Next.js 15 may limit next-devtools runtime inspection; document and continue.
 
 ## Errors Encountered
 | Error | Resolution |
 |---|---|
-| Context7 and codebase-memory-mcp expose no callable tools | Continue from direct repository inspection and document the limitation. |
-| First combined planning-file patch did not match a mojibake-affected line | Split the patch into exact, encoding-safe file updates. |
-| Browser Trace managed launch cannot enumerate the Windows process in the sandbox | Stop after one attempt and use Chrome DevTools CDP evidence; cleanup attempt was likewise blocked and not repeated. |
-| Initial Lighthouse contrast audit scored 96 | Set auth submit text explicitly dark against Transit Teal; both auth routes now score Accessibility 100. |
-| Sandboxed Production Build cannot fetch the three existing Google Fonts | Run the final build with approved network access before staging and committing. |
+| ce-polish Bash helper scripts resolve to WSL, but no WSL distribution is installed | Use the documented Next.js/npm/port recipe directly in PowerShell; do not retry identical helpers. |
+| Preferred port 3000 is occupied by an unresponsive existing process | Preserve the unknown process and start the scoped QA server on port 3005. |
+| next-devtools finds no MCP endpoint on port 3005 | Expected Next.js 15.5.20 limitation; continue with Chrome DevTools and static route inspection. |
+| Chrome DevTools screenshots intermittently remain pending after interactive navigation | Terminated two isolated screenshot calls, stopped requesting screenshots, and retained successful snapshots, Lighthouse, and DOM geometry evidence. |
+| Initial Auth motion inspection queried a pseudo-element as a DOM node | Corrected the inspection to `getComputedStyle(element, "::after")`; verified finite animation counts. |

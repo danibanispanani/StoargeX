@@ -19,7 +19,7 @@ export default function AboutPage() {
       <PublicPageHeader
         eyebrow="About"
         title="Gebaut für Handel, der aus Tabellen herausgewachsen ist."
-        description="StoargeX richtet Einkauf, Bestand, Verkauf, Retoure und Auszahlung als eine lesbare Spur aus. Diese Seite ist die Grundlage für die spätere öffentliche Marken- und Vertrauenssektion."
+        description="StoargeX richtet Einkauf, Bestand, Verkauf, Retoure und Auszahlung als eine lesbare Spur aus – für Teams zwischen Tabellenchaos und Enterprise-ERP."
       />
 
       <section className="public-container grid gap-6 pb-16 lg:grid-cols-[1fr_0.75fr]">
@@ -58,12 +58,17 @@ export default function AboutPage() {
               Fragen zur Einführung?
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Für die nächste Phase kann hier ein echtes Kontaktformular, ein
-              Chat-Element oder eine geprüfte E-Mail-Adresse eingebunden werden.
+              Beschreibt euren Sonderfall im integrierten Fragebereich oder legt
+              direkt den ersten gemeinsamen Arbeitsstand an.
             </p>
-            <Button asChild className="mt-5 rounded-md">
-              <Link href="/registrieren">Organisation gründen</Link>
-            </Button>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button asChild className="rounded-md">
+                <Link href="/#question">Frage vorbereiten</Link>
+              </Button>
+              <Button asChild variant="outline" className="rounded-md">
+                <Link href="/registrieren">Organisation gründen</Link>
+              </Button>
+            </div>
           </div>
         </aside>
       </section>

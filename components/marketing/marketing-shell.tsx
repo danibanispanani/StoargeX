@@ -13,12 +13,14 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { MobilePublicNav } from "@/components/marketing/mobile-public-nav";
 
 const NAV_LINKS = [
   { href: "/#workflow", label: "Workflow" },
   { href: "/#features", label: "Funktionen" },
   { href: "/#pricing", label: "Preise" },
   { href: "/#about", label: "About" },
+  { href: "/#question", label: "Frage" },
   { href: "/#faq", label: "FAQ" },
 ];
 
@@ -30,7 +32,7 @@ const FOOTER_GROUPS = [
       { href: "/#features", label: "Funktionen" },
       { href: "/#pricing", label: "Preise" },
       { href: "/login", label: "Anmelden" },
-      { href: "/registrieren", label: "Registrieren" },
+      { href: "/registrieren", label: "Organisation gründen" },
     ],
   },
   {
@@ -81,7 +83,7 @@ export function PublicBrand() {
 
 export function MarketingNav() {
   return (
-    <header className="sticky top-0 z-40 border-b border-rail/15 bg-paper/88 backdrop-blur-md dark:bg-background/88">
+    <header className="public-nav sticky top-0 z-40 border-b border-rail/15 bg-paper/88 backdrop-blur-md dark:bg-background/88">
       <div className="public-container flex min-h-16 items-center justify-between gap-4 py-2">
         <PublicBrand />
         <nav className="hidden items-center gap-1 lg:flex" aria-label="Öffentliche Navigation">
@@ -93,6 +95,7 @@ export function MarketingNav() {
         </nav>
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          <MobilePublicNav />
           <Button asChild variant="ghost" size="sm">
             <Link href="/login" aria-label="Anmelden">
               <LogIn className="size-4 sm:hidden" aria-hidden="true" />
@@ -114,7 +117,12 @@ export function MarketingNav() {
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-rail/15 bg-card/70">
+    <footer className="public-footer border-t border-rail/15 bg-card/70">
+      <div className="public-footer-route" aria-hidden="true">
+        {["Einkauf", "Bestand", "Verkauf", "Retoure", "Auszahlung"].map((item, index) => (
+          <span key={item}><i>{String(index + 1).padStart(2, "0")}</i>{item}</span>
+        ))}
+      </div>
       <div className="public-container grid gap-10 py-12 md:grid-cols-[1.35fr_2fr]">
         <div className="space-y-4">
           <PublicBrand />
@@ -180,15 +188,26 @@ export function PublicPageHeader({
   description: string;
 }) {
   return (
-    <section className="public-container py-14 sm:py-20">
-      <div className="max-w-3xl">
-        <p className="public-section-kicker">{eyebrow}</p>
-        <h1 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-5xl">
-          {title}
-        </h1>
-        <p className="mt-4 text-lg leading-8 text-muted-foreground">
-          {description}
-        </p>
+    <section className="public-page-header public-container py-12 sm:py-18">
+      <div className="public-page-header-grid">
+        <div className="max-w-3xl">
+          <Link href="/" className="public-back-link public-focus-link">
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            Zur Landingpage
+          </Link>
+          <p className="public-section-kicker mt-7">{eyebrow}</p>
+          <h1 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            {title}
+          </h1>
+          <p className="mt-4 text-lg leading-8 text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        <div className="public-page-gate" aria-hidden="true">
+          <span>PUBLIC / TRANSIT</span>
+          <div><i /><i /><i className="is-active" /><i /><i /></div>
+          <strong>Information checkpoint</strong>
+        </div>
       </div>
     </section>
   );
@@ -305,7 +324,7 @@ export function PublicAuthShell({
 
 export function PlaceholderNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="public-track-card flex gap-3 border-cargo-amber/35 bg-cargo-amber/10 p-4 text-sm">
+    <div className="public-track-card public-placeholder flex gap-3 border-cargo-amber/35 bg-cargo-amber/10 p-4 text-sm">
       <ShieldCheck className="mt-0.5 size-4 shrink-0 text-cargo-amber" aria-hidden="true" />
       <p className="leading-6 text-muted-foreground">{children}</p>
     </div>

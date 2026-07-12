@@ -180,3 +180,48 @@
 - `git diff --check`: pass after removing one trailing space in the auth stylesheet heading.
 - Scoped diff review: pass; changes remain limited to Login, Register, their shared shell/styles, documentation, and persistent task notes.
 - Sandboxed Production Build failed only because Google Fonts are network-blocked. The final approved shipping command reruns the build with network access and creates the Prompt D commit only after build success.
+
+## Session: 2026-07-12 — Prompt E
+
+### Phase 1: Recovery and Consistency Audit
+- **Status:** in_progress
+- Confirmed a clean Prompt A–D baseline at `7dc8113` on a non-main branch.
+- Loaded and sequenced the requested ce-polish and ce-test-browser workflows, plus Huashu motion references, Better Icons, Browser Trace, shadcn-aware validation, persistent planning, and surgical implementation guidance.
+- ce-polish Bash detection helpers cannot run because this Windows host has no WSL distribution. Recorded the limitation after one attempt and switched to the documented direct Next.js/npm recipe.
+- Mapped the public route and component surface for the consistency audit.
+- Completed the baseline consistency audit. Identified seven scoped issues: hidden mobile anchors, wordmark-copy mismatch, generic Question Console, generic reveal easing plus looping route motion, flat Footer/legal transitions, inconsistent CTA wording, and outdated About contact copy.
+
+### Phase 2: Public-System Polish
+- **Status:** in_progress
+- Added a shadcn Sheet-based mobile navigation with all Landingpage anchors plus Login, Register, and Datenschutz paths.
+- Rebuilt the question preview as a local context-selection, question-entry, and prepared-receipt flow without storing or sending data.
+- Unified visible `StoargeX` naming, Footer CTA language, About copy, public page back-navigation, Footer transit rail, and Legal/About surface details.
+- Normalized reveals and microinteractions to expo-style settling, limited perpetual route animations to two passes, and added reduced-motion-safe Hero ticket/station and Auth entrance motion.
+- Targeted TypeScript, ESLint, and `git diff --check` pass.
+- Started the healthy QA server on port 3005 after preserving an unknown unresponsive process on port 3000. next-devtools documents the expected Next.js 15 runtime limitation.
+
+### Phase 3: Runtime and Browser QA
+- **Status:** complete with documented Browser Trace limitation
+- Selected Chrome DevTools as the host-native `ce-test-browser` driver and used it exclusively.
+- Verified the Landingpage structure, desktop header, 390 px mobile geometry, mobile Sheet semantics and destinations, and the full Question Console interaction.
+- Verified Login, Register, About, Impressum, Datenschutz, and AGB headings, field contracts, Footer/back-navigation presence, and overflow behavior.
+- Two screenshot calls hung intermittently after interactive navigation. Both were terminated; screenshot capture was then stopped while semantic snapshots, DOM geometry, Lighthouse, console/network, and performance tools continued to provide evidence.
+- Verified all 16 internal Landingpage anchors/routes with browser fetch and DOM target checks; no dead links.
+- Console/network review is clean: no warnings/errors and all inspected documents, chunks, fonts, auth endpoints, and route transitions returned 200.
+
+### Phase 4: Accessibility and Performance
+- **Status:** complete
+- Landingpage and Datenschutz each score Accessibility 100 and Best Practices 100 in mobile Lighthouse.
+- Landingpage mobile performance trace reports LCP 761 ms and CLS 0.00 without throttling.
+- Inspected the lone forced-reflow insight: 41 ms unattributed, no top-level function and no estimated savings.
+- Computed styles verify Landing Reveal (720 ms, one pass), Hero route (two passes), Hero ticket (one pass), Auth route (two passes), and Auth copy (one pass) all use the intended motion contracts.
+- Added `docs/public-polish-report.md` with changes, motion, resolved UX issues, validation, limitations, and optional follow-ups.
+
+### Phase 5: Shipping Gates
+- **Status:** complete
+- `npx tsc --noEmit`: pass.
+- `npm run lint`: pass.
+- `npm test`: 12 files and 117 tests pass.
+- `git diff --check`: pass.
+- Final scope review: pass. The diff contains only public Landing/About/shared shell, navigation, Question Console, public styles, report, and persistent task notes.
+- Following the repository's recent value-oriented commit style, the final approved shipping command runs the network-dependent Production Build and creates one cohesive Public Experience polish commit only after build success.
