@@ -68,3 +68,16 @@
 - Final TypeScript, ESLint, and all 117 Vitest tests pass. The sandboxed production build reaches optimized compilation but fails only while fetching the three existing Google Fonts; the required network-enabled rerun was rejected by the platform usage limit before execution.
 - Continuation run: network-enabled `npm run build` now completes successfully, including compilation, type/lint validation, all 26 static pages, optimization, and build traces.
 - Final 390 px Chrome recheck confirms the mobile board fix: board bounds are 11–380 px within a 390 px viewport, all five station labels remain inside the viewport, no board descendants overflow, document width remains 390 px, every request returns 200, and the console is clean. The final screenshot also confirms both ledger tickets are visible rather than clipped.
+
+## Prompt D Findings (2026-07-12)
+- Prompt D starts from clean commit `88b3bf2`; no user worktree changes were present.
+- Login and Register already share `PublicAuthShell`. Their functionality is separated cleanly into the existing NextAuth client flow and server actions, so the redesign can remain presentation-only.
+- Login already handles generic credentials errors and the two 2FA states explicitly. Register uses server-side Zod validation, a 12-character password minimum, and a shared organization-fields component.
+- The current auth shell has the right product vocabulary but still resolves as a conventional illustrated panel beside a floating form card. The redesign should turn it into a more specific Transit Gate and access-manifest composition.
+- The required route graph already exists: both pages link to the landing page and to each other. Browser QA must verify visibility and keyboard/mobile usability rather than invent new destinations.
+- shadcn is configured and the existing Button, Input, Label, Alert, Select, and Separator primitives cover the production UI needs; no new registry component is required.
+- Context7 and codebase-memory-mcp are not exposed as callable tools in this session. Direct code inspection supplies the needed context without blocking the work.
+- The repository uses Next.js 15.5.20. As in Prompt C, next-devtools may report no runtime MCP endpoint because that integration targets Next.js 16+; this is a tooling limitation, not an app defect.
+- Initial mobile Lighthouse scored Accessibility 96 because the light-theme submit button used white on Transit Teal at 3.94:1. The auth submit text is now explicitly dark for WCAG AA contrast; unrelated robots/llms discovery failures come from missing project-wide files and are outside the two-route redesign scope.
+- Browser Trace's managed Browse launch cannot enumerate the Windows process under the current sandbox (`Get-CimInstance: Access denied`) and remains uninitialized. After one attempt, continue with Chrome DevTools network/console, screenshots, responsive emulation, Lighthouse, and performance trace rather than repeatedly retrying the blocked launcher.
+- Full TypeScript, ESLint, and all 117 Vitest tests pass. The sandboxed Production Build reaches optimized compilation and fails only on blocked downloads for the existing Inter, JetBrains Mono, and Space Grotesk setup; the final shipping command reruns it with approved network access before committing.

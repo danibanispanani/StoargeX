@@ -1,69 +1,65 @@
-# Task Plan: Prompt C Landingpage Redesign
+# Task Plan: Prompt D Auth Redesign
 
 ## Goal
-Rebuild only the public landing page as a distinctive, production-ready Transit Ledger single page, validate it across browsers and viewports, document the design, pass all gates, and commit the result.
+Redesign only Login and Register as a shared, production-ready Transit Gate experience aligned with the landing page, preserve all authentication behavior, validate it in real browsers and viewports, document it, pass every project gate, and commit the result.
 
 ## Current Phase
 Complete
 
 ## Phases
 
-### Phase 1: Context and Design System
-- [x] Verify clean Prompt A/B baseline and read public design documents
-- [x] Inspect current landing page, shell, pricing data, motion helpers, and UI primitives
-- [x] Use Huashu guidance to define the product-derived form and motion language
-- [x] Verify the core Lucide icon set with Better Icons
-- [x] Check shadcn registry and component audit guidance
+### Phase 1: Recovery and Design Direction
+- [x] Confirm the clean Prompt C baseline and inspect both auth routes, shared shell, forms, actions, and tests
+- [x] Load Huashu, Better Icons, Browser Trace, planning, and surgical implementation guidance
+- [x] Check shadcn registry/audit guidance and tool availability
+- [x] Verify the final auth icon vocabulary with Better Icons
 - **Status:** complete
 
-### Phase 2: Landingpage Implementation
-- [x] Build the new hero and isometric Transit Ledger board
-- [x] Build problem, workflow, contextual use cases, trust, pricing, about, question, FAQ, and final CTA sections
-- [x] Add a small integrated question interaction
-- [x] Keep navigation anchors and CTA routes coherent
-- [x] Create `docs/landingpage-redesign-notes.md`
+### Phase 2: Shared Auth Implementation
+- [x] Build the shared asymmetric Transit Gate shell for Login and Register
+- [x] Improve form hierarchy, focus/error states, and mobile behavior without changing auth actions
+- [x] Verify all four required navigation paths
+- [x] Create `docs/auth-redesign-notes.md`
 - **Status:** complete
 
 ### Phase 3: Static and Runtime Validation
-- [x] Run TypeScript, targeted lint, and tests
-- [x] Start Next.js and perform available runtime checks
-- [x] Capture browser trace if the local tracing stack is available
-- [x] Validate Chrome console, network, hydration, navigation, and CTA paths
-- **Status:** complete
+- [x] Run TypeScript and targeted lint
+- [x] Start Next.js and check the available next-devtools runtime integration
+- [x] Validate Login/Register routing, navigation, form states, console, network, and hydration
+- [x] Attempt Browser Trace once and document the sandboxed Windows launcher limitation
+- **Status:** complete with documented Browser Trace limitation
 
 ### Phase 4: Responsive and Visual Polish
-- [x] Inspect 1440, 1280, 768, and 390 px layouts
-- [x] Inspect key-section screenshots
-- [x] Run a coarse CDP performance/network trace
-- [x] Fix scoped visual and accessibility defects (post-fix Chrome call blocked by usage gate)
-- **Status:** complete with documented tool limitation
+- [x] Inspect desktop, tablet, and mobile layouts
+- [x] Inspect both auth routes and relevant theme states
+- [x] Fix scoped visual or accessibility defects found in browser QA
+- **Status:** complete
 
 ### Phase 5: Shipping Gates
 - [x] Run full lint, tests, production build, and `git diff --check`
-- [x] Review the complete diff for scope and quality
-- [x] Commit the Prompt C result (`Redesign public landing page`)
+- [x] Review the complete scoped diff
+- [x] Commit the Prompt D result
 - **Status:** complete
 
 ## Design Decisions
 | Decision | Rationale |
 |---|---|
-| Use a physical Transit Ledger / control-board metaphor | The visual form grows directly from inventory movements and audit trails rather than SaaS decoration. |
-| Keep imagery code-native | The content is an operational system; the isometric board, ledgers, stamps, and routes are the product visualization, not decorative stock imagery. |
-| Use controlled CSS motion plus the existing reveal helper | Transform/opacity motion stays lightweight and respects reduced-motion preferences. |
-| Reuse shadcn Button primitives, existing tokens, and centralized pricing data | Keeps interaction quality and pricing truth production-safe without importing a template aesthetic. |
+| Use a Transit Gate / access-manifest metaphor | It extends the landing page's operational route system into authentication instead of adding a generic auth card. |
+| Keep one shared shell with route-specific context | Login and Register should feel related while communicating return versus initial setup clearly. |
+| Preserve existing actions and validation contracts | Prompt D is a presentation and UX task; the current NextAuth and server-action behavior is already robust. |
+| Use restrained CSS motion and existing UI primitives | Keeps the result responsive, accessible, and production-safe. |
 
 ## Constraints
-- Landingpage and its supporting landing-only components/docs only.
-- No Prompt D auth redesign, no backend chat integration, no pricing-route rewrite.
-- No invented testimonials, customer counts, uptime claims, or legal content.
-- Next.js 15 runtime MCP limitation must be documented, not solved by framework upgrade.
+- Login, Register, their shared shell/styles, and auth redesign documentation only.
+- No auth-provider, database, middleware, landing-page, or application-flow changes.
+- Context7 and codebase-memory-mcp are unavailable as callable tools; this must not block delivery.
+- Next.js 15 may limit next-devtools runtime inspection; document the limitation and continue.
 
 ## Errors Encountered
 | Error | Resolution |
 |---|---|
-| `better-icons` was not installed globally | Used the skill's `npx --yes better-icons` fallback and verified `route`, `package-check`, `rotate-ccw`, `coins`, and `shield-check` in Lucide. |
-| `codebase-memory-mcp` and Context7 expose no callable tools | Continue from the repository's Prompt A/B documents and direct code inspection; do not block implementation. |
-| Initial TypeScript run rejected string-valued `aria-hidden` on a dynamic icon component | Changed the property to the boolean JSX attribute; targeted lint was already clean. |
-| Browser Trace `start-capture.mjs` fails with `spawn browse ENOENT` on the Windows npm shim | Managed Browse Chrome itself works; stop retrying the wrapper and use Chrome DevTools console/network/performance plus screenshots as the replacement trace evidence. |
-| Post-fix Chrome call and network-enabled Production Build were rejected by the platform usage limit | Do not retry or circumvent. Preserve the verified implementation and report the external gate if commit access is also unavailable. |
-| Final targeted `git add` / `git commit` was rejected before execution by the same usage limit | Leave the complete worktree intact and ask the user to resume after the reset; do not bypass the approval gate. |
+| Context7 and codebase-memory-mcp expose no callable tools | Continue from direct repository inspection and document the limitation. |
+| First combined planning-file patch did not match a mojibake-affected line | Split the patch into exact, encoding-safe file updates. |
+| Browser Trace managed launch cannot enumerate the Windows process in the sandbox | Stop after one attempt and use Chrome DevTools CDP evidence; cleanup attempt was likewise blocked and not repeated. |
+| Initial Lighthouse contrast audit scored 96 | Set auth submit text explicitly dark against Transit Teal; both auth routes now score Accessibility 100. |
+| Sandboxed Production Build cannot fetch the three existing Google Fonts | Run the final build with approved network access before staging and committing. |

@@ -3,10 +3,12 @@ import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
-  CheckCircle2,
+  Fingerprint,
+  KeyRound,
   LogIn,
   PackageCheck,
   Route,
+  ScanLine,
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -194,74 +196,98 @@ export function PublicPageHeader({
 
 export function PublicAuthShell({
   children,
+  mode,
   title,
   description,
   switchHref,
   switchLabel,
 }: {
   children: ReactNode;
+  mode: "login" | "register";
   title: string;
   description: string;
   switchHref: string;
   switchLabel: string;
 }) {
+  const isLogin = mode === "login";
+  const gateCode = isLogin ? "GATE / RETURN" : "GATE / ORIGIN";
+  const activeStation = isLogin ? "Zugang" : "Organisation";
+
   return (
-    <main className="public-shell min-h-screen px-4 py-6">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col">
-        <div className="flex items-center justify-between gap-4">
+    <main className="public-shell auth-redesign min-h-screen">
+      <div className="auth-shell mx-auto flex min-h-screen w-full max-w-[100rem] flex-col px-4 py-4 sm:px-6 sm:py-6">
+        <div className="auth-topbar flex items-center justify-between gap-4">
           <PublicBrand />
-          <Button asChild variant="ghost" size="sm">
+          <Button asChild variant="ghost" size="sm" className="auth-home-link">
             <Link href="/">
               <ArrowLeft className="mr-1 size-4" aria-hidden="true" />
-              Startseite
+              Zur Landingpage
             </Link>
           </Button>
         </div>
 
-        <div className="grid flex-1 items-center gap-8 py-10 lg:grid-cols-[0.92fr_1fr]">
-          <aside className="public-ledger-panel overflow-hidden p-6 sm:p-8">
-            <p className="public-section-kicker">Zugang zur Leitstelle</p>
-            <h1 className="mt-4 max-w-lg font-display text-3xl font-bold tracking-tight sm:text-4xl">
-              {title}
-            </h1>
-            <p className="mt-4 max-w-md text-sm leading-6 text-muted-foreground">
-              {description}
-            </p>
-            <div className="mt-8 space-y-3">
-              {[
-                ["Einkauf", "Wareneingänge bleiben nachvollziehbar."],
-                ["Bestand", "Bewegungen laufen über klare Buchungen."],
-                ["Verkauf", "Marge und Auszahlung hängen an derselben Spur."],
-              ].map(([label, text]) => (
-                <div
-                  key={label}
-                  className="grid grid-cols-[auto_1fr] gap-3 rounded-md border border-rail/15 bg-card/70 p-3"
-                >
-                  <span className="mt-0.5 flex size-7 items-center justify-center rounded-full bg-mint-signal text-transit-teal dark:bg-accent">
-                    <CheckCircle2 className="size-4" aria-hidden="true" />
+        <div className="auth-stage grid flex-1 py-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)] lg:py-8">
+          <aside className="auth-scene relative overflow-hidden" aria-label="StoargeX Produktkontext">
+            <div className="auth-scene-grid" aria-hidden="true" />
+            <div className="auth-scene-content relative z-10 flex h-full flex-col p-6 sm:p-9 lg:p-12">
+              <div className="flex items-center justify-between gap-4">
+                <p className="auth-scene-kicker">Transit Gate</p>
+                <span className="auth-gate-code">{gateCode}</span>
+              </div>
+
+              <div className="auth-scene-copy">
+                <span className="auth-scan-mark" aria-hidden="true">
+                  <ScanLine className="size-5" />
+                </span>
+                <h1>{title}</h1>
+                <p>{description}</p>
+              </div>
+
+              <div className="auth-route-board" aria-label={`Aktueller Schritt: ${activeStation}`}>
+                <div className="auth-route-line" aria-hidden="true" />
+                {["Einkauf", "Bestand", "Verkauf", "Retoure", "Auszahlung"].map(
+                  (station, index) => (
+                    <div className="auth-route-stop" key={station}>
+                      <span className={index === 1 ? "is-live" : ""}>
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <small>{station}</small>
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div className="auth-scene-footer mt-auto">
+                <div className="auth-checkpoint">
+                  <span className="auth-checkpoint-icon" aria-hidden="true">
+                    {isLogin ? <Fingerprint className="size-5" /> : <KeyRound className="size-5" />}
                   </span>
                   <span>
-                    <span className="block font-mono text-xs font-semibold uppercase tracking-[0.14em] text-stamp">
-                      {label}
-                    </span>
-                    <span className="text-sm text-muted-foreground">{text}</span>
+                    <small>Aktueller Kontrollpunkt</small>
+                    <strong>{activeStation}</strong>
                   </span>
                 </div>
-              ))}
-            </div>
-            <div className="mt-8 flex items-center gap-3 text-sm text-muted-foreground">
-              <Route className="size-4 text-transit-teal" aria-hidden="true" />
-              <span>Vom Warenfluss direkt in euren Arbeitsstand.</span>
+                <div className="auth-trust-strip" aria-label="Sicherheitsmerkmale">
+                  <span><ShieldCheck aria-hidden="true" /> 2FA bereit</span>
+                  <span><Route aria-hidden="true" /> Auditierbar</span>
+                  <span><PackageCheck aria-hidden="true" /> Mandantentrennung</span>
+                </div>
+              </div>
             </div>
           </aside>
 
-          <section className="public-track-card mx-auto w-full max-w-md p-5 sm:p-6">
-            {children}
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-rail/10 pt-4 text-sm text-muted-foreground">
-              <Link href={switchHref} className="public-focus-link underline decoration-transparent">
+          <section className="auth-manifest flex min-w-0 flex-col" aria-label={isLogin ? "Login" : "Registrierung"}>
+            <div className="auth-manifest-meta">
+              <span>StoargeX / {isLogin ? "Login" : "Setup"}</span>
+              <span>Gesicherter Zugang</span>
+            </div>
+            <div className="auth-manifest-body flex-1">{children}</div>
+            <div className="auth-manifest-footer">
+              <Link href={switchHref} className="auth-switch-link public-focus-link">
                 {switchLabel}
+                <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <Link href="/datenschutz" className="public-focus-link underline decoration-transparent">
                   Datenschutz
                 </Link>

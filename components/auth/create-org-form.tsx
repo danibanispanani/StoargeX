@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { ArrowRight, CircleAlert, ShieldCheck } from "lucide-react";
 import {
   createOrganizationAction,
   type RegisterState,
@@ -16,16 +17,25 @@ export function CreateOrgForm() {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="auth-form">
       {state?.error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" id="organization-error" className="auth-form-alert">
+          <CircleAlert className="size-4" aria-hidden="true" />
           <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       )}
-      <OrgFields />
-      <Button type="submit" className="w-full" disabled={pending}>
+      <fieldset className="auth-field-group">
+        <legend><span>01</span> Organisation</legend>
+        <OrgFields />
+      </fieldset>
+      <Button type="submit" className="auth-submit w-full" disabled={pending}>
         {pending ? "Wird angelegt…" : "Organisation gründen"}
+        {!pending && <ArrowRight className="size-4" aria-hidden="true" />}
       </Button>
+      <p className="auth-form-proof">
+        <ShieldCheck aria-hidden="true" />
+        Dein bestehender Zugang bleibt erhalten.
+      </p>
     </form>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { CircleAlert, LogIn, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,17 +49,27 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="auth-form" noValidate={false}>
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" id="login-error" className="auth-form-alert">
+          <CircleAlert className="size-4" aria-hidden="true" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="space-y-2">
+      <div className="auth-field">
         <Label htmlFor="email">E-Mail</Label>
-        <Input id="email" name="email" type="email" required autoComplete="email" />
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          required
+          autoComplete="email"
+          placeholder="name@organisation.de"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? "login-error" : undefined}
+        />
       </div>
-      <div className="space-y-2">
+      <div className="auth-field">
         <Label htmlFor="password">Passwort</Label>
         <Input
           id="password"
@@ -66,10 +77,12 @@ export function LoginForm() {
           type="password"
           required
           autoComplete="current-password"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? "login-error" : undefined}
         />
       </div>
       {needsTotp && (
-        <div className="space-y-2">
+        <div className="auth-field auth-field-emphasis">
           <Label htmlFor="totpCode">2FA-Code (oder Wiederherstellungscode)</Label>
           <Input
             id="totpCode"
@@ -78,12 +91,20 @@ export function LoginForm() {
             autoComplete="one-time-code"
             placeholder="123456"
             autoFocus
+            required
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "login-error" : undefined}
           />
         </div>
       )}
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" className="auth-submit w-full" disabled={pending}>
         {pending ? "Wird geprüft…" : "Anmelden"}
+        {!pending && <LogIn className="size-4" aria-hidden="true" />}
       </Button>
+      <p className="auth-form-proof">
+        <ShieldCheck aria-hidden="true" />
+        Zwei-Faktor-Anmeldung wird unterstützt.
+      </p>
     </form>
   );
 }

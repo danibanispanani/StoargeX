@@ -146,3 +146,37 @@
 - Removed the empty `.o11y/landingpage-prompt-c` failed-wrapper artifact after verifying its resolved path remained inside the workspace.
 - Final diff review and `git diff --check`: pass.
 - Committed Prompt C with message `Redesign public landing page`.
+
+## Session: 2026-07-12 — Prompt D
+
+### Phase 1: Recovery and Design Direction
+- **Status:** complete
+- Confirmed a clean worktree at `88b3bf2` and inspected the shared auth shell, both routes, all form components, registration action, primitives, and test coverage.
+- Loaded the requested Huashu, Better Icons, and Browser Trace workflows plus persistent planning and surgical coding guidance.
+- Selected an asymmetric Transit Gate / access-manifest direction that reuses the landing page's movement rail, ledger typography, dark control-board surfaces, and warm paper field surface.
+- Confirmed the implementation can preserve every existing auth action and error contract.
+
+### Phase 2: Shared Auth Implementation
+- **Status:** complete
+- Reworked `PublicAuthShell` into the shared Transit Gate / access-manifest composition with route-specific Login and Register context.
+- Added semantic registration fieldsets, linked Login error states, deliberate focus styles, native autofill metadata, responsive rules, reduced-motion handling, and visible navigation between Landingpage, Login, and Register.
+- Added `docs/auth-redesign-notes.md`; no auth action, middleware, provider, database, or redirect contract changed.
+
+### Phase 3: Browser and Responsive QA
+- **Status:** complete with documented Browser Trace limitation
+- Chrome DevTools verified both routes at desktop, 768 px, and an exact 390 px mobile viewport in dark and light states. No horizontal overflow, console errors, hydration messages, failed requests, or missing assets were observed.
+- Exercised invalid Login credentials and confirmed the accessible live error plus linked invalid fields. Confirmed Register's 12-character password constraint with native browser validation.
+- Clicked Login → Register, Register → Login, and the shared Landingpage route successfully.
+- Initial Login Lighthouse exposed one contrast defect (white on Transit Teal at 3.94:1); fixed it and reran both routes. Login and Register now score Accessibility 100 and Best Practices 100.
+- Login performance trace reports LCP 782 ms and CLS 0.00 without throttling.
+- next-devtools reports no runtime MCP tools on Next.js 15.5.20, the expected pre-v16 limitation.
+- Browser Trace's managed Browse launcher cannot initialize because sandboxed Windows process enumeration returns `Access denied`. It was attempted once and not retried; Chrome DevTools CDP/network/console/performance evidence covers runtime QA.
+
+### Phase 4: Shipping Gates
+- **Status:** complete
+- `npx tsc --noEmit`: pass.
+- `npm run lint`: pass.
+- `npm test`: 12 files and 117 tests pass.
+- `git diff --check`: pass after removing one trailing space in the auth stylesheet heading.
+- Scoped diff review: pass; changes remain limited to Login, Register, their shared shell/styles, documentation, and persistent task notes.
+- Sandboxed Production Build failed only because Google Fonts are network-blocked. The final approved shipping command reruns the build with network access and creates the Prompt D commit only after build success.
