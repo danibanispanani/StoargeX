@@ -93,3 +93,56 @@
 | What's the goal? | Produce a verified Prompt-C-ready Prompt A/B foundation without beginning Prompt C. |
 | What have I learned? | Prompt B is a deliberately limited shell foundation on Next.js 15 with a clean git baseline. |
 | What have I done? | Reconstructed A/B, repaired public routing and mobile login access, documented validation, passed browser/Lighthouse/build gates, and am ready to commit. |
+
+## Session: 2026-07-12 — Prompt C
+
+### Phase 1: Context and Design System
+- **Status:** complete
+- Confirmed a clean worktree at `1a971c8` and inspected the existing landing page, shell, global tokens, pricing data, motion helpers, and test surface.
+- Loaded the requested Huashu, Better Icons, and Browser Trace workflows plus persistent planning and surgical coding guidance.
+- Selected the product-derived Transit Ledger control-board direction and a restrained transform/opacity motion system.
+- Verified the core Lucide icon vocabulary with Better Icons and checked the configured shadcn registry/audit checklist.
+- Recorded deliberate no-unit-test exception for the visual-only landing rewrite; replacement evidence is TypeScript/lint plus real browser, responsive, accessibility, navigation, and runtime validation.
+
+### Phase 2: Landingpage Implementation
+- **Status:** complete
+- Replaced the previous generic landing page with the complete Transit Ledger single-page narrative.
+- Added the isometric hero board, problem comparison, workflow, four contextual use cases, trust layer, pricing preview, about manifest, question console, FAQ, final CTA, and design notes.
+- Reused centralized `TIERS`, shadcn Button, Public Shell, existing tokens, and the Reveal helper; no backend or auth surfaces changed.
+- Targeted ESLint passed. Initial TypeScript run found one dynamic-icon `aria-hidden` typing mismatch; corrected it from a string to the boolean attribute.
+
+### Phase 3: Initial Runtime Validation
+- **Status:** in_progress
+- TypeScript passes after the icon attribute correction; `git diff --check` identified and then removed one trailing whitespace line.
+- Started Next.js 15.5.20 on port 3003; `next-devtools` correctly reports that no Next.js 16 runtime MCP endpoint exists.
+- Installed and launched the requested Browse CLI for Browser Trace. Managed Chrome works, but the trace wrapper is Windows-incompatible because it spawns the npm shim as a bare executable; recorded the limitation after one sandbox and one approved attempt.
+- Chrome DevTools rendered the complete page without console, hydration, network, asset, or overflow failures and confirmed all required sections and CTA destinations.
+- Captured and visually inspected desktop and 390 px hero screenshots.
+
+### Phase 4: Responsive and Interaction QA
+- **Status:** complete with one post-fix browser limitation documented
+- Verified 1440, 1280, 768, and 390 px layout geometry; no document overflow at any width.
+- Found the transformed mobile hero board visually exceeded its clipped stage. Reworked its mobile sizing and animation to use the available width without Y rotation.
+- The platform usage gate blocked the immediate post-fix Chrome call; no retry or alternate browser workaround was attempted. Static geometry of the corrected rule is recorded in the design notes.
+- Verified the question preview state and native FAQ disclosure interaction at 390 px.
+- Captured a direct Browser Trace CDP firehose for mobile anchor navigation and reload: all resources returned 200 and no runtime exceptions appeared.
+
+### Phase 5: Shipping Gates
+- **Status:** blocked on external production-build network gate
+- `npx tsc --noEmit`: pass.
+- `npm run lint`: pass.
+- `npm test`: 12 files and 117 tests pass.
+- `git diff --check`: pass after one whitespace correction.
+- Sandboxed `npm run build`: optimized build started, then failed only on blocked Google Font downloads.
+- Required network-enabled build rerun: rejected by the platform usage limit before execution; no workaround attempted.
+- Targeted final commit was also rejected by the same platform usage limit before Git executed. All intended files remain unstaged and intact; `.o11y/landingpage-prompt-c` is an empty failed-wrapper artifact whose approved cleanup was likewise blocked.
+
+## Session: 2026-07-12 — Prompt C Completion
+
+- Network-enabled Production Build: pass (exit 0; 26/26 static pages generated).
+- Fresh Next.js dev server started on port 3000 after the stale port-3003 process returned 500.
+- Final Chrome 390 px post-fix validation: pass. Board and all five station labels are fully inside the viewport, no document or element overflow, 23/23 requests return 200, and no console messages are present.
+- Final mobile screenshot visually confirms the corrected board framing and readable header/hero/CTA hierarchy.
+- Removed the empty `.o11y/landingpage-prompt-c` failed-wrapper artifact after verifying its resolved path remained inside the workspace.
+- Final diff review and `git diff --check`: pass.
+- Committed Prompt C with message `Redesign public landing page`.

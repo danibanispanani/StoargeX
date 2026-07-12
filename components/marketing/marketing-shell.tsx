@@ -16,7 +16,8 @@ const NAV_LINKS = [
   { href: "/#workflow", label: "Workflow" },
   { href: "/#features", label: "Funktionen" },
   { href: "/#pricing", label: "Preise" },
-  { href: "/about", label: "About" },
+  { href: "/#about", label: "About" },
+  { href: "/#faq", label: "FAQ" },
 ];
 
 const FOOTER_GROUPS = [
