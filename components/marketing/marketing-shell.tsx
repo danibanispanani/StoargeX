@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  LogIn,
   PackageCheck,
   Route,
   ShieldCheck,
@@ -67,7 +68,7 @@ export function PublicBrand() {
         <span className="block font-display text-lg font-bold tracking-tight">
           StoargeX
         </span>
-        <span className="public-metadata block text-[0.64rem]">
+        <span className="public-metadata hidden text-[0.64rem] sm:block">
           Transit Ledger
         </span>
       </span>
@@ -89,13 +90,17 @@ export function MarketingNav() {
         </nav>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
-            <Link href="/login">Anmelden</Link>
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/login" aria-label="Anmelden">
+              <LogIn className="size-4 sm:hidden" aria-hidden="true" />
+              <span className="hidden sm:inline">Anmelden</span>
+            </Link>
           </Button>
           <Button asChild size="sm" className="hover-lift rounded-md">
             <Link href="/registrieren">
-              Organisation gründen
-              <ArrowRight className="ml-1 size-4" aria-hidden="true" />
+              <span className="sm:hidden">Starten</span>
+              <span className="hidden sm:inline">Organisation gründen</span>
+              <ArrowRight className="ml-1 hidden size-4 sm:block" aria-hidden="true" />
             </Link>
           </Button>
         </div>

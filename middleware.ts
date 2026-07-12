@@ -55,7 +55,16 @@ function clientIp(req: Request): string {
   );
 }
 
-const PUBLIC_ROUTES = new Set(["/", "/login", "/registrieren", "/pricing"]);
+const PUBLIC_ROUTES = new Set([
+  "/",
+  "/login",
+  "/registrieren",
+  "/pricing",
+  "/about",
+  "/impressum",
+  "/datenschutz",
+  "/agb",
+]);
 
 function isPublic(pathname: string): boolean {
   return (
