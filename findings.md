@@ -1,5 +1,25 @@
 # Findings and Decisions
 
+## Prompt 0 — Internal Product Constitution and Beta Rebuild Planning
+
+### Baseline
+- `git status --short` and `git diff --` were clean before edits.
+- Recent history shows the completed inventory-domain phases, then public redesign work; `87c4a6a MCP` is the latest commit.
+- Existing planning files are tracked project documentation. Prompt 0 updates them only as working notes and will not alter application code.
+- Codebase memory was indexed in non-persistent mode. Its architecture scan confirms established core seams: organization access (`requireOrg`), auditing (`writeAuditLog`), inventory movement, document numbering, calculations, tables, actions, and reporting.
+- Current architectural hotspots include `requireOrg` (75 inbound), `writeAuditLog` (45), `applyInventoryMovement` (11), and `reserveDocumentNumber` (7). They are core modules to extend, not replace.
+
+### Tool Availability
+- `codebase-memory-mcp` and Chrome DevTools are available. The repository was indexed because it was not known to be indexed.
+- `next-devtools` is available but no Next.js 16+ MCP server exists. `package.json` reports Next.js 15.5.20; no upgrade is justified for this phase.
+
+### Planning Decisions
+- The roadmap sequences shared read/table seams before UI rollout, isolates entitlement enforcement from pricing decisions, then generalizes commercial references, dashboard intelligence, distinct return operations, and import coverage.
+- The table-view matrix makes the user-required interaction contract explicit per module rather than forcing an identical view across all modules.
+- The temporary architecture report was created outside the repository at `C:\\Users\\WN0022~1\\AppData\\Local\\Temp\\architecture-review-20260713-091317.html` and opened for inspection. No report artifact was written to the worktree.
+
+---
+
 ## Requirements
 - Reconstruct the completed Prompt A/B state without reimplementing it.
 - Validate documentation, Next.js structure, real browser behavior, responsive layouts, errors, accessibility, and design-direction consistency.

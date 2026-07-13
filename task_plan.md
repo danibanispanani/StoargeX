@@ -1,4 +1,50 @@
-# Task Plan: Prompt E Public Experience Polish
+# Task Plan: Prompt 0 Internal Product Constitution and Beta Rebuild Planning
+
+## Goal
+Define the internal StorageX product constitution, beta-rebuild roadmap, domain-generalization decisions, table-view matrix, and entitlement/navigation map without implementing domain or schema changes.
+
+## Current Phase
+Final verification and handoff
+
+## Phases
+
+### Phase 1: Repository and governance audit
+- [x] Confirm clean worktree, inspect diff and recent history
+- [x] Read project instructions, package, Prisma schema, existing planning notes, and documentation inventory
+- [x] Index the repository through codebase memory and inspect architecture
+- [x] Check limited browser/Next.js tooling availability
+- **Status:** complete
+
+### Phase 2: Domain, UI, and migration evidence
+- [x] Read all domain/redesign documents and relevant migration history
+- [x] Inspect current module routes, tables, actions, and services
+- [x] Capture architecture-deepening opportunities for the roadmap
+- **Status:** complete
+
+### Phase 3: Product constitution and planning documents
+- [x] Extend AGENTS.md with internal SaaS governance
+- [x] Create all five requested governance documents
+- [x] Keep phases implementation-free and schema-free
+- **Status:** complete
+
+### Phase 4: Final verification and handoff
+- [x] Verify only AGENTS.md and documentation files changed
+- [ ] Review staged diff and commit the requested message
+- **Status:** in_progress
+
+## Constraints
+- No new domain feature, Prisma migration, UI reconstruction, or tariff change.
+- Preserve all listed multi-tenant, inventory, transaction, allocation, debt, import, and audit foundations.
+- Commit only the requested documentation/governance scope.
+
+## Tooling Notes
+- codebase-memory-mcp indexed `C:\\dev\\StoargeX` in moderate, non-persistent mode: 2,037 nodes and 5,765 edges.
+- The project is on Next.js 15.5.20. `next-devtools` found no MCP-enabled server; framework upgrade is out of scope.
+- Chrome DevTools is callable but has only `about:blank` open, so no live application route can be compared without starting a server; this planning phase does not require an app change.
+
+---
+
+# Historical Task Plan: Prompt E Public Experience Polish
 
 ## Goal
 Polish the complete public experience across Landingpage, Auth, Footer, Legal pages, navigation, question interaction, motion, and responsive behavior; validate it end to end, document the result, pass every gate, and commit it.
