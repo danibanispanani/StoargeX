@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireOrg } from "@/lib/org";
@@ -7,22 +8,31 @@ import { writeAuditLog } from "@/lib/audit";
 import { euroToCents } from "@/lib/calculations";
 import { saveImage } from "@/lib/uploads";
 import type { ActionState } from "@/lib/actions/team";
+import type { TableSelection } from "@/lib/operational-table";
+import {
+  buildProductSelectionWhere,
+  parseProductTableQuery,
+} from "@/lib/products/product-table";
 
 const productSchema = z.object({
   name: z.string().min(1, "Name fehlt.").max(300),
   variant: z.string().max(200).optional().or(z.literal("")),
+  brand: z.string().max(100).optional().or(z.literal("")),
   category: z.string().max(100).optional().or(z.literal("")),
   ean: z.string().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional().or(z.literal("")),
   defaultPrice: z.string().optional().or(z.literal("")),
+  size: z.string().max(100).optional().or(z.literal("")),
 });
 
 function parseProductForm(formData: FormData) {
   const parsed = productSchema.safeParse({
     name: formData.get("name"),
     variant: formData.get("variant"),
+    brand: formData.get("brand"),
     category: formData.get("category"),
     ean: formData.get("ean"),
     defaultPrice: formData.get("defaultPrice"),
+    size: formData.get("size"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Ungültige Eingaben." } as const;
@@ -69,10 +79,12 @@ export async function createProductAction(
       organizationId: organization.id,
       name: data.name,
       variant: data.variant || null,
+      brand: data.brand || null,
       category: data.category || null,
       ean: data.ean || null,
       defaultPriceCents,
       imageUrls,
+      size: data.size || null,
     },
   });
 
@@ -119,10 +131,12 @@ export async function updateProductAction(
     data: {
       name: data.name,
       variant: data.variant || null,
+      brand: data.brand || null,
       category: data.category || null,
       ean: data.ean || null,
       defaultPriceCents,
       imageUrls,
+      size: data.size || null,
     },
   });
 
@@ -144,8 +158,29 @@ export async function updateProductAction(
 export async function deleteProductAction(productId: string): Promise<ActionState> {
   const { db, organization, userId } = await requireOrg("MEMBER");
 
-  const existing = await db.product.findFirst({ where: { id: productId } });
+  const existing = await db.product.findFirst({
+    where: { id: productId },
+    include: {
+      _count: {
+        select: {
+          purchaseLines: true,
+          inventoryPositions: true,
+          saleLines: true,
+        },
+      },
+    },
+  });
   if (!existing) return { error: "Produkt nicht gefunden." };
+
+  const referenceCount =
+    existing._count.purchaseLines +
+    existing._count.inventoryPositions +
+    existing._count.saleLines;
+  if (referenceCount > 0) {
+    return {
+      error: `Produkt wird noch in ${referenceCount} Datensatz/Datensätzen verwendet und kann nicht gelöscht werden.`,
+    };
+  }
 
   await db.product.delete({ where: { id: productId } });
 
@@ -160,4 +195,103 @@ export async function deleteProductAction(productId: string): Promise<ActionStat
 
   revalidatePath("/produkte");
   return { success: `Produkt "${existing.name}" gelöscht ✓` };
+}
+
+const bulkCategorySchema = z.object({
+  category: z.string().trim().min(1, "Kategorie fehlt.").max(100),
+  expectedCount: z.number().int().min(1).max(5000),
+  expectedResultDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  selection: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("explicit"), ids: z.array(z.string().min(1)).max(5000) }),
+    z.object({ mode: z.literal("all"), excludedIds: z.array(z.string().min(1)).max(5000) }),
+  ]),
+  query: z.record(
+    z.string(),
+    z.union([z.string(), z.array(z.string())])
+  ),
+});
+
+export interface BulkCategorizeProductsInput {
+  category: string;
+  expectedCount: number;
+  expectedResultDigest?: string;
+  selection: TableSelection;
+  query: Record<string, string | string[] | undefined>;
+}
+
+/** Ordnet eine serverseitig erneut aufgelöste, tenant-gescoppte Treffermenge einer Kategorie zu. */
+export async function bulkCategorizeProductsAction(
+  input: BulkCategorizeProductsInput
+): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+  const parsed = bulkCategorySchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Auswahl." };
+  }
+
+  const query = parseProductTableQuery(parsed.data.query);
+  const where = buildProductSelectionWhere(
+    query,
+    parsed.data.selection,
+    organization.lowStockThreshold
+  );
+  const products = await db.product.findMany({
+    where,
+    select: { id: true, category: true },
+    take: 5001,
+  });
+  if (products.length === 0) {
+    return { error: "Keine gültigen Produkte ausgewählt." };
+  }
+  if (products.length > 5000) {
+    return { error: "Bulk-Aktion ist auf 5000 Produkte begrenzt. Filtere die Ansicht weiter ein." };
+  }
+  if (products.length !== parsed.data.expectedCount) {
+    return {
+      error: "Die Ergebnismenge hat sich seit der Auswahl geändert. Bitte Auswahl aktualisieren und erneut bestätigen.",
+    };
+  }
+  if (parsed.data.selection.mode === "all") {
+    if (!parsed.data.expectedResultDigest) {
+      return { error: "Die Ergebnismenge muss vor der Bulk-Aktion neu geladen werden." };
+    }
+    const resultDigest = createHash("sha256")
+      .update(products.map((product) => product.id).sort().join("\n"))
+      .digest("hex");
+    if (resultDigest !== parsed.data.expectedResultDigest) {
+      return {
+        error: "Die Ergebnismenge hat sich seit der Auswahl geändert. Bitte Auswahl aktualisieren und erneut bestätigen.",
+      };
+    }
+  }
+
+  const ids = products
+    .filter((product) => product.category !== parsed.data.category)
+    .map((product) => product.id);
+  if (ids.length === 0) {
+    return { success: "Alle ausgewählten Produkte sind bereits dieser Kategorie zugeordnet." };
+  }
+  const result = await db.product.updateMany({
+    where: { id: { in: ids } },
+    data: { category: parsed.data.category },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId,
+    action: "product.bulk_categorize",
+    entityType: "Product",
+    entityId: ids[0],
+    after: {
+      category: parsed.data.category,
+      count: result.count,
+      productIds: ids.slice(0, 100),
+      productIdsTruncated: ids.length > 100,
+    },
+  });
+
+  revalidatePath("/produkte");
+  return {
+    success: `${result.count} Produkt${result.count === 1 ? "" : "e"} der Kategorie „${parsed.data.category}“ zugeordnet ✓`,
+  };
 }

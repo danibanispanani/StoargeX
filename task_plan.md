@@ -1,4 +1,74 @@
-# Task Plan: Prompt 2 Internal Design System and App Shell
+# Task Plan: Prompt 3 Unified Operational Table System
+
+## Goal
+Create a reusable, information-dense operational table module, extend the existing import pipeline with documented downloadable templates and review states, migrate only `/produkte` as the reference module, verify tenant-safe filter/export/action behavior, document the contracts, pass all quality gates, and commit the requested result.
+
+## Current Phase
+Final validation, documented infrastructure blockers, and requested commit
+
+## Phases
+
+### Phase 1: Recovery, evidence, and table/import audit
+- [x] Read Prompt 0–2 governance, table matrix, product route/actions/tests, import pipeline, schema, and package scripts
+- [x] Map existing table state, preferences, tenant seams, product references, and import/export behavior
+- [x] Define measurable success criteria and record deliberate scope boundaries
+- **Status:** completed
+
+### Phase 2: Deep operational-table module
+- [x] Define the small shared interface for query/view/selection state and module-local configuration
+- [x] Implement and test case-insensitive search, sorting, combined/date filters, presets, persisted views, density, selection, pagination, and filtered export projection
+- [x] Implement shared controls, sticky table frame, confirmation dialog, states, and detail drawer without erasing domain-specific cells/actions
+- **Status:** completed
+
+### Phase 3: Import-template standard on the existing pipeline
+- [x] Extend the existing ImportExportBar/import pipeline rather than creating another engine
+- [x] Add empty/example templates, CSV/XLSX where supported, required/format descriptions, dry-run mapping, errors, conflicts, and summary presentation
+- [x] Test template contracts and retained ImportBatch/SourceReference provenance
+- **Status:** completed
+
+### Phase 4: `/produkte` reference migration
+- [x] Create the product table configuration, server-side tenant-safe query/filter/sort/pagination/export seam, and saved-view adapter
+- [x] Add standard/optional columns, category/brand filters, row edit/delete with reference check, safe bulk categorization, and detail drawer
+- [x] Preserve existing product forms/actions and validate tenant isolation and active-filter export
+- **Status:** completed
+
+### Phase 5: Browser QA, documentation, review, gates, and commit
+- [ ] Validate responsive layout, keyboard/focus, drawers/dialogs, states, console/network/hydration, and representative product workflows in Chrome (blocked by external tool usage limit)
+- [x] Create `docs/operational-table-system.md` and `docs/import-template-standard.md`
+- [ ] Run focused tests, full tests, typecheck, lint, integrity check, production build, diff review, and requested commit (integrity/build blocked by external network; remaining checks pass)
+- **Status:** in_progress with documented infrastructure blockers
+
+## Constraints
+- Do not migrate every module; `/produkte` is the only full reference migration.
+- Keep important operational information visible and move only secondary/history data into optional columns or details.
+- Reuse existing product actions, ImportBatch, SourceReference, organization/RLS access, audit, and import/export foundations.
+- No Prisma migration unless discovery proves it is strictly required; prefer existing user settings storage and additive application-level configuration.
+- Common mechanics are central; product columns, presets, filters, drawers, and business actions stay module-specific.
+
+## Success Criteria
+- Pure state/configuration tests cover filtering, sorting, presets, persistence, selection including current-result select-all, and filtered export projection.
+- Product queries and mutations remain organization-scoped; delete/reference and bulk-category paths are safe and tested.
+- Import templates expose machine-readable columns plus human-readable required/format metadata and feed the existing dry-run workflow.
+- `/produkte` works without horizontal document overflow at desktop/tablet/mobile widths and is keyboard operable.
+- All repository gates pass and the final worktree is clean after the requested commit.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Focused proof-first tests fail because the operational-table/product-table modules and product template contract do not exist yet. | 1 | Expected red evidence; implement only the tested interfaces before rerunning. |
+| The first product-action patch matched the update action's identical `findFirst` line and placed the reference preflight there. | 1 | Removed it from update, anchored the patch on `deleteProductAction`, and retained editability for referenced products. |
+| A monolithic product-action patch failed on mojibake context in the final success string. | 1 | Split the patch around ASCII anchors and used the file's actual UTF-8 text for the final insertion. |
+| Combined product-dialog/delete-button patch could not match the legacy mojibake confirmation string. | 1 | Patched the dialog separately and replaced the small delete-button file through `apply_patch` with UTF-8 safe confirmation UI. |
+| Parallel and 30-second TypeScript runs returned no exit code because the process outlived the nested command yield. | 2 | Started a resumable command session and polled it; this exposed one real transition callback return-type error, which was corrected. |
+| Import-context Promise destructuring did not match the newly inserted product-query order, breaking product conflicts and sale-reference lookup. | 1 | Aligned destructuring to `[inventoryRefs, products, saleRefs]`; no query or domain behavior was broadened. |
+| First targeted lint orchestration outlived the direct wait, and the resumed run found one no-unused-expressions warning. | 1 | Polled the resumable lint session and replaced the statement ternary with an explicit branch. |
+| Chrome DevTools, Next DevTools and Docker approval were rejected by the external usage limit. | 1 each | Did not retry through a workaround; recorded the missing browser evidence and kept external data read-only. |
+| `integrity:check` cannot reach the configured external PostgreSQL host from the sandbox. | 1 | Recorded the network blocker; no destructive or production write was attempted. |
+| Production Build cannot fetch Inter, JetBrains Mono and Space Grotesk from Google Fonts. | 1 | Recorded the network-only build blocker after compilation reached the font fetch. |
+
+---
+
+# Historical Task Plan: Prompt 2 Internal Design System and App Shell
 
 ## Goal
 Create a compact, distinctive internal StorageX product language and responsive application shell, centralize shared app-state components, enforce consignment entitlements server-side, validate representative routes in real browsers, document the shell, and commit the verified result without reconstructing every module.

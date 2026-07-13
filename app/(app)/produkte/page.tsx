@@ -1,129 +1,135 @@
+import { createHash } from "crypto";
 import { requireOrg } from "@/lib/org";
-import { formatEuro } from "@/lib/calculations";
-import { ProductDialog } from "@/components/products/product-dialog";
-import { DeleteProductButton } from "@/components/products/delete-product-button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  buildProductOrderBy,
+  buildProductWhere,
+  parseProductTableQuery,
+  productQueryToSearchParams,
+} from "@/lib/products/product-table";
+import { PageHeader } from "@/components/app/page-header";
+import { ImportExportBar } from "@/components/import-export/import-export-bar";
+import { ProductDialog } from "@/components/products/product-dialog";
+import { ProductFilterBar } from "@/components/products/product-filter-bar";
+import {
+  ProductTable,
+  type ProductOperationalRow,
+} from "@/components/products/product-table";
+
+type ProductSearchParams = Record<string, string | string[] | undefined>;
 
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<ProductSearchParams>;
 }) {
-  const { db } = await requireOrg();
-  const { q } = await searchParams;
+  const { db, organization, userId } = await requireOrg();
+  const rawParams = await searchParams;
+  const requestedQuery = parseProductTableQuery(rawParams);
+  const where = buildProductWhere(requestedQuery, organization.lowStockThreshold);
 
-  const products = await db.product.findMany({
-    where: q
-      ? {
-          OR: [
-            { name: { contains: q, mode: "insensitive" } },
-            { variant: { contains: q, mode: "insensitive" } },
-            { category: { contains: q, mode: "insensitive" } },
-            { ean: { contains: q } },
-          ],
-        }
-      : undefined,
-    orderBy: [{ name: "asc" }, { variant: "asc" }],
-    take: 500,
-  });
+  const [totalResults, categoryRows, brandRows] = await Promise.all([
+    db.product.count({ where }),
+    db.product.findMany({
+      where: { category: { not: null } },
+      select: { category: true },
+      distinct: ["category"],
+      orderBy: { category: "asc" },
+    }),
+    db.product.findMany({
+      where: { brand: { not: null } },
+      select: { brand: true },
+      distinct: ["brand"],
+      orderBy: { brand: "asc" },
+    }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(totalResults / requestedQuery.pageSize));
+  const query = {
+    ...requestedQuery,
+    page: Math.min(requestedQuery.page, totalPages),
+  };
+  const [products, selectionRows] = await Promise.all([
+    db.product.findMany({
+      where,
+      orderBy: buildProductOrderBy(query),
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+      include: {
+        _count: {
+          select: {
+            purchaseLines: true,
+            inventoryPositions: true,
+            saleLines: true,
+          },
+        },
+      },
+    }),
+    totalResults <= 5000
+      ? db.product.findMany({ where, select: { id: true }, orderBy: { id: "asc" } })
+      : Promise.resolve([]),
+  ]);
+
+  const rows: ProductOperationalRow[] = products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    variant: product.variant ?? "",
+    brand: product.brand ?? "",
+    category: product.category ?? "",
+    ean: product.ean ?? "",
+    size: product.size ?? "",
+    defaultPriceCents: product.defaultPriceCents,
+    imageUrls: product.imageUrls,
+    createdAt: product.createdAt.toISOString(),
+    updatedAt: product.updatedAt.toISOString(),
+    usage: {
+      purchases: product._count.purchaseLines,
+      inventory: product._count.inventoryPositions,
+      sales: product._count.saleLines,
+    },
+  }));
+  const categories = categoryRows
+    .map((row) => row.category)
+    .filter((value): value is string => Boolean(value));
+  const brands = brandRows
+    .map((row) => row.brand)
+    .filter((value): value is string => Boolean(value));
+  const queryString = productQueryToSearchParams(query).toString();
+  const allResultDigest =
+    totalResults <= 5000
+      ? createHash("sha256")
+          .update(selectionRows.map((row) => row.id).join("\n"))
+          .digest("hex")
+      : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Produkte</h1>
-          <p className="text-sm text-muted-foreground">
-            Wiederkehrende Produkte – im Lager und Verkauf als Vorlage wählbar
-          </p>
-        </div>
-        <ProductDialog />
-      </div>
+      <PageHeader
+        eyebrow="Handel / Katalog"
+        title="Produkte"
+        description={`${totalResults} Treffer · serverseitig gefiltert und sortiert`}
+        actions={
+          <>
+            <ImportExportBar table="produkte" />
+            <ProductDialog />
+          </>
+        }
+      />
 
-      <form method="GET" className="max-w-sm">
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Suche: Name, Variante, Kategorie, EAN…"
-          className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
-        />
-      </form>
+      <ProductFilterBar query={query} categories={categories} brands={brands} />
 
-      <Card>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Variante/Version</TableHead>
-                <TableHead>Kategorie</TableHead>
-                <TableHead>EAN</TableHead>
-                <TableHead className="text-right">Standard-EK</TableHead>
-                <TableHead>Bild</TableHead>
-                <TableHead className="w-36" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {products.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                    {q
-                      ? "Kein Produkt passt zur Suche."
-                      : "Noch keine Produkte im Katalog. Lege wiederkehrende Produkte an, um sie beim Wareneingang und Verkauf per Klick zu übernehmen."}
-                  </TableCell>
-                </TableRow>
-              )}
-              {products.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>{product.variant ?? "–"}</TableCell>
-                  <TableCell>{product.category ?? "–"}</TableCell>
-                  <TableCell className="font-mono text-xs">{product.ean ?? "–"}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {product.defaultPriceCents !== null
-                      ? formatEuro(product.defaultPriceCents)
-                      : "–"}
-                  </TableCell>
-                  <TableCell>
-                    {product.imageUrls[0] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={product.imageUrls[0]}
-                        alt={product.name}
-                        className="size-9 rounded object-cover"
-                      />
-                    ) : (
-                      "–"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <ProductDialog
-                        product={{
-                          id: product.id,
-                          name: product.name,
-                          variant: product.variant ?? "",
-                          category: product.category ?? "",
-                          ean: product.ean ?? "",
-                          defaultPriceCents: product.defaultPriceCents,
-                        }}
-                      />
-                      <DeleteProductButton productId={product.id} name={product.name} />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <ProductTable
+        rows={rows}
+        totalResults={totalResults}
+        query={query}
+        queryString={queryString}
+        allResultDigest={allResultDigest}
+        categories={categories}
+        scope={{
+          organizationId: organization.id,
+          userId,
+          tableKey: "products",
+        }}
+      />
     </div>
   );
 }

@@ -198,3 +198,49 @@
 - `/login`, `/registrieren`, `/about`, `/impressum`, `/datenschutz`, and `/agb` all render their expected H1 and core content without horizontal overflow. Auth exposes the expected fields; content pages retain Footer and visible Landingpage back-navigation.
 - Exact 390 px Legal geometry passes: document width equals viewport width, all visible header/Footer controls remain within 374.4 px, and the legal article fits from 16–374.4 px.
 - Chrome DevTools screenshot capture became intermittently stuck after interactive Sheet/navigation work. Two isolated screenshot calls were terminated; further screenshots were stopped. Accessibility snapshots, computed geometry, Lighthouse, and performance capture remain healthy and sufficient.
+# Prompt 3 — Unified Operational Table System
+
+## Baseline and architecture direction
+- Prompt 3 starts from clean commit `f2f85bb feat: rebuild internal app shell and navigation` on `phase-1/inventory-datamodel`; there are no pre-existing worktree changes.
+- The sequential prompt explicitly authorizes implementation, tests, documentation, and the exact final commit while limiting full module migration to `/produkte`.
+- The table module will be deep at the shared query/view/selection seam: callers provide declarative domain configuration and rows, while parsing, normalization, preset application, persistence validation, selection semantics, and filtered-export projection stay local to the shared implementation.
+- Product-specific columns, Prisma query construction, reference-safe mutations, import mapping, and detail content remain outside that seam so the common module does not become a domain-blind universal table.
+- The existing feature branch is retained because Prompt 3 builds directly on committed Prompt 0–2 work; no new branch or worktree is needed.
+- No schema change is assumed. Discovery must prove that existing settings/preferences cannot support saved views before any Prisma work is considered.
+
+## Initial repository evidence
+- `/produkte` is currently a server-rendered `findMany` plus a fixed seven-column table. It already has create/edit dialogs and delete action, but no table workspace, import/export bar, filters, pagination, saved view, bulk action, or detail drawer.
+- Existing reusable table pieces are intentionally shallow: `CompactTableShell` provides simple local search/view/bulk framing and `DetailDrawer` provides the drawer shell. Prompt 3 should replace/deepen the former mechanics while reusing the latter presentation primitive.
+- The repository already depends on `xlsx` and has `/api/export/[table]`, `ImportExportBar`, `lib/import-export.ts`, `importRowsAction`, `ImportBatch`, and `SourceReference`; templates and product support must extend these paths, not create another engine.
+- `Product` already contains category, brand, EAN, standard purchase price, size, image URLs, active state, and organization ownership. Product filtering/projection can therefore be additive application code without schema work.
+- The product matrix default is `Aktiver Katalog`, with unused/low-stock/archived views; brand, size, image count, and usage counts are optional/detail candidates. The prompt's explicit standard/optional column list takes precedence where it is more specific.
+- The app uses Next.js 15.5.20, Prisma 6.19.3, React 19, Zod 4, Radix/shadcn-style primitives, Lucide, and Vitest; no table framework dependency exists or is required for this reference implementation.
+
+## Product and import seam findings
+- `Product` has no archive/active flag. Prompt 3 does not authorize a schema phase, so the reference presets will use facts the current model can prove (`catalog`, `used`, `unused`, `low-stock`) instead of pretending an archive lifecycle exists. Archive/unarchive remains a later additive domain decision.
+- Current product deletion calls `delete` directly. Existing foreign keys will reject referenced products, but the action does not preflight or translate that safely. Prompt 3 will add a tenant-scoped usage count precheck and controlled error; referenced products are never deleted.
+- Existing product creation/editing omits `brand` and `size` even though the model has both. These fields are required for the requested filters/optional columns and can be added to the existing form/action without schema work.
+- Server-side product search is already case-insensitive but fixed at 500 rows. The reference should use URL-restorable server query state plus `count`/`skip`/`take` pagination because the catalog is unbounded and a table library/virtualizer is unnecessary for page-sized results.
+- The current `CompactTableShell` persists only a CSS view name in unscoped localStorage. The new preference adapter will namespace by organization, user, and table; validate stored data; persist density/visible columns/named views; and keep filters/sort in the URL so they remain shareable.
+- `ImportExportBar` already parses CSV/XLS/XLSX, detects headers, auto-maps columns, runs dry runs, shows row errors, provides conflict review for migration imports, and displays a summary. The missing layer is a first-class template contract/download plus product table support.
+- The export route validates session membership and then uses `tenantDb(activeOrgId)`. It forwards only a subset of each page's filters and currently has no products case. Prompt 3 will centralize product filter parsing and reuse it in both page and export so active-filter export cannot drift.
+- Import commit creation already writes `ImportBatch` and `SourceReference`. Adding products to the same `TableKey`, request schema, planner, commit switch, and source-reference creation preserves provenance without a second engine.
+
+## Shared UI and tenant findings
+- `tenantDb(organizationId)` wraps every Prisma operation in a transaction with `app.current_org_id`, so page/export queries are RLS-scoped even without repeating `organizationId` in every `where`. Mutation preflight and bulk resolution still need explicit tenant-local queries through this adapter.
+- `requireOrg()` returns both the user id and organization id, which is enough to namespace browser preferences as `organization + user + table` without exposing session data to another tenant.
+- Existing `sx-datatable` CSS already provides sticky headers, zebra rows, selected/low row states, sticky first columns, and responsive scroll framing. The new workspace can extend these established classes instead of introducing a second visual table language.
+- Radix AlertDialog and Checkbox are available through the installed `radix-ui` package even though local primitives do not yet exist. Thin shadcn-style primitives are justified because both safe confirmation and accessible tri-state row selection have multiple table call sites.
+- No existing tests cover product actions or a product table. New tests should target the pure operational-table interface, product query/config parser, import template contract, and product action behavior with mocked tenant adapters.
+- Global CSS is very large and includes public marketing layers. Prompt 3 changes should add only a compact internal table block near the existing data-table section; unrelated public styles remain untouched.
+
+## Implemented Prompt 3 contracts
+- The operational-table module owns validated scoped persistence and explicit/all-result selection. The React workspace owns browser adaptation and controls; product rendering remains in `components/products/product-table.tsx`.
+- Product filters, presets, pagination, sorting, bulk resolution, and export all share `parseProductTableQuery`/`buildProductWhere`. This is the key anti-drift seam for active-filter exports.
+- Select-all uses a semantic descriptor (`all` plus exclusions), not a client-provided list of every matching ID. The bulk action reconstructs the filter and resolves IDs through the tenant client before updating, caps the operation at 5000, and audits the resolved IDs.
+- Product deletion now preflights purchase-line, inventory-position, and sale-line references and returns a controlled result. Database constraints remain the final safety net.
+- Product import is a new table definition and commit branch inside the existing migration engine. Existing name+variant pairs produce blocking conflicts; committed new products create the existing `ImportBatch` and `SourceReference(PRODUCT)` records.
+- Template downloads are authenticated and membership-checked. CSV is semicolon/BOM compatible; XLSX contains an `Import` sheet and a separate `Spaltenbeschreibung` sheet.
+- No Prisma schema or migration file is changed. The current product model is sufficient for the reference slice; archive lifecycle remains deliberately deferred.
+
+---

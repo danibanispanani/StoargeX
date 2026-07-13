@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { auth } from "@/auth";
-import { bypassDb } from "@/lib/prisma";
-import { tenantDb } from "@/lib/tenant-db";
+import { resolveApiOrgContext } from "@/lib/org";
 import {
   DEBT_KIND_LABELS,
   DEBT_STATUS,
@@ -11,13 +9,29 @@ import {
   SALE_STATUS,
   STOCK_STATUS,
 } from "@/lib/constants";
-import type { TableKey } from "@/lib/import-export";
+import { encodeSpreadsheetSafeText, isTableKey } from "@/lib/import-export";
+import {
+  buildProductOrderBy,
+  buildProductWhere,
+  parseProductTableQuery,
+} from "@/lib/products/product-table";
 
 // Export der Haupttabellen als CSV oder XLSX – mit den aktuell gesetzten
 // Filtern (Query-Parameter identisch zur jeweiligen Seite). Spaltennamen
 // entsprechen den Import-Aliassen (Roundtrip-fähig).
 
 export const dynamic = "force-dynamic";
+const PRODUCT_EXPORT_LIMIT = 10_000;
+const PRODUCT_EXPORT_HEADERS = [
+  "Name",
+  "Variante",
+  "Marke",
+  "Kategorie",
+  "EAN",
+  "Standard-EK",
+  "Größe",
+  "Bilder",
+];
 
 function euro(cents: number): string {
   return (cents / 100).toFixed(2).replace(".", ",");
@@ -27,41 +41,69 @@ function date(d: Date | null | undefined): string {
   return d ? d.toLocaleDateString("de-DE") : "";
 }
 
-const TABLES: TableKey[] = ["lager", "verkauf", "retouren", "konsignation", "schulden", "aufgaben"];
-
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ table: string }> }
 ) {
   const { table } = await params;
-  if (!TABLES.includes(table as TableKey)) {
+  if (!isTableKey(table)) {
     return NextResponse.json({ error: "Unbekannte Tabelle." }, { status: 404 });
   }
 
-  const session = await auth();
-  if (!session?.user?.id || !session.activeOrgId) {
-    return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
+  const access = await resolveApiOrgContext();
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Nicht angemeldet." : "Keine Berechtigung." },
+      { status: access.status }
+    );
   }
-  const membership = await bypassDb().membership.findUnique({
-    where: {
-      organizationId_userId: {
-        organizationId: session.activeOrgId,
-        userId: session.user.id,
-      },
-    },
-  });
-  if (!membership) {
-    return NextResponse.json({ error: "Keine Berechtigung." }, { status: 403 });
-  }
-
-  const db = tenantDb(session.activeOrgId);
+  const { db, organization } = access.context;
   const url = new URL(req.url);
   const q = url.searchParams.get("q") ?? undefined;
   const format = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
 
   let rows: Record<string, string | number>[] = [];
 
-  switch (table as TableKey) {
+  switch (table) {
+    case "produkte": {
+      const query = parseProductTableQuery(
+        Object.fromEntries(url.searchParams.entries())
+      );
+      const products = await db.product.findMany({
+        where: buildProductWhere(query, organization.lowStockThreshold),
+        orderBy: buildProductOrderBy(query),
+        select: {
+          name: true,
+          variant: true,
+          brand: true,
+          category: true,
+          ean: true,
+          defaultPriceCents: true,
+          size: true,
+          imageUrls: true,
+        },
+        take: PRODUCT_EXPORT_LIMIT + 1,
+      });
+      if (products.length > PRODUCT_EXPORT_LIMIT) {
+        return NextResponse.json(
+          {
+            error: `Der Export ist auf ${PRODUCT_EXPORT_LIMIT} Produkte begrenzt. Bitte Filter eingrenzen.`,
+          },
+          { status: 422 }
+        );
+      }
+      rows = products.map((product) => ({
+        Name: product.name,
+        Variante: product.variant ?? "",
+        Marke: product.brand ?? "",
+        Kategorie: product.category ?? "",
+        EAN: product.ean ?? "",
+        "Standard-EK": product.defaultPriceCents == null ? "" : euro(product.defaultPriceCents),
+        Größe: product.size ?? "",
+        Bilder: product.imageUrls.join(", "),
+      }));
+      break;
+    }
     case "lager": {
       const status = url.searchParams.get("status");
       const zm = url.searchParams.get("zm");
@@ -222,9 +264,15 @@ export async function GET(
   }
 
   const filenameBase = `storagex-${table}-${new Date().toISOString().slice(0, 10)}`;
+  const headers =
+    rows.length > 0
+      ? Object.keys(rows[0])
+      : table === "produkte"
+        ? PRODUCT_EXPORT_HEADERS
+        : [];
 
   if (format === "xlsx") {
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, table);
     const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
@@ -238,9 +286,9 @@ export async function GET(
   }
 
   // CSV: Semikolon + BOM für deutsches Excel
-  const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
   const escape = (value: string | number) => {
-    const s = String(value);
+    const raw = String(value);
+    const s = typeof value === "string" ? encodeSpreadsheetSafeText(raw) : raw;
     return /[";\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
   };
   const csv =

@@ -93,8 +93,17 @@ export async function runMigrationImport(input: {
   const errors: Array<{ row: number; message: string }> = [];
   const metadata = normalizeMetadata(input.table, input.rows, input.metadata);
 
+  if (input.table === "produkte" && !input.dryRun) {
+    await input.tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`storagex:product-import:${input.organizationId}`}))`;
+  }
+
   const existingHashes = await loadExistingRowHashes(input.tx, input.organizationId, input.rows);
-  const context = await loadImportContext(input.tx, input.organizationId);
+  const context = await loadImportContext(
+    input.tx,
+    input.organizationId,
+    input.table,
+    input.rows
+  );
   if (input.table === "verkauf" && !input.allowConsignment) {
     context.inventoryByLegacy = new Map(
       [...context.inventoryByLegacy].filter(
@@ -103,7 +112,7 @@ export async function runMigrationImport(input: {
     );
   }
   const plannedRows = planRows(input.table, input.rows, existingHashes, context, errors, summary);
-  const validRows = plannedRows.filter((row) => isImportableRow(input.table, row));
+  const validRows = plannedRows.filter(isImportableRow);
 
   if (input.dryRun) {
     return {
@@ -113,7 +122,7 @@ export async function runMigrationImport(input: {
     };
   }
 
-  if (hasBlockingRows(input.table, plannedRows)) {
+  if (hasBlockingRows(plannedRows)) {
     return {
       validCount: validRows.length,
       errors: errors.slice(0, 50),
@@ -135,52 +144,38 @@ export async function runMigrationImport(input: {
   });
 
   let importedCount = 0;
-  try {
-    switch (input.table) {
-      case "lager":
-        importedCount = await commitStockImport(input, batch.id, validRows);
-        break;
-      case "verkauf":
-        importedCount = await commitSalesImport(input, batch.id, validRows, context);
-        break;
-      case "konsignation":
-        importedCount = await commitConsignmentImport(input, batch.id, validRows);
-        break;
-      case "retouren":
-        importedCount = await commitReturnsImport(input, batch.id, validRows, context);
-        break;
-      case "schulden":
-        importedCount = await commitDebtImport(input, batch.id, validRows);
-        break;
-      case "aufgaben":
-        importedCount = await commitTaskImport(input, batch.id, validRows);
-        break;
-    }
-
-    await input.tx.importBatch.update({
-      where: { id: batch.id },
-      data: {
-        status: "COMPLETED",
-        finishedAt: new Date(),
-        summary: summary as unknown as Prisma.InputJsonValue,
-      },
-    });
-  } catch (error) {
-    try {
-      await input.tx.importBatch.update({
-        where: { id: batch.id },
-        data: {
-          status: "FAILED",
-          finishedAt: new Date(),
-          summary: {
-            ...summary,
-            failure: error instanceof Error ? error.message : "Import fehlgeschlagen.",
-          } as unknown as Prisma.InputJsonValue,
-        },
-      });
-    } catch {}
-    throw error;
+  switch (input.table) {
+    case "produkte":
+      importedCount = await commitProductImport(input, batch.id, validRows);
+      break;
+    case "lager":
+      importedCount = await commitStockImport(input, batch.id, validRows);
+      break;
+    case "verkauf":
+      importedCount = await commitSalesImport(input, batch.id, validRows, context);
+      break;
+    case "konsignation":
+      importedCount = await commitConsignmentImport(input, batch.id, validRows);
+      break;
+    case "retouren":
+      importedCount = await commitReturnsImport(input, batch.id, validRows, context);
+      break;
+    case "schulden":
+      importedCount = await commitDebtImport(input, batch.id, validRows);
+      break;
+    case "aufgaben":
+      importedCount = await commitTaskImport(input, batch.id, validRows);
+      break;
   }
+
+  await input.tx.importBatch.update({
+    where: { id: batch.id },
+    data: {
+      status: "COMPLETED",
+      finishedAt: new Date(),
+      summary: summary as unknown as Prisma.InputJsonValue,
+    },
+  });
 
   return {
     validCount: validRows.length,
@@ -264,6 +259,7 @@ function planRows(
   errors: Array<{ row: number; message: string }>,
   summary: ImportSummary
 ): PlannedRow[] {
+  const plannedProductKeys = new Set<string>();
   const plannedRows: PlannedRow[] = rows.map((row, index) => {
     const rowNumber = index + 1;
     const rowHash = hashRow(row);
@@ -289,6 +285,21 @@ function planRows(
         errors: validation.errors,
       });
       return { row, rowNumber, rowHash, legacyReference, status: "ERROR" };
+    }
+
+    if (table === "produkte") {
+      const key = productImportKey(row.name, row.variant);
+      if (plannedProductKeys.has(key)) {
+        addReview(summary, {
+          row: rowNumber,
+          status: "CONFLICT",
+          message: "Produktname und Variante kommen in dieser Datei mehrfach vor.",
+          legacyReference,
+          targetEntity: "PRODUCT",
+        });
+        return { row, rowNumber, rowHash, legacyReference, status: "CONFLICT" };
+      }
+      plannedProductKeys.add(key);
     }
 
     addReview(summary, {
@@ -360,6 +371,7 @@ async function commitStockImport(
       await createSourceReference(input.tx, {
         organizationId: input.organizationId,
         batchId,
+        sheetName: input.metadata?.sheetName,
         planned,
         targetEntity: "INVENTORY_POSITION",
         targetEntityId: target.id,
@@ -367,6 +379,53 @@ async function commitStockImport(
       });
       imported++;
     }
+  }
+  return imported;
+}
+
+async function commitProductImport(
+  input: ImportRunInput,
+  batchId: string,
+  plannedRows: PlannedRow[]
+): Promise<number> {
+  let imported = 0;
+  for (let offset = 0; offset < plannedRows.length; offset += 500) {
+    const chunk = plannedRows.slice(offset, offset + 500);
+    const products = await input.tx.product.createManyAndReturn({
+      data: chunk.map(({ row }) => ({
+        organizationId: input.organizationId,
+        name: row.name.trim(),
+        variant: optional(row.variant),
+        brand: optional(row.brand),
+        category: optional(row.category),
+        ean: optional(row.ean),
+        size: optional(row.size),
+        defaultPriceCents: parseEuroTolerant(row.standard_ek),
+        imageUrls: parseImageUrls(row.bilder),
+      })),
+      select: { id: true, name: true, variant: true },
+    });
+    const productIds = new Map(
+      products.map((product) => [productImportKey(product.name, product.variant ?? undefined), product.id])
+    );
+    await input.tx.sourceReference.createMany({
+      data: chunk.map((planned) => {
+        const targetEntityId = productIds.get(
+          productImportKey(planned.row.name, planned.row.variant)
+        );
+        if (!targetEntityId) throw new Error("Importiertes Produkt konnte nicht zugeordnet werden.");
+        return sourceReferenceData({
+          organizationId: input.organizationId,
+          batchId,
+          sheetName: input.metadata?.sheetName,
+          planned,
+          targetEntity: "PRODUCT",
+          targetEntityId,
+          status: "NEW",
+        });
+      }),
+    });
+    imported += chunk.length;
   }
   return imported;
 }
@@ -413,6 +472,7 @@ async function commitConsignmentImport(
     await createSourceReference(input.tx, {
       organizationId: input.organizationId,
       batchId,
+      sheetName: input.metadata?.sheetName,
       planned,
       targetEntity: "CONSIGNMENT_LOT",
       targetEntityId: created.consignmentLot.id,
@@ -535,6 +595,7 @@ async function commitSalesImport(
     await createSourceReference(input.tx, {
       organizationId: input.organizationId,
       batchId,
+      sheetName: input.metadata?.sheetName,
       planned,
       targetEntity: "SALE",
       targetEntityId: sale.id,
@@ -591,6 +652,7 @@ async function commitReturnsImport(
     await createSourceReference(input.tx, {
       organizationId: input.organizationId,
       batchId,
+      sheetName: input.metadata?.sheetName,
       planned,
       targetEntity: "RETURN",
       targetEntityId: ret.id,
@@ -651,6 +713,7 @@ async function commitDebtImport(
     await createSourceReference(input.tx, {
       organizationId: input.organizationId,
       batchId,
+      sheetName: input.metadata?.sheetName,
       planned,
       targetEntity: "DEBT",
       targetEntityId: debt.id,
@@ -678,6 +741,7 @@ async function commitTaskImport(input: ImportRunInput, batchId: string, plannedR
     await createSourceReference(input.tx, {
       organizationId: input.organizationId,
       batchId,
+      sheetName: input.metadata?.sheetName,
       planned,
       targetEntity: "TASK",
       targetEntityId: task.id,
@@ -710,6 +774,7 @@ interface PlannedRow {
 interface ImportContext {
   inventoryByLegacy: Map<string, ImportInventoryMapping>;
   saleByLegacy: Map<string, { saleId: string }>;
+  productKeys: Set<string>;
 }
 
 interface ImportInventoryMapping {
@@ -720,16 +785,20 @@ interface ImportInventoryMapping {
   unitCostNetCents: number;
 }
 
-function isImportableRow(table: TableKey, row: PlannedRow): boolean {
-  if (row.status === "ERROR" || row.status === "UNCHANGED") return false;
-  if (table === "verkauf" && (row.status === "REVIEW_REQUIRED" || row.status === "CONFLICT")) {
-    return false;
-  }
+function isImportableRow(row: PlannedRow): boolean {
+  if (
+    row.status === "ERROR" ||
+    row.status === "UNCHANGED" ||
+    row.status === "REVIEW_REQUIRED" ||
+    row.status === "CONFLICT"
+  ) return false;
   return true;
 }
 
-function hasBlockingRows(table: TableKey, rows: PlannedRow[]): boolean {
-  return rows.some((row) => !isImportableRow(table, row) && row.status !== "ERROR" && row.status !== "UNCHANGED");
+function hasBlockingRows(rows: PlannedRow[]): boolean {
+  return rows.some(
+    (row) => row.status === "REVIEW_REQUIRED" || row.status === "CONFLICT"
+  );
 }
 
 function markSaleStockReviewRows(
@@ -794,6 +863,31 @@ function validateRow(
   const needMoney = (field: string, label: string) => {
     if (parseEuroTolerant(row[field]) === null) errors.push(`${label} ist ungültig.`);
   };
+  if (table === "produkte") {
+    if (!row.name?.trim()) errors.push("Name fehlt.");
+    if (row.name?.trim().length > 300) errors.push("Name darf maximal 300 Zeichen lang sein.");
+    if (row.variant?.trim().length > 200) errors.push("Variante darf maximal 200 Zeichen lang sein.");
+    if (row.category?.trim().length > 100) errors.push("Kategorie darf maximal 100 Zeichen lang sein.");
+    if (row.ean?.trim() && !/^\d{1,20}$/.test(row.ean.trim())) {
+      errors.push("EAN darf nur aus maximal 20 Ziffern bestehen.");
+    }
+    if (row.standard_ek?.trim() && parseEuroTolerant(row.standard_ek) === null) {
+      errors.push("Standard-EK ist ungültig.");
+    }
+    if (splitImageUrls(row.bilder).some((value) => !isValidHttpsUrl(value))) {
+      errors.push("Bilder müssen gültige öffentliche HTTPS-URLs sein.");
+    }
+    const exists = context.productKeys.has(productImportKey(row.name, row.variant));
+    return {
+      status: errors.length ? "ERROR" : exists ? "CONFLICT" : "NEW",
+      message: exists
+        ? "Produkt mit gleichem Namen und gleicher Variante existiert bereits."
+        : "Neues Katalogprodukt wird importiert.",
+      warnings,
+      errors,
+      targetEntity: "PRODUCT",
+    };
+  }
   if (table === "lager") {
     if (!row.model?.trim()) errors.push("Model fehlt.");
     needMoney("brutto", "Brutto");
@@ -872,21 +966,45 @@ function consignmentHistoricalCsvInfo(row: ImportRow): string[] {
   ].filter(Boolean);
 }
 
-async function loadImportContext(tx: Tx, organizationId: string): Promise<ImportContext> {
-  const [inventoryRefs, saleRefs] = await Promise.all([
-    tx.sourceReference.findMany({
-      where: { organizationId, targetEntity: "INVENTORY_POSITION" },
-      select: { legacyReference: true, targetEntityId: true },
-    }),
-    tx.sourceReference.findMany({
-      where: { organizationId, targetEntity: "SALE" },
-      select: { legacyReference: true, targetEntityId: true },
-    }),
+async function loadImportContext(
+  tx: Tx,
+  organizationId: string,
+  table: TableKey,
+  rows: ImportRow[]
+): Promise<ImportContext> {
+  const needsInventory = table === "verkauf";
+  const needsSales = table === "retouren";
+  const needsProducts = table === "produkte";
+  const productNames = [...new Set(rows.map((row) => row.name?.trim()).filter(Boolean))] as string[];
+  const [inventoryRefs, products, saleRefs] = await Promise.all([
+    needsInventory
+      ? tx.sourceReference.findMany({
+          where: { organizationId, targetEntity: "INVENTORY_POSITION" },
+          select: { legacyReference: true, targetEntityId: true },
+        })
+      : Promise.resolve([]),
+    needsProducts && productNames.length > 0
+      ? tx.product.findMany({
+          where: {
+            organizationId,
+            name: { in: productNames, mode: "insensitive" },
+          },
+          select: { name: true, variant: true },
+        })
+      : Promise.resolve([]),
+    needsSales
+      ? tx.sourceReference.findMany({
+          where: { organizationId, targetEntity: "SALE" },
+          select: { legacyReference: true, targetEntityId: true },
+        })
+      : Promise.resolve([]),
   ]);
-  const positions = await tx.inventoryPosition.findMany({
-    where: { organizationId, id: { in: inventoryRefs.map((ref) => ref.targetEntityId) } },
-    include: { ownedLot: true, consignmentLot: true },
-  });
+  const positions = needsInventory
+    ? await tx.inventoryPosition.findMany({
+        where: { organizationId, id: { in: inventoryRefs.map((ref) => ref.targetEntityId) } },
+        include: { ownedLot: true, consignmentLot: true },
+      })
+    : [];
   const byPosition = new Map(positions.map((position) => [position.id, position]));
   const inventoryByLegacy = new Map<string, ImportInventoryMapping>();
   for (const ref of inventoryRefs) {
@@ -906,7 +1024,13 @@ async function loadImportContext(tx: Tx, organizationId: string): Promise<Import
   saleRefs.forEach((ref) => {
     if (ref.legacyReference) saleByLegacy.set(normalizeLegacy(ref.legacyReference), { saleId: ref.targetEntityId });
   });
-  return { inventoryByLegacy, saleByLegacy };
+  return {
+    inventoryByLegacy,
+    saleByLegacy,
+    productKeys: new Set(
+      products.map((product) => productImportKey(product.name, product.variant ?? undefined))
+    ),
+  };
 }
 
 async function loadExistingRowHashes(tx: Tx, organizationId: string, rows: ImportRow[]): Promise<Set<string>> {
@@ -923,6 +1047,7 @@ async function createSourceReference(
   input: {
     organizationId: string;
     batchId: string;
+    sheetName?: string;
     planned: PlannedRow;
     targetEntity: ImportTargetEntity;
     targetEntityId: string;
@@ -930,20 +1055,32 @@ async function createSourceReference(
   }
 ) {
   await tx.sourceReference.create({
-    data: {
-      organizationId: input.organizationId,
-      importBatchId: input.batchId,
-      sheetName: "Import",
-      rowNumber: input.planned.rowNumber,
-      rowHash: input.planned.rowHash,
-      targetEntity: input.targetEntity,
-      targetEntityId: input.targetEntityId,
-      legacyReference: input.planned.legacyReference,
-      status: input.status,
-      warnings: input.planned.warnings ?? [],
-      errors: [],
-    },
+    data: sourceReferenceData(input),
   });
+}
+
+function sourceReferenceData(input: {
+  organizationId: string;
+  batchId: string;
+  sheetName?: string;
+  planned: PlannedRow;
+  targetEntity: ImportTargetEntity;
+  targetEntityId: string;
+  status: ImportRowStatus;
+}): Prisma.SourceReferenceCreateManyInput {
+  return {
+    organizationId: input.organizationId,
+    importBatchId: input.batchId,
+    sheetName: input.sheetName?.trim() || "Import",
+    rowNumber: input.planned.rowNumber,
+    rowHash: input.planned.rowHash,
+    targetEntity: input.targetEntity,
+    targetEntityId: input.targetEntityId,
+    legacyReference: input.planned.legacyReference,
+    status: input.status,
+    warnings: input.planned.warnings ?? [],
+    errors: [],
+  };
 }
 
 async function resolvePlatform(tx: Tx, organizationId: string, name: string) {
@@ -1028,13 +1165,16 @@ function normalizeMetadata(table: TableKey, rows: ImportRow[], metadata?: Import
 }
 
 function primaryLegacyReference(table: TableKey, row: ImportRow, rowNumber: number): string {
-  const value =
-    table === "lager" ? row.lagerid :
-    table === "verkauf" ? row.orderid :
-    table === "retouren" ? row.orderid :
-    table === "konsignation" ? row.nr || row.sku :
-    table === "schulden" ? row.refid :
-    undefined;
+  let value: string | undefined;
+  switch (table) {
+    case "produkte": value = productImportKey(row.name, row.variant); break;
+    case "lager": value = row.lagerid; break;
+    case "verkauf":
+    case "retouren": value = row.orderid; break;
+    case "konsignation": value = row.nr || row.sku; break;
+    case "schulden": value = row.refid; break;
+    case "aufgaben": value = undefined; break;
+  }
   return normalizeLegacy(value) || `${table}:row:${rowNumber}`;
 }
 
@@ -1157,6 +1297,30 @@ function optional(value: string | undefined): string | null {
 
 function optionalUndefined(value: string | undefined): string | undefined {
   return optional(value) ?? undefined;
+}
+
+function productImportKey(name: string | undefined, variant: string | undefined): string {
+  return `${normalize(name)}|${normalize(variant)}`;
+}
+
+function parseImageUrls(value: string | undefined): string[] {
+  return splitImageUrls(value).filter(isValidHttpsUrl);
+}
+
+function splitImageUrls(value: string | undefined): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(/[;,\r\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isValidHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function cloneSummary(): ImportSummary {

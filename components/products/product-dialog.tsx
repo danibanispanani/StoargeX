@@ -21,8 +21,10 @@ interface EditableProduct {
   id: string;
   name: string;
   variant: string;
+  brand: string;
   category: string;
   ean: string;
+  size: string;
   defaultPriceCents: number | null;
 }
 
@@ -101,6 +103,15 @@ export function ProductDialog({ product }: { product?: EditableProduct }) {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="prod-brand">Marke</Label>
+              <Input
+                id="prod-brand"
+                name="brand"
+                defaultValue={product?.brand}
+                placeholder="z.B. Amazon"
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="prod-ean">EAN</Label>
               <Input
                 id="prod-ean"
@@ -108,6 +119,15 @@ export function ProductDialog({ product }: { product?: EditableProduct }) {
                 inputMode="numeric"
                 defaultValue={product?.ean}
                 placeholder="z.B. 840080588582"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prod-size">Größe</Label>
+              <Input
+                id="prod-size"
+                name="size"
+                defaultValue={product?.size}
+                placeholder="z.B. Standard, M, 42"
               />
             </div>
             <div className="space-y-2">

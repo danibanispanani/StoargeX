@@ -1593,6 +1593,29 @@
   }
 }
 
+/* Operational table workspace: gemeinsame Mechanik, fachliche Zellen bleiben im Modul. */
+.operational-table-workspace [data-slot="table-container"] {
+  max-height: min(68vh, 48rem);
+  scrollbar-gutter: stable both-edges;
+}
+.operational-table-workspace[data-density="compact"] .sx-datatable td,
+.operational-table-workspace[data-density="compact"] .sx-datatable th {
+  padding-top: 0.22rem;
+  padding-bottom: 0.22rem;
+  font-size: 0.75rem;
+}
+.operational-table-workspace .sx-datatable thead th {
+  box-shadow: inset 0 -1px var(--border);
+}
+.operational-table-workspace .sx-sticky-1 {
+  box-shadow: 1px 0 color-mix(in oklab, var(--border) 75%, transparent);
+}
+@media (max-width: 640px) {
+  .operational-table-workspace [data-slot="table-container"] {
+    max-height: 62vh;
+  }
+}
+
 /* ===========================================================================
    Public Auth — Transit Gate / access manifest
    ========================================================================== */

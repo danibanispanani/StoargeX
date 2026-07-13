@@ -10,19 +10,19 @@ export interface OrgContext {
   userId: string;
   organization: Organization;
   membership: Membership;
-  /** RLS-gescoppter Prisma-Client – ausschließlich diesen für Geschäftsdaten verwenden! */
+  /** RLS-gescoppter Prisma-Client – ausschließlich diesen für Geschäftsdaten verwenden. */
   db: TenantDb;
 }
 
-/**
- * Autoritative Prüfung pro Request (zusätzlich zur Middleware):
- * eingeloggt + Mitgliedschaft frisch aus der DB + optionale Mindestrolle.
- * Liefert den RLS-gescoppten Tenant-Client für die aktive Organisation.
- */
-const loadActiveOrgContext = cache(async (): Promise<OrgContext> => {
+type ActiveOrgLookup =
+  | { ok: true; context: OrgContext }
+  | { ok: false; reason: "unauthenticated" | "no-organization" | "no-membership" };
+
+/** Autoritative, request-lokale Grundlage für UI, Actions und API-Routen. */
+const loadActiveOrgContext = cache(async (): Promise<ActiveOrgLookup> => {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  if (!session.activeOrgId) redirect("/registrieren?schritt=organisation");
+  if (!session?.user?.id) return { ok: false, reason: "unauthenticated" };
+  if (!session.activeOrgId) return { ok: false, reason: "no-organization" };
 
   const membership = await bypassDb().membership.findUnique({
     where: {
@@ -33,20 +33,42 @@ const loadActiveOrgContext = cache(async (): Promise<OrgContext> => {
     },
     include: { organization: true },
   });
-  if (!membership) redirect("/login");
+  if (!membership) return { ok: false, reason: "no-membership" };
 
   return {
-    userId: session.user.id,
-    organization: membership.organization,
-    membership,
-    db: tenantDb(membership.organizationId),
+    ok: true,
+    context: {
+      userId: session.user.id,
+      organization: membership.organization,
+      membership,
+      db: tenantDb(membership.organizationId),
+    },
   };
 });
 
 export async function requireOrg(minRole: Role = "READONLY"): Promise<OrgContext> {
-  const context = await loadActiveOrgContext();
-  if (!hasMinRole(context.membership.role, minRole)) {
+  const access = await loadActiveOrgContext();
+  if (!access.ok) {
+    if (access.reason === "no-organization") {
+      redirect("/registrieren?schritt=organisation");
+    }
+    redirect("/login");
+  }
+  if (!hasMinRole(access.context.membership.role, minRole)) {
     throw new Error("Keine Berechtigung für diese Aktion.");
   }
-  return context;
+  return access.context;
+}
+
+export async function resolveApiOrgContext(
+  minRole: Role = "READONLY"
+): Promise<{ ok: true; context: OrgContext } | { ok: false; status: 401 | 403 }> {
+  const access = await loadActiveOrgContext();
+  if (!access.ok) {
+    return { ok: false, status: access.reason === "no-membership" ? 403 : 401 };
+  }
+  if (!hasMinRole(access.context.membership.role, minRole)) {
+    return { ok: false, status: 403 };
+  }
+  return { ok: true, context: access.context };
 }

@@ -17,6 +17,7 @@ function dryRunTx(options: {
     inventoryType?: "OWNED" | "CONSIGNMENT";
   }>;
   saleRefs?: Array<{ legacyReference: string; targetEntityId: string }>;
+  products?: Array<{ id: string; name: string; variant: string | null }>;
 } = {}) {
   const existing = new Set(options.existingHashes ?? []);
   const sourceReferences = [
@@ -59,6 +60,9 @@ function dryRunTx(options: {
           ownedLot: { unitPriceNet: "30.00" },
           consignmentLot: null,
         })),
+    },
+    product: {
+      findMany: async () => options.products ?? [],
     },
   };
   return tx as unknown as Prisma.TransactionClient;
@@ -138,6 +142,61 @@ describe("import migration pipeline", () => {
     }]);
     expect(result.summary.newRows).toBe(1);
     expect(result.errors).toEqual([]);
+  });
+
+  it("Dry Run: neues Katalogprodukt wird über die bestehende Pipeline geplant", async () => {
+    const result = await dryRun("produkte", [{
+      name: "Fire TV Stick",
+      variant: "4K Max",
+      brand: "Amazon",
+      category: "Elektronik",
+      standard_ek: "34,99",
+    }]);
+
+    expect(result.validCount).toBe(1);
+    expect(result.summary.newRows).toBe(1);
+    expect(result.summary.targetCounts.PRODUCT).toBe(1);
+  });
+
+  it("Dry Run: vorhandenes Katalogprodukt wird als Konflikt statt als Duplikat markiert", async () => {
+    const result = await dryRun(
+      "produkte",
+      [{ name: "Fire TV Stick", variant: "4K Max" }],
+      dryRunTx({ products: [{ id: "p1", name: "Fire TV Stick", variant: "4K Max" }] })
+    );
+
+    expect(result.validCount).toBe(0);
+    expect(result.summary.conflicts).toBe(1);
+    expect(result.summary.review[0].message).toMatch(/existiert bereits/);
+  });
+
+  it("Dry Run: doppelte Produktidentität in einer Datei wird als Konflikt markiert", async () => {
+    const result = await dryRun("produkte", [
+      { name: "Fire TV Stick", variant: "4K Max" },
+      { name: " fire tv stick ", variant: "4k max" },
+    ]);
+
+    expect(result.validCount).toBe(1);
+    expect(result.summary.conflicts).toBe(1);
+    expect(result.summary.review).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ row: 2, status: "CONFLICT" }),
+      ])
+    );
+  });
+
+  it.each([
+    [{ variant: "4K Max" }, /Name fehlt/],
+    [{ name: "Fire TV Stick", ean: "84A" }, /EAN/],
+    [{ name: "Fire TV Stick", standard_ek: "teuer" }, /Standard-EK/],
+    [{ name: "Fire TV Stick", bilder: "http://example.test/image.jpg" }, /HTTPS/],
+    [{ name: "x".repeat(301) }, /300 Zeichen/],
+  ])("Dry Run: ungültige Produktzeile bleibt fehlerhaft", async (row, message) => {
+    const result = await dryRun("produkte", [row]);
+
+    expect(result.validCount).toBe(0);
+    expect(result.summary.errors).toBe(1);
+    expect(result.errors[0]?.message).toMatch(message);
   });
 
   it("Dry Run: Verkauf ohne Lagerreferenz bleibt unresolved", async () => {

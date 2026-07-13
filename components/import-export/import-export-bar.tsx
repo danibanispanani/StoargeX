@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
+import { DownloadIcon, FileSpreadsheetIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   getImportInventoryOptionsAction,
@@ -12,8 +13,10 @@ import {
 } from "@/lib/actions/import";
 import {
   autoMapColumns,
+  decodeSpreadsheetSafeText,
   detectHeaderRowIndex,
   IMPORT_TABLES,
+  hasBlockingImportReview,
   type TableKey,
 } from "@/lib/import-export";
 import { Button } from "@/components/ui/button";
@@ -44,19 +47,121 @@ export function ImportExportBar({ table }: { table: TableKey }) {
   }
 
   return (
-    <div className="flex gap-1.5">
-      <Button asChild variant="outline" size="sm">
-        <a href={exportUrl("csv")} download>
-          Export CSV
-        </a>
-      </Button>
-      <Button asChild variant="outline" size="sm">
-        <a href={exportUrl("xlsx")} download>
-          Export Excel
-        </a>
-      </Button>
+    <div className="flex flex-wrap gap-1.5">
+      <TemplateDialog table={table} />
+      <ExportDownloadButton url={exportUrl("csv")} label="Export CSV" />
+      <ExportDownloadButton url={exportUrl("xlsx")} label="Export Excel" />
       <ImportDialog table={table} />
     </div>
+  );
+}
+
+function ExportDownloadButton({ url, label }: { url: string; label: string }) {
+  const [pending, startTransition] = useTransition();
+  const requestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => requestRef.current?.abort(), []);
+
+  function download() {
+    startTransition(async () => {
+      const controller = new AbortController();
+      requestRef.current = controller;
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null) as { error?: string } | null;
+          if (controller.signal.aborted) return;
+          toast.error(payload?.error ?? "Export fehlgeschlagen.");
+          return;
+        }
+        const blob = await response.blob();
+        if (controller.signal.aborted) return;
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const disposition = response.headers.get("content-disposition") ?? "";
+        link.href = blobUrl;
+        link.download = disposition.match(/filename="([^"]+)"/)?.[1] ?? "storagex-export";
+        link.click();
+        URL.revokeObjectURL(blobUrl);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        toast.error("Export fehlgeschlagen. Bitte Verbindung prüfen.");
+      } finally {
+        if (requestRef.current === controller) requestRef.current = null;
+      }
+    });
+  }
+
+  return (
+    <Button type="button" variant="outline" size="sm" onClick={download} disabled={pending}>
+      <DownloadIcon /> {pending ? "Exportiert…" : label}
+    </Button>
+  );
+}
+
+function TemplateDialog({ table }: { table: TableKey }) {
+  const def = IMPORT_TABLES[table];
+  const downloadUrl = (format: "csv" | "xlsx", kind: "empty" | "example") =>
+    `/api/import-template/${table}?format=${format}&kind=${kind}`;
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <FileSpreadsheetIcon /> Vorlage herunterladen
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{def.label}: Importvorlage</DialogTitle>
+          <DialogDescription>
+            Leere oder ausgefüllte Vorlage herunterladen. XLSX enthält zusätzlich die Spaltenbeschreibung.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(["empty", "example"] as const).map((kind) => (
+            <div key={kind} className="space-y-2 border p-3">
+              <div>
+                <p className="font-medium">{kind === "empty" ? "Leere Vorlage" : "Beispielvorlage"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {kind === "empty" ? "Nur freigegebene Spaltenköpfe." : "Mit einer korrekt formatierten Beispielzeile."}
+                </p>
+              </div>
+              <div className="flex gap-1.5">
+                <Button asChild variant="secondary" size="sm">
+                  <a href={downloadUrl("csv", kind)} download><DownloadIcon /> CSV</a>
+                </Button>
+                <Button asChild variant="secondary" size="sm">
+                  <a href={downloadUrl("xlsx", kind)} download><DownloadIcon /> XLSX</a>
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="overflow-x-auto border">
+          <table className="w-full min-w-[42rem] text-left text-xs">
+            <thead className="bg-muted/70">
+              <tr>
+                <th className="p-2">Spalte</th>
+                <th className="p-2">Pflicht</th>
+                <th className="p-2">Format</th>
+                <th className="p-2">Beschreibung</th>
+              </tr>
+            </thead>
+            <tbody>
+              {def.fields.map((field) => (
+                <tr key={field.key} className="border-t align-top">
+                  <td className="p-2 font-medium">{field.label}</td>
+                  <td className="p-2">{field.required ? "Ja" : "Nein"}</td>
+                  <td className="p-2 font-mono">{field.format ?? "Text"}</td>
+                  <td className="p-2 text-muted-foreground">{field.description ?? `${field.label} gemäß Moduldefinition.`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -76,8 +181,17 @@ function ImportDialog({ table }: { table: TableKey }) {
   const [inventoryOptions, setInventoryOptions] = useState<ImportInventoryOption[]>([]);
   const [consignmentPartnerFallback, setConsignmentPartnerFallback] = useState("");
   const [pending, startTransition] = useTransition();
+  const revisionRef = useRef(0);
+  const loadIdRef = useRef(0);
+
+  function invalidateDryRun() {
+    revisionRef.current += 1;
+    setCheckResult(null);
+  }
 
   function reset() {
+    loadIdRef.current += 1;
+    revisionRef.current += 1;
     setFileName("");
     setFileHash("");
     setSheetName("");
@@ -92,8 +206,10 @@ function ImportDialog({ table }: { table: TableKey }) {
   }
 
   async function handleFile(file: File) {
+    const loadId = ++loadIdRef.current;
     try {
       const buffer = await file.arrayBuffer();
+      if (loadId !== loadIdRef.current) return;
       const isCsv = file.name.toLowerCase().endsWith(".csv");
       const workbook = isCsv
         ? XLSX.read(new TextDecoder().decode(buffer), { type: "string", cellDates: false })
@@ -122,6 +238,7 @@ function ImportDialog({ table }: { table: TableKey }) {
         return;
       }
       const digest = await crypto.subtle.digest("SHA-256", buffer);
+      if (loadId !== loadIdRef.current) return;
       const hash = Array.from(new Uint8Array(digest))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
@@ -132,7 +249,7 @@ function ImportDialog({ table }: { table: TableKey }) {
       setHeaders(fileHeaders);
       setRawRows(json);
       setMapping(autoMapColumns(def.fields, fileHeaders));
-      setCheckResult(null);
+      invalidateDryRun();
       setImportMessage(null);
       setReviewResolutions({});
     } catch {
@@ -145,7 +262,9 @@ function ImportDialog({ table }: { table: TableKey }) {
       const row: Record<string, string> = {};
       for (const field of def.fields) {
         const column = mapping[field.key];
-        row[field.key] = column ? String(raw[column] ?? "").trim() : "";
+        row[field.key] = column
+          ? decodeSpreadsheetSafeText(String(raw[column] ?? "").trim())
+          : "";
       }
       const resolution = reviewResolutions[index + 1];
       if (resolution?.mode === "historical") {
@@ -166,22 +285,31 @@ function ImportDialog({ table }: { table: TableKey }) {
   }
 
   function runCheck() {
+    const revision = revisionRef.current;
+    const mappedRows = buildMappedRows();
+    const importMetadata = metadata();
     startTransition(async () => {
       setImportMessage(null);
-      const result = await importRowsAction(table, buildMappedRows(), true, metadata());
+      const result = await importRowsAction(table, mappedRows, true, importMetadata);
+      if (revision !== revisionRef.current) return;
       if (result.error) toast.error(result.error);
       setCheckResult(result);
-      if (hasBlockingReview(result) && inventoryOptions.length === 0) {
+      if (table === "verkauf" && hasBlockingReview(result) && inventoryOptions.length === 0) {
         const options = await getImportInventoryOptionsAction();
+        if (revision !== revisionRef.current) return;
         setInventoryOptions(options);
       }
     });
   }
 
   function runImport() {
+    const revision = revisionRef.current;
+    const mappedRows = buildMappedRows();
+    const importMetadata = metadata();
     startTransition(async () => {
       setImportMessage(null);
-      const result = await importRowsAction(table, buildMappedRows(), false, metadata());
+      const result = await importRowsAction(table, mappedRows, false, importMetadata);
+      if (revision !== revisionRef.current) return;
       if (result.error) {
         setCheckResult(result);
         setImportMessage(result.error);
@@ -198,6 +326,7 @@ function ImportDialog({ table }: { table: TableKey }) {
         return;
       }
       toast.success(`${result.importedCount ?? 0} Zeilen in ${def.label} importiert ✓`);
+      if (result.warning) toast.warning(result.warning);
       setOpen(false);
       reset();
       router.refresh();
@@ -208,6 +337,7 @@ function ImportDialog({ table }: { table: TableKey }) {
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (pending && !next) return;
         setOpen(next);
         if (!next) reset();
       }}
@@ -236,6 +366,7 @@ function ImportDialog({ table }: { table: TableKey }) {
                 const file = event.target.files?.[0];
                 if (file) void handleFile(file);
               }}
+              disabled={pending}
               className="text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm"
             />
             {fileName && (
@@ -255,8 +386,9 @@ function ImportDialog({ table }: { table: TableKey }) {
                 value={consignmentPartnerFallback}
                 onChange={(event) => {
                   setConsignmentPartnerFallback(event.target.value);
-                  setCheckResult(null);
+                  invalidateDryRun();
                 }}
+                disabled={pending}
                 placeholder="z.B. MixMarkt; leer = Unbekannt"
               />
               <p className="text-xs text-muted-foreground">
@@ -282,8 +414,9 @@ function ImportDialog({ table }: { table: TableKey }) {
                           ...prev,
                           [field.key]: event.target.value || null,
                         }));
-                        setCheckResult(null);
+                        invalidateDryRun();
                       }}
+                      disabled={pending}
                       className="border-input h-8 w-44 rounded-md border bg-background px-2 text-xs"
                     >
                       <option value="">– ignorieren –</option>
@@ -296,6 +429,7 @@ function ImportDialog({ table }: { table: TableKey }) {
                   </label>
                 ))}
               </div>
+              <MappingPreview fields={def.fields} rows={rawRows} mapping={mapping} />
             </div>
           )}
 
@@ -311,17 +445,20 @@ function ImportDialog({ table }: { table: TableKey }) {
                 </AlertDescription>
               </Alert>
               {checkResult.summary && <ImportSummaryView result={checkResult} />}
-              {hasBlockingReview(checkResult) && (
+              {hasBlockingReview(checkResult) && table === "verkauf" ? (
                 <ImportReviewControls
                   result={checkResult}
                   resolutions={reviewResolutions}
                   inventoryOptions={inventoryOptions}
                   onResolve={(row, resolution) => {
+                    revisionRef.current += 1;
                     setReviewResolutions((current) => ({ ...current, [row]: resolution }));
                     setImportMessage("Review-Entscheidung geändert. Bitte Dry Run erneut prüfen.");
                   }}
                 />
-              )}
+              ) : hasBlockingReview(checkResult) ? (
+                <ImportConflictList result={checkResult} />
+              ) : null}
               {checkResult.errors.length > 0 && (
                 <ul className="max-h-36 space-y-0.5 overflow-y-auto rounded-md border p-2 text-xs text-destructive">
                   {checkResult.errors.map((error, index) => (
@@ -376,9 +513,30 @@ type ReviewResolution =
   | { mode: "inventory"; inventoryNumber: string };
 
 function hasBlockingReview(result: ImportResult | null) {
-  const summary = result?.summary;
-  if (!summary) return false;
-  return summary.reviewRequired > 0 || summary.conflicts > 0;
+  return hasBlockingImportReview(result?.summary);
+}
+
+function ImportConflictList({ result }: { result: ImportResult }) {
+  const items =
+    result.summary?.review.filter(
+      (item) => item.status === "REVIEW_REQUIRED" || item.status === "CONFLICT"
+    ) ?? [];
+
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-xs">
+      <p className="font-medium">Konflikte in der Quelldatei beheben</p>
+      <p className="text-muted-foreground">
+        Bereinige die genannten Zeilen und starte danach einen neuen Dry Run.
+      </p>
+      <ul className="max-h-48 space-y-1 overflow-y-auto">
+        {items.map((item) => (
+          <li key={item.row} className="rounded bg-muted/40 p-2">
+            <span className="font-mono">Zeile {item.row}</span>: {item.message}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function ImportReviewControls({
@@ -482,6 +640,42 @@ function ImportStat({ label, value }: { label: string; value: number }) {
     <div className="rounded bg-muted px-2 py-1">
       <div className="text-muted-foreground">{label}</div>
       <div className="font-mono font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function MappingPreview({
+  fields,
+  rows,
+  mapping,
+}: {
+  fields: (typeof IMPORT_TABLES)[TableKey]["fields"];
+  rows: Record<string, unknown>[];
+  mapping: Record<string, string | null>;
+}) {
+  const mappedFields = fields.filter((field) => mapping[field.key]);
+  if (mappedFields.length === 0 || rows.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-1">
+      <p className="text-xs font-medium">Mapping-Vorschau · erste {Math.min(3, rows.length)} Zeilen</p>
+      <div className="overflow-x-auto border">
+        <table className="min-w-max text-left text-xs">
+          <thead className="bg-muted/60">
+            <tr>{mappedFields.map((field) => <th key={field.key} className="p-2">{field.label}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 3).map((row, index) => (
+              <tr key={index} className="border-t">
+                {mappedFields.map((field) => (
+                  <td key={field.key} className="max-w-52 truncate p-2">
+                    {String(row[mapping[field.key]!] ?? "") || "–"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

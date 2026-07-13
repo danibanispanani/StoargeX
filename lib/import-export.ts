@@ -2,29 +2,87 @@
 // Aliasse decken die Original-Sheets ab: VKÜ 2026, VKÜ 2024/2025, Lager,
 // Schulden, Retouren, Aufgaben und Pattfield.
 
-export type TableKey =
-  | "lager"
-  | "verkauf"
-  | "retouren"
-  | "konsignation"
-  | "schulden"
-  | "aufgaben";
+export const TABLE_KEYS = [
+  "produkte",
+  "lager",
+  "verkauf",
+  "retouren",
+  "konsignation",
+  "schulden",
+  "aufgaben",
+] as const;
+
+export type TableKey = (typeof TABLE_KEYS)[number];
+
+export function isTableKey(value: string): value is TableKey {
+  return (TABLE_KEYS as readonly string[]).includes(value);
+}
 
 export interface FieldDef {
   key: string;
   label: string;
   required?: boolean;
   aliases: string[];
+  description?: string;
+  format?: string;
+  example?: string;
 }
 
 export interface TableDef {
   label: string;
   fields: FieldDef[];
+  example?: Record<string, string>;
 }
 
 export const IMPORT_TABLES: Record<TableKey, TableDef> = {
+  produkte: {
+    label: "Produkte",
+    fields: [
+      field("name", "Name", ["name", "produkt", "artikel", "model"], true, {
+        description: "Eindeutiger Produktname innerhalb der Organisation.",
+        format: "Text, max. 300 Zeichen",
+        example: "Fire TV Stick",
+      }),
+      field("variant", "Variante", ["variante", "version", "colorway"], false, {
+        description: "Optionale Ausführung oder Produktversion.",
+        format: "Text, max. 200 Zeichen",
+        example: "4K Max",
+      }),
+      field("brand", "Marke", ["marke", "brand", "hersteller"], false, {
+        description: "Optionale Marke oder Herstellerbezeichnung.",
+        format: "Text",
+        example: "Amazon",
+      }),
+      field("category", "Kategorie", ["kategorie", "category", "gruppe"], false, {
+        description: "Operative Produktkategorie für Filter und Bulk-Zuordnung.",
+        format: "Text, max. 100 Zeichen",
+        example: "Elektronik",
+      }),
+      field("ean", "EAN", ["ean", "gtin", "barcode"], false, {
+        description: "Optionale numerische EAN/GTIN ohne Leerzeichen.",
+        format: "Nur Ziffern, max. 20 Stellen",
+        example: "840080588582",
+      }),
+      field("standard_ek", "Standard-EK", ["standard-ek", "standard ek", "default ek", "ek"], false, {
+        description: "Optionaler Standard-Einkaufspreis brutto.",
+        format: "Dezimalzahl in EUR, z. B. 34,99",
+        example: "34,99",
+      }),
+      field("size", "Größe", ["größe", "groesse", "size"], false, {
+        description: "Optionale Größen- oder Maßangabe.",
+        format: "Text",
+        example: "Standard",
+      }),
+      field("bilder", "Bilder", ["bilder", "bild", "images", "image urls"], false, {
+        description: "Optionale öffentliche Bild-URLs, durch Komma getrennt.",
+        format: "HTTPS-URLs, kommagetrennt",
+        example: "https://example.com/fire-tv.jpg",
+      }),
+    ],
+  },
   lager: {
     label: "Lager",
+    example: { lagerid: "L-26-001", datum: "13.07.2026", model: "Fire TV Stick", brutto: "34,99" },
     fields: [
       field("lagerid", "LagerID", ["lagerid", "lager-id", "lager id", "sku", "id"]),
       field("datum", "Datum", ["datum", "kaufdatum", "date"]),
@@ -53,6 +111,7 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
   },
   verkauf: {
     label: "Verkauf",
+    example: { orderid: "ORDER-1001", datum: "13.07.2026", model: "Fire TV Stick", vk_brutto: "59,99" },
     fields: [
       field("orderid", "OrderID", ["orderid", "order-id", "order id", "bestellnummer", "id"]),
       field("datum", "Verkaufsdatum", ["verkaufsdatum", "verkaufs- datum", "verkaufs datum", "datum", "date"]),
@@ -81,6 +140,7 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
   },
   retouren: {
     label: "Retouren",
+    example: { orderid: "ORDER-1001", datum: "14.07.2026", erstattung: "59,99" },
     fields: [
       field("orderid", "OrderID des Verkaufs", ["orderid", "order-id", "order id", "verkauf", "id"], true),
       field("datum", "Meldedatum", ["meldedatum", "datum", "date"]),
@@ -104,6 +164,7 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
   },
   konsignation: {
     label: "Konsignation",
+    example: { nr: "1", sku: "K-26-001", partner: "Beispielpartner", artikel: "12V Ersatzakku", restlager: "5" },
     fields: [
       field("nr", "Nr.", ["nr.", "nr", "nummer"]),
       field("sku", "SKU", ["sku", "id", "lagerid"]),
@@ -132,6 +193,7 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
   },
   schulden: {
     label: "Schulden",
+    example: { datum: "13.07.2026", beschreibung: "Wareneinkauf", betrag: "100,00", schuldner: "Firma", empfaenger: "Gesellschafter" },
     fields: [
       field("datum", "Datum", ["datum", "date"]),
       field("refid", "ID", ["id", "refid", "lagerid", "orderid"]),
@@ -149,6 +211,7 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
   },
   aufgaben: {
     label: "Aufgaben",
+    example: { aufgabe: "Wareneingang prüfen", frist: "14.07.2026", bereich: "Lager", prioritaet: "Mittel", status: "Offen" },
     fields: [
       field("aufgabe", "Aufgabe", ["aufgabe", "titel", "task"], true),
       field("zustaendig", "Zuständig", ["zuständig", "zustaendig", "assignee"]),
@@ -161,12 +224,34 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
   },
 };
 
-function field(key: string, label: string, aliases: string[], required = false): FieldDef {
-  return { key, label, required, aliases };
+function field(
+  key: string,
+  label: string,
+  aliases: string[],
+  required = false,
+  metadata: Pick<FieldDef, "description" | "format" | "example"> = {}
+): FieldDef {
+  return { key, label, required, aliases, ...metadata };
+}
+
+export function hasBlockingImportReview(
+  summary?: { reviewRequired: number; conflicts: number } | null
+): boolean {
+  return Boolean(summary && (summary.reviewRequired > 0 || summary.conflicts > 0));
+}
+
+export function encodeSpreadsheetSafeText(value: string): string {
+  if (value.startsWith("'")) return `'${value}`;
+  return /^[\t\r ]*[=+\-@]/.test(value) ? `'${value}` : value;
+}
+
+export function decodeSpreadsheetSafeText(value: string): string {
+  if (value.startsWith("''")) return value.slice(1);
+  return /^'[\t\r ]*[=+\-@]/.test(value) ? value.slice(1) : value;
 }
 
 export function normalizeHeader(header: string): string {
-  return header.trim().toLowerCase().replace(/\s+/g, " ");
+  return header.trim().toLowerCase().replace(/\s*\*$/, "").replace(/\s+/g, " ");
 }
 
 export function autoMapColumns(
@@ -196,4 +281,68 @@ export function detectHeaderRowIndex(fields: FieldDef[], rows: unknown[][]): num
     }
   });
   return bestIndex;
+}
+
+export type ImportTemplateKind = "empty" | "example";
+
+export interface ImportTemplate {
+  table: TableKey;
+  label: string;
+  headers: string[];
+  fields: FieldDef[];
+  rows: Array<Record<string, string>>;
+  descriptions: Array<{
+    Spalte: string;
+    Pflichtfeld: "Ja" | "Nein";
+    Beschreibung: string;
+    Format: string;
+    Beispiel: string;
+  }>;
+}
+
+export function buildImportTemplate(
+  table: TableKey,
+  kind: ImportTemplateKind
+): ImportTemplate {
+  const definition = IMPORT_TABLES[table];
+  return {
+    table,
+    label: definition.label,
+    fields: definition.fields,
+    headers: definition.fields.map((item) =>
+      item.required ? `${item.label} *` : item.label
+    ),
+    rows:
+      kind === "example"
+        ? [
+            Object.fromEntries(
+              definition.fields.map((item) => [
+                item.key,
+                definition.example?.[item.key] ?? item.example ?? "",
+              ])
+            ),
+          ]
+        : [],
+    descriptions: definition.fields.map((item) => ({
+      Spalte: item.label,
+      Pflichtfeld: item.required ? "Ja" : "Nein",
+      Beschreibung: item.description ?? `${item.label} gemäß Moduldefinition.`,
+      Format: item.format ?? "Text",
+      Beispiel: definition.example?.[item.key] ?? item.example ?? "",
+    })),
+  };
+}
+
+export function renderImportTemplateCsv(template: ImportTemplate): string {
+  const lines = [
+    template.headers.map(csvCell).join(";"),
+    ...template.rows.map((row) =>
+      template.fields.map((item) => csvCell(row[item.key] ?? "")).join(";")
+    ),
+  ];
+  return `\uFEFF${lines.join("\r\n")}`;
+}
+
+function csvCell(value: string): string {
+  return /[";\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }

@@ -260,3 +260,43 @@
 - `git diff --check`: pass.
 - Final scope review: pass. The diff contains only public Landing/About/shared shell, navigation, Question Console, public styles, report, and persistent task notes.
 - Following the repository's recent value-oriented commit style, the final approved shipping command runs the network-dependent Production Build and creates one cohesive Public Experience polish commit only after build success.
+## Session: 2026-07-13 — Prompt 3 Unified Operational Table System
+
+### Phase 1: Recovery, evidence, and table/import audit
+- **Status:** complete
+- Confirmed a clean worktree at `f2f85bb` and retained the existing sequential feature branch.
+- Loaded planning-with-files, codebase-design/deepening, ce-work, agent-browser, and surgical implementation guidance.
+- Established the shared-mechanics/domain-configuration seam and recorded no-schema-change as the default assumption.
+- Audited product CRUD, Prisma relations, existing table shells/CSS, import/export route, import migration engine, tenant adapter, and tests.
+
+### Phase 2: Deep operational-table module
+- **Status:** in_progress
+- Added proof-first tests for scoped view persistence, density/columns/named views, explicit/all-result selection, product table configuration/query/filter/sort/selection, and product import templates.
+- Expected red run: 3 test files fail because the new modules and product template definition are not implemented yet.
+- Implemented the pure operational-table state/persistence/selection interface, product table definition/query builder, and documented product import-template contract.
+- Focused green run: 3 files and 13 tests pass.
+- Added shared accessible checkbox/confirmation primitives, sort headers, pagination, scoped view controls, density, column selection, named views, page/all-result selection, and safe bulk-action framing.
+- Migrated `/produkte` to server query state, pagination, product-specific filters/presets/columns/details/actions and tenant-resolved bulk categorization.
+
+### Phase 3: Import-template standard on the existing pipeline
+- **Status:** in_progress
+- Added red-then-green product dry-run/conflict/provenance tests; 2 files and 21 import tests pass.
+- Added authenticated empty/example CSV/XLSX template downloads, XLSX column-description sheet, visible field documentation, and mapping preview to the existing ImportExportBar.
+- Added product export through the existing route using the exact shared product filter/sort query builder.
+
+### Phase 4: `/produkte` reference migration and review fixes
+- **Status:** complete
+- Completed server-side product query/filter/sort/pagination, standard and optional columns, detail drawer, saved views, density, row/all-result selection, edit, reference-safe delete, tenant-resolved bulk category, filtered export and responsive table framing.
+- Centralized route-safe organization access behind `resolveApiOrgContext`; template and export routes no longer duplicate the membership/TenantDb foundation.
+- Applied structured review fixes for nullable categories, in-file product duplicates, module-specific conflict UI, CSV formula neutralization, image/length validation, meaningful examples for every import table, bounded saved views/export, selection reset on query changes, entitlement-protected consignment templates, targeted conflict queries and chunked product/provenance writes.
+- Focused Prompt-3 suite: 7 files and 52 tests pass after review fixes; targeted TypeScript and ESLint pass.
+
+### Phase 5: Runtime and shipping gates
+- **Status:** in progress with external blockers
+- Prisma validate/generate, full TypeScript, full ESLint, full Vitest and diff checks passed before the final review fixes; final full rerun remains scheduled after review completion.
+- Local Next.js 15 server compiled and `/produkte` returned the expected auth redirect.
+- Chrome DevTools, Next DevTools and Docker access were rejected by the platform usage limit. No browser viewport/focus/console/network evidence is claimed.
+- `integrity:check` cannot reach the configured external PostgreSQL host from the sandbox.
+- Production Build reaches Google Font resolution and fails because outbound font downloads are blocked.
+- Final review hardening added stable all-result digests for bulk confirmation, per-organization product-import serialization, durable failed-batch diagnostics after rollback, and monotonic UI revisions for file parsing and Dry Runs.
+- Final focused suite: 9 files and 61 tests pass. Final full suite: 30 files and 214 tests pass. TypeScript, full ESLint, Prisma validate/generate and `git diff --check` pass.

@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -11,7 +12,12 @@ import {
 import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
-import { IMPORT_TABLES, type TableKey } from "@/lib/import-export";
+import {
+  hasBlockingImportReview,
+  IMPORT_TABLES,
+  TABLE_KEYS,
+  type TableKey,
+} from "@/lib/import-export";
 import {
   runMigrationImport,
   type ImportMetadata,
@@ -25,6 +31,7 @@ export interface ImportResult {
   batchId?: string;
   summary?: ImportSummary;
   error?: string;
+  warning?: string;
 }
 
 export interface ImportInventoryOption {
@@ -37,7 +44,7 @@ export interface ImportInventoryOption {
 type Row = Record<string, string>;
 
 const requestSchema = z.object({
-  table: z.enum(["lager", "verkauf", "retouren", "konsignation", "schulden", "aufgaben"]),
+  table: z.enum(TABLE_KEYS),
   dryRun: z.boolean(),
   rows: z
     .array(z.record(z.string(), z.string()))
@@ -101,6 +108,7 @@ export async function importRowsAction(
     };
   }
 
+  let committedResult: Awaited<ReturnType<typeof runMigrationImport>> | null = null;
   try {
     const result = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, TRUE)`;
@@ -115,8 +123,9 @@ export async function importRowsAction(
         allowConsignment: consignmentAccess?.enabled ?? false,
       });
     }, { maxWait: 30000, timeout: 600000 });
+    committedResult = result;
 
-    if (!dryRun && hasBlockingReview(result.summary)) {
+    if (!dryRun && hasBlockingImportReview(result.summary)) {
       return {
         ...result,
         error: "Import gestoppt: Es gibt Review- oder Konfliktzeilen. Bitte zuerst prüfen.",
@@ -142,6 +151,36 @@ export async function importRowsAction(
     void db;
     return result;
   } catch (error) {
+    if (committedResult) {
+      revalidateImportViews(table);
+      return {
+        ...committedResult,
+        warning: "Import abgeschlossen, aber eine nachgelagerte Protokollierung ist fehlgeschlagen.",
+      };
+    }
+    if (!dryRun) {
+      const failureMessage = error instanceof Error ? error.message : "Import fehlgeschlagen.";
+      try {
+        await db.importBatch.create({
+          data: {
+            organizationId: organization.id,
+            fileName: metadata?.fileName || `${table}-import`,
+            fileHash:
+              metadata?.fileHash ||
+              createHash("sha256")
+                .update(JSON.stringify({ table: parsed.data.table, rows: parsed.data.rows }))
+                .digest("hex"),
+            importType: table,
+            status: "FAILED",
+            finishedAt: new Date(),
+            createdById: userId,
+            summary: { failure: failureMessage } as Prisma.InputJsonValue,
+          },
+        });
+      } catch {
+        // Der ursprüngliche Importfehler bleibt die relevante Rückmeldung.
+      }
+    }
     return {
       validCount: 0,
       errors: [],
@@ -200,11 +239,6 @@ export async function getImportInventoryOptionsAction(): Promise<ImportInventory
   });
 }
 
-function hasBlockingReview(summary?: ImportSummary) {
-  if (!summary) return false;
-  return summary.reviewRequired > 0 || summary.conflicts > 0;
-}
-
 function validateRequiredFields(table: TableKey, rows: Row[]) {
   const fields = IMPORT_TABLES[table].fields;
   const errors: Array<{ row: number; message: string }> = [];
@@ -220,6 +254,7 @@ function validateRequiredFields(table: TableKey, rows: Row[]) {
 
 function revalidateImportViews(table: TableKey) {
   revalidatePath(`/${table === "verkauf" ? "verkauf" : table}`);
+  revalidatePath("/produkte");
   revalidatePath("/lager");
   revalidatePath("/schulden");
   revalidatePath("/konsignation");
