@@ -253,6 +253,7 @@ function makePosition(
     createdAt: now,
     updatedAt: now,
     ...overrides,
+    itemCondition: overrides.itemCondition ?? null,
   };
 }
 

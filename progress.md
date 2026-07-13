@@ -1,5 +1,16 @@
 # Progress Log
 
+## 2026-07-13 — Prompt 1
+- Confirmed the clean Prompt 0 commit baseline.
+- Loaded the requested planning, codebase-design, architecture-review, and diagnosing-bugs workflows.
+- Started additive domain/schema evidence collection and an isolated architecture scan.
+- Added additive Prisma models, nullable compatibility references, enums, a generated-and-reviewed SQL migration, checks, and RLS for all new tenant tables.
+- Added six small central policy services and seven new focused test files; updated document-number and two inventory fixtures for additive enum/field compatibility.
+- Focused suite passed (52 tests); full suite passed (19 files, 158 tests).
+- Prisma validate/generate, TypeScript, lint, integrity, and production build passed. Integrity/build required network-enabled retries after sandbox-only connection/font-fetch failures.
+
+---
+
 ## 2026-07-13 — Prompt 0
 - Recovered existing planning context; no unsynced session report.
 - Confirmed a clean worktree and captured the requested 25-commit history.

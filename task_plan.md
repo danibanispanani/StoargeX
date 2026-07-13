@@ -1,4 +1,71 @@
-# Task Plan: Prompt 0 Internal Product Constitution and Beta Rebuild Planning
+# Task Plan: Prompt 1 Additive Domain Foundation and Feature Entitlements
+
+## Goal
+Add the beta domain foundation through additive Prisma models/migrations, small central modules, tests, documentation, full validation, and the requested commit without replacing existing production logic or deleting data.
+
+## Current Phase
+Final review and commit
+
+## Phases
+
+### Phase 1: Recovery, evidence, and architecture
+- [x] Confirm clean Prompt 0 baseline and recover planning context
+- [x] Load requested planning, architecture, design, and diagnosis skills
+- [x] Read all required governance, schema, domain modules, and tests
+- [x] Refresh codebase-memory architecture
+- [x] Complete and inspect the architecture report
+- **Status:** complete
+
+### Phase 2: Additive domain design
+- [x] Decide existing extensions versus new models and safe nullable/default transitions
+- [x] Define RLS, indexes, constraints, delete behavior, snapshots, and compatibility rules
+- [x] Record the design in findings before editing schema
+- **Status:** complete
+
+### Phase 3: Schema and migration
+- [x] Extend Prisma schema additively
+- [x] Add a hand-reviewed additive SQL migration with RLS policies and constraints
+- [x] Do not remove columns, force legacy migration, or rewrite productive logic
+- **Status:** complete
+
+### Phase 4: Central modules and tests
+- [x] Add entitlement, marketplace-account, expense-recurrence, and condition modules
+- [x] Add fee-rule validity support and task-assignment invariants
+- [x] Add focused unit and migration-contract coverage including tenant isolation
+- **Status:** complete
+
+### Phase 5: Documentation and validation
+- [x] Create `docs/domain-foundation-phase.md`
+- [x] Run Prisma validate/generate, typecheck, lint, tests, integrity check, and production build
+- [x] Diagnose and fix failures through tight focused loops
+- **Status:** complete
+
+### Phase 6: Final review and commit
+- [x] Review schema/migration safety and scoped diff
+- [x] Verify no productive data deletion or logic replacement
+- [x] Commit `feat: add beta domain and entitlement foundation`
+- **Status:** complete
+
+## Constraints
+- Additive only: no removed column/model/enum value and no forced legacy data conversion.
+- Existing strings for suppliers, partners, payout recipients, conditions, and tasks remain readable.
+- Secrets remain only in Credential; account metadata must contain no secrets.
+- Entitlements gate capability, never data retention.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Initial monolithic schema patch missed a Unicode comment context line | 1 | Split schema changes into smaller ASCII-context patches; no partial schema edit was applied. |
+| Prisma schema diff rejected the temporary baseline because PowerShell added a UTF-8 BOM | 1 | Regenerate the temporary baseline as UTF-8 without BOM, then rerun the same schema-to-schema diff. |
+| Two condition-mapping tests failed because Unicode NFD normalizes umlauts to `a/u`, while aliases used `ae/ue` | 1 | Support both normalized and transliterated spellings, then rerun the focused test. |
+| Typecheck found two complete `InventoryPosition` test fixtures without the new nullable property | 1 | Set `itemCondition: null` explicitly in the legacy fixtures; production logic is unchanged. |
+| Sandboxed integrity check could not connect to the configured Supabase database | 1 | Repeated the same read-only check with network access; all 13 checks passed. |
+| Sandboxed production build could not fetch three existing Google Font families | 1 | Repeated the identical build with network access; compilation, type validation, static generation, and tracing passed. |
+| Sandboxed `git add` could not create `.git/index.lock` | 1 | Repeat the explicitly authorized staging/commit with Git metadata write access. |
+
+---
+
+# Historical Task Plan: Prompt 0 Internal Product Constitution and Beta Rebuild Planning
 
 ## Goal
 Define the internal StorageX product constitution, beta-rebuild roadmap, domain-generalization decisions, table-view matrix, and entitlement/navigation map without implementing domain or schema changes.

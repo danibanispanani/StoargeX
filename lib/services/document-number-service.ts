@@ -26,6 +26,7 @@ export const DOCUMENT_PREFIXES: Record<DocumentKind, string> = {
   PURCHASE: "E",
   SALE: "V",
   RETURN: "R",
+  SUPPLIER_RETURN: "LR",
   DEBT: "SCH",
 };
 

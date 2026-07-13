@@ -142,6 +142,98 @@ enum SubscriptionTier {
   BUSINESS
 }
 
+enum BusinessPartnerRoleType {
+  SUPPLIER
+  CONSIGNMENT_PARTNER
+  CUSTOMER
+  OTHER
+}
+
+enum MarketplaceAccountType {
+  BUSINESS
+  PRIVATE
+  MANAGED
+  OTHER
+}
+
+enum PayoutAccountType {
+  BANK
+  PAYPAL
+  PLATFORM_WALLET
+  SHAREHOLDER_PRIVATE
+  OTHER
+}
+
+enum ItemCondition {
+  NEW
+  OPEN_BOX
+  REFURBISHED
+  USED
+  DEFECTIVE
+}
+
+enum ExpenseStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum ExpenseRecurrenceInterval {
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+  YEAR
+}
+
+enum SupplierReturnStatus {
+  DRAFT
+  APPROVED
+  DISPATCHED
+  CREDIT_PENDING
+  REPLACEMENT_PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskScope {
+  PERSONAL
+  TEAM
+}
+
+enum TaskAssignmentRole {
+  PRIMARY
+  COLLABORATOR
+}
+
+enum FeeRuleOrigin {
+  MANUAL
+  IMPORTED
+  SYNCED
+}
+
+enum FeeVatTreatment {
+  INCLUDED
+  EXCLUDED
+  EXEMPT
+  UNKNOWN
+}
+
+enum EntitlementStatus {
+  ACTIVE
+  INACTIVE
+  SCHEDULED
+  EXPIRED
+  CANCELLED
+}
+
+enum EntitlementSource {
+  SUBSCRIPTION
+  ADD_ON
+  TRIAL
+  MANUAL
+}
+
 // ---------------------------------------------------------------------------
 // Phase 1 (inventory-refactor): additive Enums für neues Datenmodell
 // Siehe docs/inventory-refactor-plan.md
@@ -157,6 +249,7 @@ enum DocumentKind {
   SALE // V-{JJ}-{NNNN}   – Verkauf
   RETURN // R-{JJ}-{NNNN}   – Retoure
   DEBT // SCH-{JJ}-{NNNN} – Schulden-Eintrag
+  SUPPLIER_RETURN // LR-{JJ}-{NNNN} – Lieferantenretoure
 }
 
 /**
@@ -192,6 +285,7 @@ enum InventoryMovementType {
   RETURN_RECEIPT
   RETURN_RESTOCK
   RETURN_DEFECTIVE
+  SUPPLIER_RETURN_OUT
   ADJUSTMENT_IN
   ADJUSTMENT_OUT
   REVERSAL
@@ -229,6 +323,15 @@ enum ImportTargetEntity {
   RETURN_LINE
   DEBT
   TASK
+  BUSINESS_PARTNER
+  MARKETPLACE_ACCOUNT
+  PAYOUT_ACCOUNT
+  EXPENSE_CATEGORY
+  EXPENSE
+  SUPPLIER_RETURN
+  SUPPLIER_RETURN_LINE
+  FEE_RULE
+  FEATURE_ENTITLEMENT
   LEGACY_ONLY
 }
 
@@ -304,6 +407,21 @@ model Organization {
   debtInventoryLinks        DebtInventoryLink[]
   importBatches             ImportBatch[]
   sourceReferences          SourceReference[]
+  businessPartners          BusinessPartner[]
+  businessPartnerRoles      BusinessPartnerRole[]
+  marketplaceAccounts       MarketplaceAccount[]
+  payoutAccounts            PayoutAccount[]
+  expenseCategories         ExpenseCategory[]
+  expenses                  Expense[]
+  expenseRecurrenceRules    ExpenseRecurrenceRule[]
+  supplierReturns           SupplierReturn[]
+  supplierReturnLines       SupplierReturnLine[]
+  taskAssignments           TaskAssignment[]
+  taskChecklistItems        TaskChecklistItem[]
+  taskActivities            TaskActivity[]
+  feeSchedules              FeeSchedule[]
+  feeRules                  FeeRule[]
+  featureEntitlements       FeatureEntitlement[]
 
   @@map("organizations")
 }
@@ -324,16 +442,20 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  accounts           Account[]
-  sessions           Session[]
-  memberships        Membership[]
-  sentInvitations    Invitation[]
-  assignedTasks      Task[]              @relation("TaskAssignee")
-  createdTasks       Task[]              @relation("TaskCreator")
-  createdPurchases   Purchase[]          @relation("PurchaseCreatedBy")
-  inventoryMovements InventoryMovement[] @relation("InventoryMovementCreatedBy")
-  auditLogs          AuditLog[]
-  importBatches      ImportBatch[]       @relation("ImportBatchCreatedBy")
+  accounts                Account[]
+  sessions                Session[]
+  memberships             Membership[]
+  sentInvitations         Invitation[]
+  assignedTasks           Task[]              @relation("TaskAssignee")
+  createdTasks            Task[]              @relation("TaskCreator")
+  createdPurchases        Purchase[]          @relation("PurchaseCreatedBy")
+  inventoryMovements      InventoryMovement[] @relation("InventoryMovementCreatedBy")
+  auditLogs               AuditLog[]
+  importBatches           ImportBatch[]       @relation("ImportBatchCreatedBy")
+  supplierReturnsCreated  SupplierReturn[]    @relation("SupplierReturnCreatedBy")
+  taskAssignments         TaskAssignment[]
+  completedChecklistItems TaskChecklistItem[] @relation("TaskChecklistCompletedBy")
+  taskActivities          TaskActivity[]      @relation("TaskActivityActor")
 
   @@map("users")
 }
@@ -389,11 +511,13 @@ model Platform {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sales             Sale[]
-  credentials       Credential[]
-  listings          StockItemListing[]
-  inventoryListings InventoryPositionListing[]
+  organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sales               Sale[]
+  credentials         Credential[]
+  listings            StockItemListing[]
+  inventoryListings   InventoryPositionListing[]
+  marketplaceAccounts MarketplaceAccount[]
+  feeRules            FeeRule[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -479,6 +603,7 @@ model StockItem {
   brand              String?
   size               String?
   condition          String? // z.B. "Neu mit Etikett", "Sehr gut"
+  itemCondition      ItemCondition?  @map("item_condition")
   ean                String? // EAN/GTIN
   quantity           Int             @default(1)
   supplier           String? // Händler / Bezugsquelle
@@ -597,6 +722,8 @@ model Sale {
   organizationId           String                   @map("organization_id")
   stockItemId              String?                  @map("stock_item_id") // Alt-Feld; neue Verkäufe nutzen SaleItem
   platformId               String                   @map("platform_id")
+  marketplaceAccountId     String?                  @map("marketplace_account_id")
+  payoutAccountId          String?                  @map("payout_account_id")
   carrierId                String?                  @map("carrier_id")
   taxRateId                String?                  @map("tax_rate_id")
   soldAt                   DateTime                 @default(now()) @map("sold_at")
@@ -629,20 +756,24 @@ model Sale {
   createdAt                DateTime                 @default(now()) @map("created_at")
   updatedAt                DateTime                 @updatedAt @map("updated_at")
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  stockItem    StockItem?             @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
-  platform     Platform               @relation(fields: [platformId], references: [id], onDelete: Restrict)
-  carrier      Carrier?               @relation(fields: [carrierId], references: [id], onDelete: SetNull)
-  taxRate      TaxRate?               @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
-  items        SaleItem[]
-  saleLines    SaleLine[]
-  returns      Return[]
-  consignments ConsignmentInventory[]
-  debtLinks    DebtSaleLink[]
+  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stockItem          StockItem?             @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
+  platform           Platform               @relation(fields: [platformId], references: [id], onDelete: Restrict)
+  marketplaceAccount MarketplaceAccount?    @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
+  payoutAccount      PayoutAccount?         @relation(fields: [payoutAccountId], references: [id], onDelete: SetNull)
+  carrier            Carrier?               @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  taxRate            TaxRate?               @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  items              SaleItem[]
+  saleLines          SaleLine[]
+  returns            Return[]
+  consignments       ConsignmentInventory[]
+  debtLinks          DebtSaleLink[]
 
   @@index([organizationId])
   @@index([organizationId, soldAt])
   @@index([organizationId, status])
+  @@index([marketplaceAccountId])
+  @@index([payoutAccountId])
   @@map("sales")
 }
 
@@ -677,18 +808,19 @@ model Return {
 }
 
 model ReturnLine {
-  id                String   @id @default(cuid())
-  organizationId    String   @map("organization_id")
-  returnId          String   @map("return_id")
-  saleLineId        String   @map("sale_line_id")
+  id                String         @id @default(cuid())
+  organizationId    String         @map("organization_id")
+  returnId          String         @map("return_id")
+  saleLineId        String         @map("sale_line_id")
   quantity          Int
-  problemType       String?  @map("problem_type")
+  problemType       String?        @map("problem_type")
   condition         String?
-  refundAmountCents Int?     @map("refund_amount_cents")
-  extraCostsCents   Int?     @map("extra_costs_cents")
+  itemCondition     ItemCondition? @map("item_condition")
+  refundAmountCents Int?           @map("refund_amount_cents")
+  extraCostsCents   Int?           @map("extra_costs_cents")
   comment           String?
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   return            Return             @relation(fields: [returnId], references: [id], onDelete: Cascade)
@@ -847,25 +979,30 @@ model DebtInventoryLink {
 }
 
 model Task {
-  id             String       @id @default(cuid())
-  organizationId String       @map("organization_id")
-  title          String
-  description    String?
-  area           String? // Bereich, z.B. "Einkauf", "Versand", "Buchhaltung"
-  status         TaskStatus   @default(OPEN)
-  priority       TaskPriority @default(MEDIUM)
+  id              String       @id @default(cuid())
+  organizationId  String       @map("organization_id")
+  title           String
+  description     String?
+  area            String? // Bereich, z.B. "Einkauf", "Versand", "Buchhaltung"
+  status          TaskStatus   @default(OPEN)
+  priority        TaskPriority @default(MEDIUM)
+  scope           TaskScope?
+  progressPercent Int          @default(0) @map("progress_percent")
   // Erledigte Aufgaben werden archiviert statt gelöscht (Filter im Board)
-  archived       Boolean      @default(false)
-  dueDate        DateTime?    @map("due_date")
-  assigneeId     String?      @map("assignee_id")
-  createdById    String       @map("created_by_id")
-  completedAt    DateTime?    @map("completed_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  archived        Boolean      @default(false)
+  dueDate         DateTime?    @map("due_date")
+  assigneeId      String?      @map("assignee_id")
+  createdById     String       @map("created_by_id")
+  completedAt     DateTime?    @map("completed_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  assignee     User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  createdBy    User         @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignee       User?               @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy      User                @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignments    TaskAssignment[]
+  checklistItems TaskChecklistItem[]
+  activities     TaskActivity[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -923,22 +1060,25 @@ model SourceReference {
 }
 
 model Credential {
-  id              String    @id @default(cuid())
-  organizationId  String    @map("organization_id")
-  platformId      String?   @map("platform_id")
-  label           String // z.B. "eBay Hauptaccount"
-  username        String?
+  id                   String    @id @default(cuid())
+  organizationId       String    @map("organization_id")
+  platformId           String?   @map("platform_id")
+  marketplaceAccountId String?   @map("marketplace_account_id")
+  label                String // z.B. "eBay Hauptaccount"
+  username             String?
   // Verschlüsselt mit AES-256-GCM (lib/crypto.ts) – niemals Klartext speichern
-  secretEncrypted String    @map("secret_encrypted")
-  notes           String?
-  lastRotatedAt   DateTime? @map("last_rotated_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  secretEncrypted      String    @map("secret_encrypted")
+  notes                String?
+  lastRotatedAt        DateTime? @map("last_rotated_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  platform     Platform?    @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform           Platform?           @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  marketplaceAccount MarketplaceAccount? @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+  @@index([marketplaceAccountId])
   @@map("credentials")
 }
 
@@ -1044,27 +1184,34 @@ model DocumentSequence {
 // ---------------------------------------------------------------------------
 
 model Purchase {
-  id             String         @id @default(cuid())
-  organizationId String         @map("organization_id")
-  purchaseNumber String         @map("purchase_number") // z.B. "E-26-0001"
-  purchaseDate   DateTime       @map("purchase_date")
-  vendor         String
-  paymentMethod  String         @map("payment_method")
-  purchaseStatus PurchaseStatus @default(DRAFT) @map("purchase_status")
-  comment        String?
-  createdById    String         @map("created_by_id")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  id                String         @id @default(cuid())
+  organizationId    String         @map("organization_id")
+  purchaseNumber    String         @map("purchase_number") // z.B. "E-26-0001"
+  purchaseDate      DateTime       @map("purchase_date")
+  vendor            String
+  paymentMethod     String         @map("payment_method")
+  businessPartnerId String?        @map("business_partner_id")
+  paymentAccountId  String?        @map("payment_account_id")
+  purchaseStatus    PurchaseStatus @default(DRAFT) @map("purchase_status")
+  comment           String?
+  createdById       String         @map("created_by_id")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User               @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  lines        PurchaseLine[]
-  debtLinks    DebtPurchaseLink[]
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User               @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  lines           PurchaseLine[]
+  debtLinks       DebtPurchaseLink[]
+  businessPartner BusinessPartner?   @relation(fields: [businessPartnerId], references: [id], onDelete: SetNull)
+  paymentAccount  PayoutAccount?     @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
+  supplierReturns SupplierReturn[]
 
   @@unique([organizationId, purchaseNumber])
   @@index([organizationId])
   @@index([organizationId, purchaseDate])
   @@index([createdById])
+  @@index([businessPartnerId])
+  @@index([paymentAccountId])
   @@map("purchases")
 }
 
@@ -1083,10 +1230,11 @@ model PurchaseLine {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  purchase     Purchase        @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product      Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-  ownedLots    OwnedStockLot[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  ownedLots           OwnedStockLot[]
+  supplierReturnLines SupplierReturnLine[]
 
   @@index([organizationId])
   @@index([purchaseId])
@@ -1101,30 +1249,32 @@ model PurchaseLine {
 // ---------------------------------------------------------------------------
 
 model InventoryPosition {
-  id                 String        @id @default(cuid())
-  organizationId     String        @map("organization_id")
-  productId          String        @map("product_id")
-  inventoryType      InventoryType @map("inventory_type")
-  inventoryNumber    String        @map("inventory_number") // z.B. "L-26-0001" oder "K-26-0001"
-  quantityReceived   Int           @default(0) @map("quantity_received")
-  quantityAvailable  Int           @default(0) @map("quantity_available")
-  quantityReserved   Int           @default(0) @map("quantity_reserved")
-  quantityInspection Int           @default(0) @map("quantity_inspection")
-  quantityDefective  Int           @default(0) @map("quantity_defective")
-  quantitySold       Int           @default(0) @map("quantity_sold")
-  active             Boolean       @default(true)
-  receivedAt         DateTime      @default(now()) @map("received_at")
-  createdAt          DateTime      @default(now()) @map("created_at")
-  updatedAt          DateTime      @updatedAt @map("updated_at")
+  id                 String         @id @default(cuid())
+  organizationId     String         @map("organization_id")
+  productId          String         @map("product_id")
+  inventoryType      InventoryType  @map("inventory_type")
+  inventoryNumber    String         @map("inventory_number") // z.B. "L-26-0001" oder "K-26-0001"
+  itemCondition      ItemCondition? @map("item_condition")
+  quantityReceived   Int            @default(0) @map("quantity_received")
+  quantityAvailable  Int            @default(0) @map("quantity_available")
+  quantityReserved   Int            @default(0) @map("quantity_reserved")
+  quantityInspection Int            @default(0) @map("quantity_inspection")
+  quantityDefective  Int            @default(0) @map("quantity_defective")
+  quantitySold       Int            @default(0) @map("quantity_sold")
+  active             Boolean        @default(true)
+  receivedAt         DateTime       @default(now()) @map("received_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product         Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
-  ownedLot        OwnedStockLot?
-  consignmentLot  ConsignmentLot?
-  movements       InventoryMovement[]
-  listings        InventoryPositionListing[]
-  saleAllocations SaleLineAllocation[]
-  debtLinks       DebtInventoryLink[]
+  organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product             Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  ownedLot            OwnedStockLot?
+  consignmentLot      ConsignmentLot?
+  movements           InventoryMovement[]
+  listings            InventoryPositionListing[]
+  saleAllocations     SaleLineAllocation[]
+  debtLinks           DebtInventoryLink[]
+  supplierReturnLines SupplierReturnLine[]
 
   @@unique([organizationId, inventoryNumber])
   @@index([organizationId])
@@ -1191,6 +1341,7 @@ model ConsignmentLot {
   inventoryPositionId  String   @unique @map("inventory_position_id")
   organizationId       String   @map("organization_id")
   partnerCompany       String   @map("partner_company")
+  businessPartnerId    String?  @map("business_partner_id")
   externalSku          String?  @map("external_sku")
   identificationNumber String?  @map("identification_number")
   costGross            Decimal? @map("cost_gross") @db.Decimal(12, 2)
@@ -1207,9 +1358,11 @@ model ConsignmentLot {
 
   organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+  businessPartner   BusinessPartner?  @relation(fields: [businessPartnerId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([organizationId, partnerCompany])
+  @@index([businessPartnerId])
   @@map("consignment_lots")
 }
 
@@ -1229,9 +1382,10 @@ model InventoryMovement {
   createdById         String?               @map("created_by_id")
   createdAt           DateTime              @default(now()) @map("created_at")
 
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
-  createdBy         User?             @relation("InventoryMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryPosition  InventoryPosition   @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+  createdBy          User?               @relation("InventoryMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  supplierReturnLine SupplierReturnLine? @relation("SupplierReturnMovement")
 
   @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
@@ -1289,4 +1443,380 @@ model SaleLineAllocation {
   @@index([saleLineId])
   @@index([inventoryPositionId])
   @@map("sale_line_allocations")
+}
+
+// Beta domain foundation: additive commercial references and capabilities.
+// Existing free-text snapshots and production workflows remain unchanged.
+
+model BusinessPartner {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  displayName    String   @map("display_name")
+  legalName      String?  @map("legal_name")
+  externalRef    String?  @map("external_ref")
+  email          String?
+  phone          String?
+  notes          String?
+  active         Boolean  @default(true)
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roles           BusinessPartnerRole[]
+  purchases       Purchase[]
+  consignmentLots ConsignmentLot[]
+  payoutAccounts  PayoutAccount[]
+  expenses        Expense[]
+  supplierReturns SupplierReturn[]
+
+  @@unique([organizationId, displayName])
+  @@index([organizationId])
+  @@index([organizationId, active])
+  @@index([organizationId, externalRef])
+  @@map("business_partners")
+}
+
+model BusinessPartnerRole {
+  id                String                  @id @default(cuid())
+  organizationId    String                  @map("organization_id")
+  businessPartnerId String                  @map("business_partner_id")
+  role              BusinessPartnerRoleType
+  createdAt         DateTime                @default(now()) @map("created_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessPartner BusinessPartner @relation(fields: [businessPartnerId], references: [id], onDelete: Cascade)
+
+  @@unique([businessPartnerId, role])
+  @@index([organizationId])
+  @@map("business_partner_roles")
+}
+
+model MarketplaceAccount {
+  id                     String                 @id @default(cuid())
+  organizationId         String                 @map("organization_id")
+  platformId             String                 @map("platform_id")
+  displayName            String                 @map("display_name")
+  externalAccountId      String?                @map("external_account_id")
+  accountType            MarketplaceAccountType @default(BUSINESS) @map("account_type")
+  active                 Boolean                @default(true)
+  defaultPayoutAccountId String?                @map("default_payout_account_id")
+  defaultFeeScheduleId   String?                @map("default_fee_schedule_id")
+  metadata               Json                   @default("{}")
+  createdAt              DateTime               @default(now()) @map("created_at")
+  updatedAt              DateTime               @updatedAt @map("updated_at")
+
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform             Platform       @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  defaultPayoutAccount PayoutAccount? @relation(fields: [defaultPayoutAccountId], references: [id], onDelete: SetNull)
+  defaultFeeSchedule   FeeSchedule?   @relation(fields: [defaultFeeScheduleId], references: [id], onDelete: SetNull)
+  sales                Sale[]
+  credentials          Credential[]
+  feeRules             FeeRule[]
+
+  @@unique([organizationId, platformId, displayName])
+  @@index([organizationId])
+  @@index([organizationId, active])
+  @@index([platformId])
+  @@index([defaultPayoutAccountId])
+  @@index([defaultFeeScheduleId])
+  @@map("marketplace_accounts")
+}
+
+model PayoutAccount {
+  id                String            @id @default(cuid())
+  organizationId    String            @map("organization_id")
+  businessPartnerId String?           @map("business_partner_id")
+  displayName       String            @map("display_name")
+  accountType       PayoutAccountType @map("account_type")
+  externalRef       String?           @map("external_ref")
+  currency          String            @default("EUR")
+  active            Boolean           @default(true)
+  metadata          Json              @default("{}")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessPartner     BusinessPartner?     @relation(fields: [businessPartnerId], references: [id], onDelete: SetNull)
+  marketplaceAccounts MarketplaceAccount[]
+  purchases           Purchase[]
+  sales               Sale[]
+  expenses            Expense[]
+
+  @@unique([organizationId, displayName])
+  @@index([organizationId])
+  @@index([organizationId, active])
+  @@index([businessPartnerId])
+  @@map("payout_accounts")
+}
+
+model ExpenseCategory {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  name           String
+  description    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([organizationId, active])
+  @@map("expense_categories")
+}
+
+model Expense {
+  id               String        @id @default(cuid())
+  organizationId   String        @map("organization_id")
+  categoryId       String?       @map("category_id")
+  supplierId       String?       @map("supplier_id")
+  paymentAccountId String?       @map("payment_account_id")
+  description      String
+  incurredAt       DateTime      @map("incurred_at")
+  amountGross      Decimal       @map("amount_gross") @db.Decimal(12, 2)
+  amountNet        Decimal       @map("amount_net") @db.Decimal(12, 2)
+  taxRatePercent   Decimal       @default(0) @map("tax_rate_percent") @db.Decimal(5, 2)
+  taxAmount        Decimal       @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  receiptReference String?       @map("receipt_reference")
+  notes            String?
+  status           ExpenseStatus @default(DRAFT)
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category       ExpenseCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  supplier       BusinessPartner?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  paymentAccount PayoutAccount?         @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
+  recurrence     ExpenseRecurrenceRule?
+
+  @@index([organizationId])
+  @@index([organizationId, incurredAt])
+  @@index([organizationId, status])
+  @@index([categoryId])
+  @@index([supplierId])
+  @@index([paymentAccountId])
+  @@map("expenses")
+}
+
+model ExpenseRecurrenceRule {
+  id               String                    @id @default(cuid())
+  organizationId   String                    @map("organization_id")
+  expenseId        String                    @unique @map("expense_id")
+  interval         ExpenseRecurrenceInterval
+  intervalCount    Int                       @default(1) @map("interval_count")
+  rule             String?
+  startsAt         DateTime                  @map("starts_at")
+  endsAt           DateTime?                 @map("ends_at")
+  nextOccurrenceAt DateTime?                 @map("next_occurrence_at")
+  active           Boolean                   @default(true)
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expense      Expense      @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, active, nextOccurrenceAt])
+  @@map("expense_recurrence_rules")
+}
+
+model SupplierReturn {
+  id               String               @id @default(cuid())
+  organizationId   String               @map("organization_id")
+  returnNumber     String?              @map("return_number")
+  purchaseId       String               @map("purchase_id")
+  supplierId       String?              @map("supplier_id")
+  supplierSnapshot String               @map("supplier_snapshot")
+  status           SupplierReturnStatus @default(DRAFT)
+  requestedAt      DateTime             @default(now()) @map("requested_at")
+  dispatchedAt     DateTime?            @map("dispatched_at")
+  completedAt      DateTime?            @map("completed_at")
+  trackingNumber   String?              @map("tracking_number")
+  creditReference  String?              @map("credit_reference")
+  notes            String?
+  createdById      String               @map("created_by_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchase     Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  supplier     BusinessPartner?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy    User                 @relation("SupplierReturnCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  lines        SupplierReturnLine[]
+
+  @@unique([organizationId, returnNumber])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, requestedAt])
+  @@index([purchaseId])
+  @@index([supplierId])
+  @@index([createdById])
+  @@map("supplier_returns")
+}
+
+model SupplierReturnLine {
+  id                  String         @id @default(cuid())
+  organizationId      String         @map("organization_id")
+  supplierReturnId    String         @map("supplier_return_id")
+  purchaseLineId      String         @map("purchase_line_id")
+  inventoryPositionId String         @map("inventory_position_id")
+  outboundMovementId  String?        @unique @map("outbound_movement_id")
+  quantity            Int
+  reason              String?
+  legacyCondition     String?        @map("legacy_condition")
+  itemCondition       ItemCondition? @map("item_condition")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierReturn    SupplierReturn     @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+  purchaseLine      PurchaseLine       @relation(fields: [purchaseLineId], references: [id], onDelete: Restrict)
+  inventoryPosition InventoryPosition  @relation(fields: [inventoryPositionId], references: [id], onDelete: Restrict)
+  outboundMovement  InventoryMovement? @relation("SupplierReturnMovement", fields: [outboundMovementId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([supplierReturnId])
+  @@index([purchaseLineId])
+  @@index([inventoryPositionId])
+  @@map("supplier_return_lines")
+}
+
+model TaskAssignment {
+  id             String             @id @default(cuid())
+  organizationId String             @map("organization_id")
+  taskId         String             @map("task_id")
+  userId         String             @map("user_id")
+  role           TaskAssignmentRole @default(COLLABORATOR)
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("task_assignments")
+}
+
+model TaskChecklistItem {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  taskId         String    @map("task_id")
+  label          String
+  position       Int       @default(0)
+  completed      Boolean   @default(false)
+  completedAt    DateTime? @map("completed_at")
+  completedById  String?   @map("completed_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  completedBy  User?        @relation("TaskChecklistCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@unique([taskId, position])
+  @@index([organizationId])
+  @@index([completedById])
+  @@map("task_checklist_items")
+}
+
+model TaskActivity {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  taskId         String   @map("task_id")
+  actorId        String?  @map("actor_id")
+  action         String
+  details        Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("TaskActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([taskId, createdAt])
+  @@index([actorId])
+  @@map("task_activities")
+}
+
+model FeeSchedule {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  name           String
+  description    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultForAccounts MarketplaceAccount[]
+  rules              FeeRule[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([organizationId, active])
+  @@map("fee_schedules")
+}
+
+model FeeRule {
+  id                   String          @id @default(cuid())
+  organizationId       String          @map("organization_id")
+  feeScheduleId        String?         @map("fee_schedule_id")
+  platformId           String          @map("platform_id")
+  marketplaceAccountId String?         @map("marketplace_account_id")
+  category             String?
+  itemCondition        ItemCondition?  @map("item_condition")
+  validFrom            DateTime        @map("valid_from")
+  validUntil           DateTime?       @map("valid_until")
+  percentage           Decimal         @default(0) @db.Decimal(7, 4)
+  fixedFeeCents        Int             @default(0) @map("fixed_fee_cents")
+  minimumFeeCents      Int?            @map("minimum_fee_cents")
+  maximumFeeCents      Int?            @map("maximum_fee_cents")
+  advertisingPercent   Decimal         @default(0) @map("advertising_percent") @db.Decimal(7, 4)
+  paymentFeePercent    Decimal         @default(0) @map("payment_fee_percent") @db.Decimal(7, 4)
+  vatTreatment         FeeVatTreatment @default(UNKNOWN) @map("vat_treatment")
+  priority             Int             @default(0)
+  origin               FeeRuleOrigin   @default(MANUAL)
+  source               String?
+  active               Boolean         @default(true)
+  metadata             Json            @default("{}")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  feeSchedule        FeeSchedule?        @relation(fields: [feeScheduleId], references: [id], onDelete: SetNull)
+  platform           Platform            @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  marketplaceAccount MarketplaceAccount? @relation(fields: [marketplaceAccountId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, active, validFrom, validUntil])
+  @@index([platformId])
+  @@index([marketplaceAccountId])
+  @@index([feeScheduleId])
+  @@map("fee_rules")
+}
+
+model FeatureEntitlement {
+  id             String            @id @default(cuid())
+  organizationId String            @map("organization_id")
+  featureKey     String            @map("feature_key")
+  status         EntitlementStatus @default(ACTIVE)
+  source         EntitlementSource
+  startsAt       DateTime          @default(now()) @map("starts_at")
+  endsAt         DateTime?         @map("ends_at")
+  externalRef    String?           @map("external_ref")
+  metadata       Json              @default("{}")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, featureKey, status])
+  @@index([organizationId, startsAt, endsAt])
+  @@map("feature_entitlements")
 }

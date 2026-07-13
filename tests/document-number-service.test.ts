@@ -64,13 +64,14 @@ describe("formatDocumentNumber", () => {
     expect(formatDocumentNumber("V", 2026, 12345)).toBe("V-26-12345");
   });
 
-  it("deckt alle sechs Dokumentarten mit dem geforderten Präfix ab", () => {
+  it("deckt alle Dokumentarten mit dem geforderten Präfix ab", () => {
     expect(DOCUMENT_PREFIXES).toEqual({
       OWNED_STOCK: "L",
       CONSIGNMENT: "K",
       PURCHASE: "E",
       SALE: "V",
       RETURN: "R",
+      SUPPLIER_RETURN: "LR",
       DEBT: "SCH",
     });
   });

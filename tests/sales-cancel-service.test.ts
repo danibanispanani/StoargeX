@@ -29,6 +29,7 @@ class MemoryCancelClient {
         quantityDefective: 0,
         quantitySold: 2,
         active: true,
+        itemCondition: null,
         receivedAt: now,
         createdAt: now,
         updatedAt: now,

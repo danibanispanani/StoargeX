@@ -1,5 +1,37 @@
 # Findings and Decisions
 
+## Prompt 1 — Additive Domain Foundation and Feature Entitlements
+
+### Baseline
+- Prompt 1 starts from clean commit `5fdfee1 docs: define internal product and beta rebuild strategy`; no pre-existing worktree changes were present.
+- The task explicitly authorizes additive schema/migration work, small central domain modules, tests, documentation, and a final commit.
+- Existing movement/allocation/import/RLS modules remain authoritative. New models will reference these modules instead of replacing them.
+
+### Working architecture rule
+- Prefer a small pure interface for policy modules (entitlement activity, condition mapping, recurrence, fee validity) and keep Prisma adapters outside their pure implementation where possible.
+- New relational foundations may coexist with existing free-text snapshots. Relations are nullable during transition; old strings stay readable and writable by current production logic.
+
+### Additive model decision
+| Area | Existing model extension | New models / enums | Compatibility |
+|---|---|---|---|
+| Partners | Nullable partner references on `Purchase` and `ConsignmentLot` | `BusinessPartner`, `BusinessPartnerRole`, role enum | `vendor` and `partnerCompany` remain required snapshots; no backfill is forced. |
+| Platform accounts | Nullable account reference on `Sale` and `Credential`; `Platform` gains relations | `MarketplaceAccount`, account-type enum | Existing platform rows and sales remain valid without an account. Secrets remain in `Credential`. |
+| Payout/payment accounts | Nullable account references on purchase, sale, expense, marketplace account | `PayoutAccount`, account-type enum | Existing `paymentMethod` and `payoutRecipient` strings remain readable snapshots. |
+| Condition | Nullable normalized condition on stock/current inventory/return lines | `ItemCondition` enum | Legacy strings map through a pure module; unknown values remain unmapped, never coerced. |
+| Expenses | Organization relations only | `ExpenseCategory`, `Expense`, `ExpenseRecurrenceRule` plus status/interval enums | One-time expense = no recurrence row; imports link through `SourceReference` target types. |
+| Supplier returns | Relations from purchase, purchase line, inventory position, movement and user | `SupplierReturn`, `SupplierReturnLine`, status enum; new document kind | Customer `Return` remains unchanged. Stock effects later use the existing movement module. |
+| Tasks | Existing `Task.assigneeId` stays as legacy primary hint; add nullable scope and progress | `TaskAssignment`, `TaskChecklistItem`, `TaskActivity` plus scope/role enums | Existing tasks remain readable without assignment rows. One-primary and no-duplicate invariants are enforced in the module and SQL. |
+| Fees | `Platform` and account relations | `FeeSchedule`, `FeeRule` and origin/VAT enums | Existing `defaultFeePercent` and sale fee snapshots remain unchanged. |
+| Entitlements | Subscription tier remains untouched | `FeatureEntitlement` plus source/status enums | Multiple grants preserve history; access is time/status evaluated and never deletes domain data. |
+
+### Migration safety
+- All new tenant models carry `organization_id`, indexes, `ENABLE/FORCE ROW LEVEL SECURITY`, and tenant/bypass policies.
+- New columns on existing tables are nullable except safe task progress/defaults; no legacy row must be rewritten.
+- Foreign keys use `SET NULL`, `RESTRICT`, or `CASCADE` according to history ownership; posted/historical documents do not cascade-delete from configurable master data.
+- SQL checks cover positive quantities, task progress, recurrence intervals, date ranges, and non-negative fee/expense amounts.
+
+---
+
 ## Prompt 0 — Internal Product Constitution and Beta Rebuild Planning
 
 ### Baseline
