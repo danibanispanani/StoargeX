@@ -20,15 +20,21 @@ function SheetTrigger(props: React.ComponentProps<typeof SheetPrimitive.Trigger>
 function SheetContent({
   className,
   children,
+  side = "right",
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content>) {
+}: React.ComponentProps<typeof SheetPrimitive.Content> & {
+  side?: "left" | "right";
+}) {
   return (
     <SheetPrimitive.Portal>
       <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col gap-4 overflow-y-auto border-l bg-background p-6 shadow-xl outline-none transition data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right sm:max-w-xl",
+          "fixed inset-y-0 z-50 flex h-full w-full flex-col gap-4 overflow-y-auto bg-background p-6 shadow-xl outline-none transition motion-reduce:animate-none motion-reduce:transition-none data-[state=closed]:animate-out data-[state=open]:animate-in sm:max-w-xl",
+          side === "right"
+            ? "right-0 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+            : "left-0 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
           className
         )}
         {...props}

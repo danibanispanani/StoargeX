@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { SaleStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
+import { assertFeatureAccess } from "@/lib/feature-access";
+import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { writeAuditLog } from "@/lib/audit";
 import {
   calcSale,
@@ -148,20 +150,44 @@ export async function createSaleAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
+  const context = await requireOrg("MEMBER");
+  const { db, organization, userId } = context;
 
   const result = parseCreateSaleForm(formData);
   if (!("data" in result)) return { error: result.error };
   const { data, saleGrossCents, platformFeeNetCents } = result;
   const soldAt = data.soldAt ? new Date(data.soldAt) : new Date();
 
-  const [platform, taxRates] = await Promise.all([
+  const inventoryPositionIds = data.itemRefs.map((ref: string) =>
+    ref.slice("inventory:".length)
+  );
+  const [platform, taxRates, consignmentPosition] = await Promise.all([
     db.platform.findFirst({ where: { id: data.platformId } }),
     db.taxRate.findMany({
       select: { country: true, ratePercent: true, isDefault: true },
     }),
+    db.inventoryPosition.findFirst({
+      where: {
+        id: { in: inventoryPositionIds },
+        inventoryType: "CONSIGNMENT",
+      },
+      select: { id: true },
+    }),
   ]);
   if (!platform) return { error: "Plattform nicht gefunden." };
+
+  if (consignmentPosition) {
+    try {
+      await assertFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT);
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Konsignation ist für diese Organisation nicht aktiviert.",
+      };
+    }
+  }
 
   const taxRatePercent = resolveTaxRatePercent(
     taxRates.map((rate) => ({

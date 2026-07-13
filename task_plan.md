@@ -1,4 +1,76 @@
-# Task Plan: Prompt 1 Additive Domain Foundation and Feature Entitlements
+# Task Plan: Prompt 2 Internal Design System and App Shell
+
+## Goal
+Create a compact, distinctive internal StorageX product language and responsive application shell, centralize shared app-state components, enforce consignment entitlements server-side, validate representative routes in real browsers, document the shell, and commit the verified result without reconstructing every module.
+
+## Current Phase
+Final review, quality gates, and commit
+
+## Phases
+
+### Phase 1: Recovery, tooling, and evidence
+- [x] Confirm clean Prompt 1 baseline and recover planning context
+- [x] Load Huashu direction, codebase-design, better-icons, planning, and ce-polish workflows
+- [x] Inspect runtime/route architecture through codebase memory and Next.js tooling
+- [x] Audit existing shell, navigation, auth/org context, components, styles, and representative pages
+- [x] Record current browser baseline and tool limitations
+- **Status:** completed
+
+### Phase 2: Shell and design-system decision
+- [x] Define the deep shell seam, route metadata, entitlement projection, visual motif, responsive states, and accessibility contract
+- [x] Inspect shadcn capability/current Radix primitives and select icons through better-icons
+- [x] Record design assumptions and scope before implementation
+- **Status:** completed
+
+### Phase 3: Shared shell implementation
+- [x] Implement AppSidebar, MobileAppNavigation, AppTopbar, organization context, UserMenu, Breadcrumbs, PageHeader, and PageToolbar
+- [x] Implement InsightStrip, EmptyState, ErrorState, LoadingState, FeatureGate, and AddonTrialBanner
+- [x] Integrate the shell into protected routes while preserving module behavior and maximizing content/table space
+- **Status:** completed
+
+### Phase 4: Entitlement enforcement
+- [x] Resolve consignment entitlement/trial state from Prompt 1 foundation
+- [x] Project navigation visibility/add-on entry and trial duration consistently
+- [x] Enforce consignment access server-side without deleting or mutating data
+- **Status:** completed
+
+### Phase 5: Browser polish and accessibility
+- [x] Run ce-polish with the existing Next.js 15-compatible path
+- [x] Check Dashboard, Lager, Verkauf, Aufgaben, and Einstellungen at 1440/1280/768/390
+- [x] Check keyboard/focus, sidebar states, mobile navigation, console, network, and hydration
+- [x] Fix verified shell defects and recheck affected flows
+- **Status:** completed
+
+### Phase 6: Documentation, gates, and commit
+- [x] Create `docs/internal-app-shell.md`
+- [x] Run typecheck, lint, tests, integrity, production build, and diff checks
+- [x] Review scoped diff and commit `feat: rebuild internal app shell and navigation`
+- **Status:** completed
+
+## Constraints
+- Do not reconstruct every module or introduce unrelated domain/schema changes.
+- Preserve existing mutation services, route behavior, organization/RLS boundaries, and user data.
+- Avoid generic admin-template card grids, purple glow, decorative workflow motion, and excessive rounding.
+- Use motion only for navigation, drawers, status/feedback, and context transitions; respect reduced motion.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| PowerShell interpreted the unquoted `app/(app)` path as an expression while listing route files. | 1 | Re-run file discovery with the route path quoted as a literal. |
+| The first `ce-work` skill path assumed a repo-local install, but the skill is plugin-cached. | 1 | Read the advertised `r1` plugin-cache path instead. |
+| A combined planning patch used a progress line that was not present yet. | 1 | Apply each planning-file update against its actual Prompt 2 section. |
+| A later combined plan patch hit a duplicated checklist line left by an earlier edit. | 1 | Removed the duplicate and applied the state transition against the current file. |
+| `better-icons` was not installed globally. | 1 | Used the skill-prescribed `npx --yes better-icons` fallback; no repository dependency was added. |
+| A Windows `rg` invocation used an unsupported positional `**/*.test.*` glob. | 1 | Use `rg --glob '*.test.*'` or search `tests` directly. |
+| Initial Chrome navigation timed out while Turbopack compiled `/login`. | 1 | Waited for compilation; the route then returned 200 and the warm server remains available. |
+| The configured external database was unsuitable for destructive QA seeding. | 1 | Started an isolated local PostgreSQL container and used a local-only QA tenant. |
+| Historical migration `20260709100000_product_brand` contains a UTF-8 BOM and failed local `migrate deploy`. | 1 | Left historical migrations untouched; used `prisma db push` only for the disposable browser-QA database and documented the existing defect. |
+| Initial 390-px emulation exposed a dashboard min-content overflow. | 1 | Added `min-w-0` to the two table-containing cards and rechecked at an actual 390-px layout viewport. |
+| Documentation text contained four mojibake remnants after a shell encoding conversion. | 2 | Replaced the exact affected lines with `apply_patch` and verified UTF-8 content. |
+
+---
+
+# Historical Task Plan: Prompt 1 Additive Domain Foundation and Feature Entitlements
 
 ## Goal
 Add the beta domain foundation through additive Prisma models/migrations, small central modules, tests, documentation, full validation, and the requested commit without replacing existing production logic or deleting data.

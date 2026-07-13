@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireOrg } from "@/lib/org";
+import type { Role } from "@prisma/client";
+import {
+  FeatureAccessDeniedError,
+  requireOrgFeature,
+} from "@/lib/feature-access";
+import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { writeAuditLog } from "@/lib/audit";
 import { euroToCents } from "@/lib/calculations";
 import type { ActionState } from "@/lib/actions/team";
@@ -13,6 +18,15 @@ const optionalInt = z.preprocess(
   (value) => (value === "" || value == null ? undefined : value),
   z.coerce.number().int().min(0).max(100000).optional()
 );
+
+async function getConsignmentMutationContext(minRole: Role = "MEMBER") {
+  try {
+    return await requireOrgFeature(FEATURE_KEYS.CONSIGNMENT, minRole);
+  } catch (error) {
+    if (error instanceof FeatureAccessDeniedError) return error;
+    throw error;
+  }
+}
 
 const consignmentSchema = z.object({
   consignorName: z.string().min(1, "Partnerfirma fehlt.").max(200),
@@ -42,7 +56,11 @@ export async function createConsignmentItemAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { organization, userId } = await requireOrg("MEMBER");
+  const access = await getConsignmentMutationContext();
+  if (access instanceof FeatureAccessDeniedError) {
+    return { error: access.message };
+  }
+  const { organization, userId } = access;
 
   const parsed = consignmentSchema.safeParse({
     consignorName: formData.get("consignorName"),
@@ -124,7 +142,11 @@ export async function updateConsignmentCountsAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
+  const access = await getConsignmentMutationContext();
+  if (access instanceof FeatureAccessDeniedError) {
+    return { error: access.message };
+  }
+  const { db, organization, userId } = access;
 
   const parsed = countsSchema.safeParse({
     quantity: formData.get("quantity"),
@@ -175,7 +197,11 @@ export async function adjustConsignmentStockAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
+  const access = await getConsignmentMutationContext();
+  if (access instanceof FeatureAccessDeniedError) {
+    return { error: access.message };
+  }
+  const { db, organization, userId } = access;
 
   const parsed = stockAdjustmentSchema.safeParse({
     targetQuantityAvailable: formData.get("targetQuantityAvailable"),
@@ -250,7 +276,11 @@ export async function updateConsignmentItemAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
+  const access = await getConsignmentMutationContext();
+  if (access instanceof FeatureAccessDeniedError) {
+    return { error: access.message };
+  }
+  const { db, organization, userId } = access;
 
   const parsed = editConsignmentSchema.safeParse({
     partner: formData.get("partner"),
@@ -329,7 +359,11 @@ export async function updateConsignmentItemAction(
 }
 
 export async function deleteConsignmentItemAction(itemId: string): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("ADMIN");
+  const access = await getConsignmentMutationContext("ADMIN");
+  if (access instanceof FeatureAccessDeniedError) {
+    return { error: access.message };
+  }
+  const { db, organization, userId } = access;
 
   const position = await db.inventoryPosition.findFirst({
     where: { id: itemId, inventoryType: "CONSIGNMENT" },
@@ -388,7 +422,11 @@ export async function linkConsignmentSalesAction(
   consignmentId: string,
   saleIds: string[]
 ): Promise<ActionState> {
-  const { db } = await requireOrg("MEMBER");
+  const access = await getConsignmentMutationContext();
+  if (access instanceof FeatureAccessDeniedError) {
+    return { error: access.message };
+  }
+  const { db } = access;
 
   const parsed = z.array(z.string().min(1)).max(500).safeParse(saleIds);
   if (!parsed.success) return { error: "Ungültige Auswahl." };

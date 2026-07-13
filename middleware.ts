@@ -134,7 +134,8 @@ export default auth((req) => {
     );
   }
 
-  // 4. Feature-Gating nach Subscription-Tier
+  // 4. Verbleibende reine Tier-Gates. Add-ons/Trials werden nach requireOrg()
+  // frisch aus der DB geprüft und dürfen hier nicht vorab blockiert werden.
   const gated = GATED_ROUTES.find((route) => pathname.startsWith(route.prefix));
   if (gated && !hasTier(membership.tier ?? "FREE", gated.tier)) {
     const upgradeUrl = new URL("/pricing", req.nextUrl);

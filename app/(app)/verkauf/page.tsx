@@ -1,5 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
+import { PageHeader } from "@/components/app/page-header";
+import { getFeatureAccess } from "@/lib/feature-access";
+import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { getOptions } from "@/lib/options";
 import { formatEuro } from "@/lib/calculations";
 import { SaleDialog, type EditableSale, type SellableItem } from "@/components/sales/sale-dialog";
@@ -39,7 +42,12 @@ export default async function SalesPage({
     bis?: string;
   }>;
 }) {
-  const { db, organization } = await requireOrg();
+  const context = await requireOrg();
+  const { db, organization } = context;
+  const consignmentAccess = await getFeatureAccess(
+    context,
+    FEATURE_KEYS.CONSIGNMENT
+  );
   const params = await searchParams;
 
   const where: Prisma.SaleWhereInput = {
@@ -166,6 +174,7 @@ export default async function SalesPage({
         where: {
           active: true,
           quantityAvailable: { gt: 0 },
+          ...(consignmentAccess.enabled ? {} : { inventoryType: "OWNED" as const }),
         },
         include: {
           product: true,
@@ -353,23 +362,21 @@ export default async function SalesPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Verkauf</h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        eyebrow="Handel"
+        title="Verkauf"
+        description={
+          <>
             {rows.length} Verkäufe {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ImportExportBar table="verkauf" />
-          <SaleDialog
-            items={sellable}
-            platforms={platforms}
-            payoutOptions={payoutOptions}
-            shippingRates={rates}
-          />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <ImportExportBar table="verkauf" />
+            <SaleDialog items={sellable} platforms={platforms} payoutOptions={payoutOptions} shippingRates={rates} />
+          </>
+        }
+      />
 
       <SaleFilterBar
         filters={{

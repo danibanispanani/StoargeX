@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateFeatureEntitlement,
   FEATURE_KEYS,
+  toFeatureEntitlementSnapshot,
   type FeatureEntitlementGrant,
 } from "@/lib/services/feature-entitlement-service";
 
@@ -73,5 +74,52 @@ describe("evaluateFeatureEntitlement", () => {
         at: NOW,
       }).source
     ).toBe("LEGACY_TIER");
+  });
+
+  it("akzeptiert zukünftige Integrations-Keys ohne neue Policy-Implementierung", () => {
+    const integrationKey = "INTEGRATION_MARKETPLACE_SYNC";
+    expect(
+      evaluateFeatureEntitlement({
+        organizationId: "org-1",
+        featureKey: integrationKey,
+        grants: [grant({ featureKey: integrationKey })],
+        at: NOW,
+      })
+    ).toMatchObject({ enabled: true, source: "ADD_ON" });
+  });
+
+  it("selects the stronger source deterministically for equal grants", () => {
+    const decision = evaluateFeatureEntitlement({
+      organizationId: "org-1",
+      featureKey: FEATURE_KEYS.CONSIGNMENT,
+      grants: [
+        grant({ id: "trial", source: "TRIAL", endsAt: null }),
+        grant({ id: "manual", source: "MANUAL", endsAt: null }),
+      ],
+      at: NOW,
+    });
+
+    expect(decision).toMatchObject({ source: "MANUAL", grantId: "manual" });
+  });
+
+  it("projects stable trial days for the app shell", () => {
+    const decision = evaluateFeatureEntitlement({
+      organizationId: "org-1",
+      featureKey: FEATURE_KEYS.CONSIGNMENT,
+      grants: [
+        grant({
+          source: "TRIAL",
+          endsAt: new Date("2026-07-15T09:59:59.000Z"),
+        }),
+      ],
+      at: NOW,
+    });
+
+    expect(toFeatureEntitlementSnapshot(decision, NOW)).toEqual({
+      enabled: true,
+      source: "TRIAL",
+      validUntil: "2026-07-15T09:59:59.000Z",
+      trialDaysRemaining: 2,
+    });
   });
 });

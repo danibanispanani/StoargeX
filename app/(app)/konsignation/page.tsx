@@ -1,4 +1,6 @@
 import { requireOrg } from "@/lib/org";
+import { getFeatureAccess } from "@/lib/feature-access";
+import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { formatEuro } from "@/lib/calculations";
 import { deriveConsignmentStockStatus } from "@/lib/services/consignment-service";
 import { CreateConsignmentDialog } from "@/components/consignment/create-consignment-dialog";
@@ -7,6 +9,8 @@ import { ConsignmentRowActions } from "@/components/consignment/consignment-row-
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
+import { FeatureGate } from "@/components/app/feature-gate";
+import { PageHeader } from "@/components/app/page-header";
 import {
   DetailDrawer,
   DetailGrid,
@@ -22,7 +26,17 @@ import {
 } from "@/components/ui/table";
 
 export default async function ConsignmentPage() {
-  const { db } = await requireOrg();
+  const context = await requireOrg();
+  const access = await getFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT);
+  if (!access.enabled) {
+    return (
+      <FeatureGate
+        featureName="Konsignation"
+        description="Fremdbestand, Partnerabrechnung und K-Nummern bleiben vollständig erhalten. Aktiviere das Add-on, um die operativen Workflows wieder zu öffnen."
+      />
+    );
+  }
+  const { db } = context;
 
   const [inventoryPositions, legacyItems] = await Promise.all([
     db.inventoryPosition.findMany({
@@ -189,19 +203,17 @@ export default async function ConsignmentPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Konsignation</h1>
-          <p className="text-sm text-muted-foreground">
-            Eigener Bereich fuer Fremdbestand. Neue Eintraege laufen ueber K-Nummer,
-            InventoryPosition, ConsignmentLot und Movement-Historie.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ImportExportBar table="konsignation" />
-          <CreateConsignmentDialog />
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Betrieb · Add-on"
+        title="Konsignation"
+        description="Fremdbestand mit K-Nummer, InventoryPosition, ConsignmentLot und vollständiger Movement-Historie."
+        actions={
+          <>
+            <ImportExportBar table="konsignation" />
+            <CreateConsignmentDialog />
+          </>
+        }
+      />
 
       <CompactTableShell
         storageKey="konsignation"

@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { cache } from "react";
 import { bypassDb } from "@/lib/prisma";
 import { tenantDb, type TenantDb } from "@/lib/tenant-db";
 import { hasMinRole } from "@/lib/roles";
@@ -18,7 +19,7 @@ export interface OrgContext {
  * eingeloggt + Mitgliedschaft frisch aus der DB + optionale Mindestrolle.
  * Liefert den RLS-gescoppten Tenant-Client für die aktive Organisation.
  */
-export async function requireOrg(minRole: Role = "READONLY"): Promise<OrgContext> {
+const loadActiveOrgContext = cache(async (): Promise<OrgContext> => {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   if (!session.activeOrgId) redirect("/registrieren?schritt=organisation");
@@ -33,9 +34,6 @@ export async function requireOrg(minRole: Role = "READONLY"): Promise<OrgContext
     include: { organization: true },
   });
   if (!membership) redirect("/login");
-  if (!hasMinRole(membership.role, minRole)) {
-    throw new Error("Keine Berechtigung für diese Aktion.");
-  }
 
   return {
     userId: session.user.id,
@@ -43,4 +41,12 @@ export async function requireOrg(minRole: Role = "READONLY"): Promise<OrgContext
     membership,
     db: tenantDb(membership.organizationId),
   };
+});
+
+export async function requireOrg(minRole: Role = "READONLY"): Promise<OrgContext> {
+  const context = await loadActiveOrgContext();
+  if (!hasMinRole(context.membership.role, minRole)) {
+    throw new Error("Keine Berechtigung für diese Aktion.");
+  }
+  return context;
 }

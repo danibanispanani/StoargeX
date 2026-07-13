@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-07-13 — Prompt 2
+- Confirmed the clean Prompt 1 commit baseline and no unsynced planning context.
+- Loaded the requested design/architecture/icon/polish workflows plus persistent planning.
+- Established that Huashu is used for design direction rather than a parallel prototype, and that native Next.js runtime MCP is limited by the repository's Next.js 15.5.20 baseline.
+- Inspected the current layout/sidebar/global brand layer: found a flat navigation, a mixed-responsibility top bar, and a manual mobile drawer; recorded the responsive and accessibility seams to replace.
+- Confirmed the repository already has accessible Radix-backed Sheet/DropdownMenu/Avatar primitives and mapped the real route set, entitlement evaluator, and two-layer consignment enforcement requirement.
+- Implemented the grouped desktop ledger rail, Radix mobile navigation, topbar, organization switcher, user menu, breadcrumbs, shared page/state components, feature gate, trial banner, and request-scoped authoritative tenant/feature resolution.
+- Enforced consignment access before direct module reads, all six consignment mutations, new consignment sales, sales-import allocations, listing changes, and import inventory choices while preserving historical/corrective views.
+- Browser-polished Dashboard, Lager, Verkauf, Aufgaben, Einstellungen, and Konsignation at 1440/1280/768/390; fixed the only 390-px dashboard overflow and verified focus return, Escape, sidebar persistence, console, network, and hydration.
+- Ran simplify and multi-lens code review. Applied fresh-tenant, fail-closed shell, expired-trial action-state, extensible feature-key, dashboard insight, explicit gate routing, and test hardening fixes.
+- Final gates passed: Prisma validate/generate, TypeScript, ESLint, 22 test files / 169 tests, 13 integrity checks, and the production build.
+
+---
+
 ## 2026-07-13 — Prompt 1
 - Confirmed the clean Prompt 0 commit baseline.
 - Loaded the requested planning, codebase-design, architecture-review, and diagnosing-bugs workflows.

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireOrg } from "@/lib/org";
+import { PageHeader } from "@/components/app/page-header";
 import { hasMinRole } from "@/lib/roles";
 import { OrganizationForm } from "@/components/settings/organization-form";
 import { TaxRatesCard } from "@/components/settings/tax-rates-card";
@@ -44,12 +45,11 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Einstellungen</h1>
-        <p className="text-sm text-muted-foreground">
-          Firmendaten und Sicherheit
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Verwaltung"
+        title="Einstellungen"
+        description="Firmendaten und Sicherheit"
+      />
 
       <Card>
         <CardHeader>

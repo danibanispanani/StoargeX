@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireOrg } from "@/lib/org";
+import { PageHeader } from "@/components/app/page-header";
+import { InsightStrip, type InsightItem } from "@/components/app/insight-strip";
 import { hasMinRole } from "@/lib/roles";
 import { formatEuro } from "@/lib/calculations";
 import {
@@ -44,7 +46,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 
 function saleModels(
   items: Array<{ stockItem: { title: string } | null; consignment: { itemTitle: string } | null }>,
@@ -127,14 +128,25 @@ export default async function DashboardPage({
   }));
 
   const kpiCards = [
-    { label: "Umsatz", value: formatEuro(kpis.revenueCents), hint: `VK brutto · ${range.label}` },
+    {
+      label: "Umsatz",
+      value: formatEuro(kpis.revenueCents),
+      hint: `Summe VK brutto · ${range.label}`,
+      href: "/verkauf",
+    },
     {
       label: "Gewinn",
       value: formatEuro(kpis.profitCents),
-      hint: range.label,
+      hint: `VK netto − EK − Gebühren − Versand · ${range.label}`,
+      href: "/verkauf",
       negative: kpis.profitCents < 0,
     },
-    { label: "Verkäufe", value: String(kpis.salesCount), hint: range.label },
+    {
+      label: "Verkäufe",
+      value: String(kpis.salesCount),
+      hint: `Anzahl Buchungen · ${range.label}`,
+      href: "/verkauf",
+    },
     {
       label: "Offene Retouren",
       value: String(kpis.openReturnsCount),
@@ -163,16 +175,44 @@ export default async function DashboardPage({
       warn: kpis.dueTasksCount > 0,
     },
   ];
+  const debtDetail = debtBalances.length
+    ? debtBalances
+        .map((balance) =>
+          balance.netCents > 0
+            ? `GbR → ${balance.person}: ${formatEuro(balance.netCents)}`
+            : `${balance.person} → GbR: ${formatEuro(-balance.netCents)}`
+        )
+        .join(" · ")
+    : "Keine offenen Salden";
+  const insights: InsightItem[] = [
+    ...kpiCards.map((card) => ({
+      label: card.label,
+      value: card.value,
+      detail: card.hint,
+      href: card.href,
+      tone: card.negative
+        ? ("critical" as const)
+        : card.warn
+          ? ("warning" as const)
+          : ("neutral" as const),
+    })),
+    {
+      label: "Schulden-Saldo",
+      value: debtBalances.length ? `${debtBalances.length} offen` : "Ausgeglichen",
+      detail: debtDetail,
+      href: "/schulden",
+      tone: debtBalances.length ? "critical" : "positive",
+    },
+  ];
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{organization.name}</h1>
-          <p className="text-sm text-muted-foreground">Cockpit · Zeitraum: {range.label}</p>
-        </div>
-        <DashboardFilter jahr={params.jahr ?? ""} von={params.von ?? ""} bis={params.bis ?? ""} />
-      </div>
+      <PageHeader
+        eyebrow="Operative Übersicht"
+        title={organization.name}
+        description={<>Cockpit · Zeitraum: {range.label}</>}
+        actions={<DashboardFilter jahr={params.jahr ?? ""} von={params.von ?? ""} bis={params.bis ?? ""} />}
+      />
 
       {/* Niedrig-Bestand-Warnungen */}
       {lowStock.length > 0 && (
@@ -186,65 +226,7 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* KPI-Karten */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {kpiCards.map((card) => {
-          const inner = (
-            <Card className={cn("h-full", card.href && "hover-lift")}>
-              <CardHeader className="gap-1 p-4">
-                <CardDescription>{card.label}</CardDescription>
-                <CardTitle
-                  className={cn(
-                    "text-2xl",
-                    card.negative && "text-customs-red",
-                    card.warn && "text-cargo-amber"
-                  )}
-                >
-                  {card.value}
-                </CardTitle>
-                <CardDescription className="text-xs">{card.hint}</CardDescription>
-              </CardHeader>
-            </Card>
-          );
-          return card.href ? (
-            <Link key={card.label} href={card.href}>
-              {inner}
-            </Link>
-          ) : (
-            <div key={card.label}>{inner}</div>
-          );
-        })}
-
-        {/* Schulden-Saldo */}
-        <Card className="h-full">
-          <CardHeader className="gap-1 p-4">
-            <CardDescription>Schulden-Saldo</CardDescription>
-            {debtBalances.length === 0 ? (
-              <p className="pt-1 text-sm text-muted-foreground">Alles ausgeglichen.</p>
-            ) : (
-              <ul className="space-y-0.5 pt-1 text-sm">
-                {debtBalances.map((balance) => (
-                  <li key={balance.person}>
-                    {balance.netCents > 0 ? (
-                      <>GbR schuldet {balance.person}:{" "}
-                        <span className="font-mono font-medium text-customs-red">
-                          {formatEuro(balance.netCents)}
-                        </span>
-                      </>
-                    ) : (
-                      <>{balance.person} schuldet GbR:{" "}
-                        <span className="font-mono font-medium text-transit-teal">
-                          {formatEuro(-balance.netCents)}
-                        </span>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardHeader>
-        </Card>
-      </div>
+      <InsightStrip items={insights} />
 
       {/* Diagramme */}
       <div className="grid gap-4 xl:grid-cols-2">
@@ -297,7 +279,7 @@ export default async function DashboardPage({
 
       {/* Kompakt-Tabellen */}
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Letzte Verkäufe</CardTitle>
             <Link href="/verkauf" className="text-xs underline-offset-2 hover:underline">
@@ -337,7 +319,7 @@ export default async function DashboardPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Offene Schulden</CardTitle>
             <Link href="/schulden" className="text-xs underline-offset-2 hover:underline">

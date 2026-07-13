@@ -1,5 +1,49 @@
 # Findings and Decisions
 
+## Prompt 2 — Internal Design System and App Shell
+
+### Baseline and direction
+- Prompt 2 starts from clean commit `88b0756 feat: add beta domain and entitlement foundation`.
+- Huashu explicitly routes production web applications away from its standalone HTML-prototype path. For this phase it supplies design-direction and anti-slop criteria only: content-derived form, honest density, one deliberate visual signature, no decorative imagery, no purple AI glow, and no card/icon filler.
+- The shell should be a deep module: callers provide route content while navigation metadata, responsive state, entitlement projection, breadcrumbs, and shared chrome stay local to one shell seam.
+- Next.js is pinned to 15.5.20, so native Next.js 16 MCP runtime inspection is expected to be unavailable; static inspection and Chrome DevTools remain the compatible path.
+- The requested shadcn MCP is not exposed in this session. Existing Radix/shadcn-style primitives and local component conventions will be audited before deciding whether any registry primitive is necessary.
+- Codebase memory was refreshed successfully (`StorageX`: 2,422 nodes / 6,307 edges).
+- `nextjs_index` found no MCP-enabled server, consistent with the pinned Next.js 15 baseline. Prompt 2 will not upgrade the framework; ce-polish/Chrome DevTools provide the runtime path.
+- The current server layout mixes authentication redirects, theme lookup, organization/role display, theme control, sign-out, and responsive navigation. Prompt 2 should split these into a server-owned shell composition and focused client controls.
+- The current navigation is a single flat list. Its desktop breakpoint starts at `md`, which sacrifices too much module width at 768 px; the new desktop rail should start at `lg` and use a grouped mobile drawer below it.
+- The existing mobile overlay is a hand-rolled fixed panel without dialog semantics or explicit focus/Escape handling. Reuse the repository's accessible Radix/shadcn-style overlay primitive if present.
+- `app/globals.css` already supplies a distinctive operational palette (`ink`, `fog`, `cargo`, `transit`, `rail`, `stamp`) and Space Grotesk/Inter/JetBrains Mono typography. The internal shell should reuse those tokens instead of inventing a second visual language.
+- The public shell already contains a compact package/ledger brand motif; the internal app can echo that motif at working-console scale without importing the public marketing layout or motion.
+
+### Initial form hypothesis
+- Narrative role: operational frame, never marketing hero.
+- Viewing distance: laptop/desktop primary, touch handset secondary; body and labels must remain legible at high information density.
+- Visual temperature: calm, authoritative, slightly industrial, with StorageX brand DNA expressed through typography, ink/teal accents, rules, and operational status—not gradients or glow.
+- Capacity: navigation and topbar must consume less space than current module content; tables retain the largest possible viewport.
+- Content-derived motif: a storage ledger/rail index—precise vertical grouping, compact row rhythm, fine rules, and an active-position marker—rather than rounded dashboard cards.
+
+### Architecture evidence
+- The existing shell seam is already concentrated in `app/(app)/layout.tsx` and `components/layout/app-sidebar.tsx`; it should be deepened rather than layered with a second shell.
+- Protected page entry points consistently depend on the high-fan-in `requireOrg` module. Entitlement resolution belongs alongside that server layout/route seam, while client navigation receives only a serializable projection.
+- Existing UI primitives form a cohesive component cluster (78 members, cohesion 0.89), and tables already cross a stable table seam. The shell must not pull module data/mutations into layout code.
+- Representative route entry points are Dashboard, Lager, Verkauf, Aufgaben, Einstellungen, and Konsignation; these align with the requested browser matrix.
+- Local UI primitives already include Radix-backed `Sheet`, `DropdownMenu`, `Avatar`, `Button`, and `Badge`. They cover the accessible shell interactions without adding a package or generating a second primitive layer.
+- The route tree currently has no standalone Einkauf, Lieferantenretouren, Profit-Rechner, Gebührenregeln, or Ausgaben pages. Navigation will group only real routes; Lager can retain its existing Wareneingang responsibilities until those modules are built in their own phases.
+- The entitlement evaluator preserves legacy BUSINESS access and selects active grants across subscription, add-on, trial, and manual sources. A server adapter can query the active organization once and pass a small serializable decision to shell clients.
+- The current Konsignation page performs its tenant reads before any entitlement decision, and every consignment mutation independently calls `requireOrg`. Server enforcement therefore needs both a page-level decision before module queries and an action-level guard before mutations.
+- Existing session membership summaries are sufficient to present the current organization/role. Organization switching will remain explicitly prepared unless an existing authoritative switch action is found; Prompt 2 will not invent session mutation logic.
+- Auth.js already supports `activeOrgId` updates and refreshes membership claims, but only registration/invitation currently invoke it. A small server action can safely add switching by revalidating the requested membership in the database before calling `updateSession`.
+- Chrome reached `/login?callbackUrl=%2Fdashboard` after the protected-route redirect. Turbopack compiled successfully; sandboxed Google Font requests emitted fallback warnings but did not produce a route error.
+- The local dev server runs Next.js 15.5.20 on port 3000. Native Next MCP remains unavailable by version, while Chrome DevTools is connected and can provide DOM, console, network, and viewport checks.
+- The repository intentionally has no seed script or documented demo credentials. Browser verification of protected routes must not invent an authentication bypass or mutate an unknown database merely to fabricate coverage.
+- The final shell resolves active membership and organization from the database, then memoizes tenant and feature decisions only inside the current React server request. Session membership summaries remain presentation/switcher candidates, not the authoritative tier source.
+- An expired or revoked entitlement is a normal form-submission outcome: all consignment mutations convert only `FeatureAccessDeniedError` into `ActionState.error`; authentication, role, database, and unexpected failures still propagate to the app error boundary.
+- There is no neutral add-on checkout/request route yet. The FeatureGate therefore supports an explicit optional CTA and does not misrepresent Konsignation as a BUSINESS tariff upgrade; adding commercial purchase flow remains a later tariff/billing phase.
+- No product-facing agent/LLM integration exists. Agent-tool parity for organization switching or entitlement context would be a new product capability and is intentionally outside Prompt 2 rather than silently introduced by the shell phase.
+
+---
+
 ## Prompt 1 — Additive Domain Foundation and Feature Entitlements
 
 ### Baseline

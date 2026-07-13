@@ -1,4 +1,5 @@
 import { requireOrg } from "@/lib/org";
+import { PageHeader } from "@/components/app/page-header";
 import { getOptions } from "@/lib/options";
 import { loadLowStockAlerts, lowStockKey } from "@/lib/reporting";
 import { EntryStatus, StockItemStatus } from "@prisma/client";
@@ -202,23 +203,22 @@ export default async function StockPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Lager</h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        eyebrow="Handel"
+        title="Lager & Wareneingang"
+        description={
+          <>
             {ownedRows.length} Charge(n), {legacyRows.length} Legacy-Einheit(en){" "}
             {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ImportExportBar table="lager" />
-          <StockItemDialog
-            platforms={platforms}
-            zmOptions={zmOptions}
-            products={products}
-          />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <ImportExportBar table="lager" />
+            <StockItemDialog platforms={platforms} zmOptions={zmOptions} products={products} />
+          </>
+        }
+      />
 
       <StockFilterBar
         filters={{

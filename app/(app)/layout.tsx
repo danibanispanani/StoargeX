@@ -1,12 +1,17 @@
 import { redirect } from "next/navigation";
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { requireOrg } from "@/lib/org";
 import { ThemeSync } from "@/components/theme/theme-sync";
-import { AppSidebar, MobileNav } from "@/components/layout/app-sidebar";
-import { ROLE_LABELS } from "@/lib/roles";
+import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppTopbar } from "@/components/layout/app-topbar";
+import { Breadcrumbs } from "@/components/layout/breadcrumbs";
+import { AddonTrialBanner } from "@/components/app/addon-trial-banner";
+import {
+  FEATURE_KEYS,
+  toFeatureEntitlementSnapshot,
+} from "@/lib/services/feature-entitlement-service";
+import { getFeatureAccess } from "@/lib/feature-access";
 
 export default async function AppLayout({
   children,
@@ -17,52 +22,49 @@ export default async function AppLayout({
   if (!session?.user) redirect("/login");
 
   const activeMembership = session.memberships.find(
-    (m) => m.orgId === session.activeOrgId
+    (membership) => membership.orgId === session.activeOrgId
   );
   if (!activeMembership) redirect("/registrieren?schritt=organisation");
 
-  // Dark-Mode-Präferenz aus der DB (überschreibt lokale Einstellung einmalig)
-  const dbUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { theme: true },
-  });
+  const orgContext = await requireOrg();
+  const { organization, membership } = orgContext;
+  const now = new Date();
+  const [dbUser, consignmentDecision] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { theme: true },
+    }).catch((error) => {
+      console.error("App-Shell: Theme konnte nicht geladen werden.", error);
+      return null;
+    }),
+    getFeatureAccess(orgContext, FEATURE_KEYS.CONSIGNMENT).catch((error) => {
+      console.error("App-Shell: Entitlement konnte nicht geladen werden.", error);
+      return { enabled: false, source: null, grantId: null, validUntil: null } as const;
+    }),
+  ]);
+  const consignmentAccess = toFeatureEntitlementSnapshot(consignmentDecision, now);
+  const featureAccess = { [FEATURE_KEYS.CONSIGNMENT]: consignmentAccess };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-background">
       <ThemeSync dbTheme={dbUser?.theme ?? null} />
-      <AppSidebar />
+      <AppSidebar featureAccess={featureAccess} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
-          <div className="flex h-12 items-center justify-between gap-2 px-3 sm:px-4">
-            <div className="flex items-center gap-2">
-              <MobileNav />
-              <span className="truncate text-sm font-medium">
-                {activeMembership.orgName}
-              </span>
-              <Badge variant="secondary" className="hidden sm:inline-flex">
-                {ROLE_LABELS[activeMembership.role]}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="hidden text-xs text-muted-foreground sm:block">
-                {session.user.email}
-              </span>
-              <ThemeToggle persist />
-              <form
-                action={async () => {
-                  "use server";
-                  await signOut({ redirectTo: "/login" });
-                }}
-              >
-                <Button variant="outline" size="sm" type="submit">
-                  Abmelden
-                </Button>
-              </form>
-            </div>
+        <AppTopbar
+          memberships={session.memberships}
+          activeOrganizationId={organization.id}
+          activeRole={membership.role}
+          user={session.user}
+          featureAccess={featureAccess}
+        />
+        <AddonTrialBanner featureName="Konsignation" access={consignmentAccess} />
+        <main className="min-w-0 flex-1 px-3 py-3 sm:px-4 lg:px-5">
+          <div className="mb-3 hidden sm:block">
+            <Breadcrumbs />
           </div>
-        </header>
-        <main className="min-w-0 flex-1 p-3 sm:p-5">{children}</main>
+          {children}
+        </main>
       </div>
     </div>
   );

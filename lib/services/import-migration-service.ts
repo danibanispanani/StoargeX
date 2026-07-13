@@ -87,6 +87,7 @@ export async function runMigrationImport(input: {
   rows: ImportRow[];
   dryRun: boolean;
   metadata?: ImportMetadata;
+  allowConsignment: boolean;
 }): Promise<MigrationImportResult> {
   const summary = cloneSummary();
   const errors: Array<{ row: number; message: string }> = [];
@@ -94,6 +95,13 @@ export async function runMigrationImport(input: {
 
   const existingHashes = await loadExistingRowHashes(input.tx, input.organizationId, input.rows);
   const context = await loadImportContext(input.tx, input.organizationId);
+  if (input.table === "verkauf" && !input.allowConsignment) {
+    context.inventoryByLegacy = new Map(
+      [...context.inventoryByLegacy].filter(
+        ([, position]) => position.inventoryType !== "CONSIGNMENT"
+      )
+    );
+  }
   const plannedRows = planRows(input.table, input.rows, existingHashes, context, errors, summary);
   const validRows = plannedRows.filter((row) => isImportableRow(input.table, row));
 

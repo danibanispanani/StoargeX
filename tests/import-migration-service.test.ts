@@ -10,7 +10,12 @@ import {
 
 function dryRunTx(options: {
   existingHashes?: string[];
-  inventoryRefs?: Array<{ legacyReference: string; targetEntityId: string; quantityAvailable?: number }>;
+  inventoryRefs?: Array<{
+    legacyReference: string;
+    targetEntityId: string;
+    quantityAvailable?: number;
+    inventoryType?: "OWNED" | "CONSIGNMENT";
+  }>;
   saleRefs?: Array<{ legacyReference: string; targetEntityId: string }>;
 } = {}) {
   const existing = new Set(options.existingHashes ?? []);
@@ -49,7 +54,7 @@ function dryRunTx(options: {
         (options.inventoryRefs ?? []).map((ref) => ({
           id: ref.targetEntityId,
           inventoryNumber: ref.legacyReference,
-          inventoryType: "OWNED",
+          inventoryType: ref.inventoryType ?? "OWNED",
           quantityAvailable: ref.quantityAvailable ?? 1,
           ownedLot: { unitPriceNet: "30.00" },
           consignmentLot: null,
@@ -71,6 +76,7 @@ async function dryRun(table: Parameters<typeof runMigrationImport>[0]["table"], 
     table,
     rows,
     dryRun: true,
+    allowConsignment: true,
     metadata: { fileName: `${table}.xlsx`, fileHash: `${table}-hash`, sheetName: "Sheet1" },
   });
 }
@@ -193,6 +199,37 @@ describe("import migration pipeline", () => {
     expect(result.summary.linked).toBe(1);
   });
 
+  it("Dry Run: Verkauf darf ohne Add-on keinen Konsignationsbestand zuordnen", async () => {
+    const tx = dryRunTx({
+      inventoryRefs: [
+        {
+          legacyReference: "K-26-100",
+          targetEntityId: "consignment-1",
+          inventoryType: "CONSIGNMENT",
+        },
+      ],
+    });
+    const result = await runMigrationImport({
+      tx,
+      organizationId: "org-a",
+      createdById: "user-a",
+      table: "verkauf",
+      rows: [
+        {
+          orderid: "OLD-K-1",
+          lagerids: "K-26-100",
+          model: "Konsignationsartikel",
+          vk_brutto: "59,99",
+        },
+      ],
+      dryRun: true,
+      allowConsignment: false,
+    });
+
+    expect(result.summary.linked).toBe(0);
+    expect(result.summary.unresolved).toBe(1);
+  });
+
   it("Dry Run: Verkauf mit kumulierter Überbuchung braucht Review", async () => {
     const result = await dryRun("verkauf", [
       {
@@ -307,6 +344,7 @@ describe("import migration pipeline", () => {
       table: "verkauf",
       rows: [{ orderid: "OLD-4", lagerids: "L-26-100", vk_brutto: "10,00" }],
       dryRun: true,
+      allowConsignment: true,
     });
     expect(result.summary.unresolved).toBe(1);
   });

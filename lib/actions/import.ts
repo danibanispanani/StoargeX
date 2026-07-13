@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
+import {
+  FeatureAccessDeniedError,
+  getFeatureAccess,
+} from "@/lib/feature-access";
+import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { IMPORT_TABLES, type TableKey } from "@/lib/import-export";
@@ -46,7 +51,20 @@ export async function importRowsAction(
   dryRun: boolean,
   metadata?: ImportMetadata
 ): Promise<ImportResult> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
+  const context = await requireOrg("MEMBER");
+  const { db, organization, userId } = context;
+  const consignmentAccess =
+    table === "verkauf" || table === "konsignation"
+      ? await getFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT)
+      : null;
+
+  if (table === "konsignation" && !consignmentAccess?.enabled) {
+    return {
+      validCount: 0,
+      errors: [],
+      error: new FeatureAccessDeniedError(FEATURE_KEYS.CONSIGNMENT).message,
+    };
+  }
 
   const parsed = requestSchema.safeParse({ table, dryRun, rows });
   if (!parsed.success) {
@@ -94,6 +112,7 @@ export async function importRowsAction(
         rows: parsed.data.rows,
         dryRun,
         metadata,
+        allowConsignment: consignmentAccess?.enabled ?? false,
       });
     }, { maxWait: 30000, timeout: 600000 });
 
@@ -132,11 +151,14 @@ export async function importRowsAction(
 }
 
 export async function getImportInventoryOptionsAction(): Promise<ImportInventoryOption[]> {
-  const { db } = await requireOrg("MEMBER");
+  const context = await requireOrg("MEMBER");
+  const { db } = context;
+  const consignmentAccess = await getFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT);
   const positions = await db.inventoryPosition.findMany({
     where: {
       active: true,
       quantityAvailable: { gt: 0 },
+      ...(consignmentAccess.enabled ? {} : { inventoryType: "OWNED" as const }),
     },
     orderBy: [
       { inventoryNumber: "asc" },

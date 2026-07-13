@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { EntryStatus, InventoryBucket, StockItemStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
+import { assertFeatureAccess } from "@/lib/feature-access";
+import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { writeAuditLog } from "@/lib/audit";
 import { calcPurchaseNetCents, euroToCents } from "@/lib/calculations";
 import { saveImage } from "@/lib/uploads";
@@ -207,13 +209,27 @@ export async function toggleInventoryPositionListingAction(
   platformId: string,
   listed: boolean
 ): Promise<ActionState> {
-  const { db, organization } = await requireOrg("MEMBER");
+  const context = await requireOrg("MEMBER");
+  const { db, organization } = context;
 
   const [position, platform] = await Promise.all([
     db.inventoryPosition.findFirst({ where: { id: inventoryPositionId } }),
     db.platform.findFirst({ where: { id: platformId } }),
   ]);
   if (!position || !platform) return { error: "Charge oder Plattform nicht gefunden." };
+
+  if (position.inventoryType === "CONSIGNMENT") {
+    try {
+      await assertFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT);
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Konsignation ist für diese Organisation nicht aktiviert.",
+      };
+    }
+  }
 
   if (listed) {
     await db.inventoryPositionListing.upsert({
