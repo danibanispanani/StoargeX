@@ -88,7 +88,7 @@ Zwei Zustände decken große Treffermengen ohne tausende Client-IDs ab:
 
 ### Snapshot-sichere Gesamtmengenauswahl
 
-Bulk-Aktionen senden neben Selektionsdeskriptor und normalisierter Query den bestÃ¤tigten ZÃ¤hler. Bei einer Gesamtmengenauswahl kommt ein SHA-256-Snapshot der sortierten Produkt-IDs hinzu. Der Server lÃ¶st die IDs erneut Ã¼ber den tenant-gescoppten Prisma-Client auf und verwirft die Aktion, wenn Anzahl oder Snapshot inzwischen abweichen. Damit kÃ¶nnen weder neu hinzugekommene noch bei gleicher Anzahl ausgetauschte Treffer unbemerkt in die bestÃ¤tigte Aktion gelangen.
+Bulk-Aktionen senden neben Selektionsdeskriptor und normalisierter Query den bestätigten Zähler. Bei einer Gesamtmengenauswahl kommt ein SHA-256-Snapshot der sortierten Produkt-IDs hinzu. Der Server löst die IDs erneut über den tenant-gescoppten Prisma-Client auf und verwirft die Aktion, wenn Anzahl oder Snapshot inzwischen abweichen. Damit können weder neu hinzugekommene noch bei gleicher Anzahl ausgetauschte Treffer unbemerkt in die bestätigte Aktion gelangen.
 
 ## Produktreferenz
 
@@ -148,6 +148,10 @@ Produkt-CSV-Zellen mit formelfähigen Präfixen werden neutralisiert. Der synchr
 
 ## Abnahme am 13. Juli 2026
 
-Die Next.js-15-App startete lokal und `/produkte` antwortete erwartungsgemäß mit dem Auth-Redirect. Eine echte Chrome-DevTools-Interaktion an den geforderten Viewports konnte nicht abgeschlossen werden: Das bereitgestellte Chrome-DevTools-Tool und die lokale Docker-Freigabe wurden vom externen Nutzungslimit abgewiesen. Deshalb werden responsive Geometrie, Tastaturfluss, Console, Network und Hydration in dieser Phase nicht als browsergeprüft behauptet.
+Die authentifizierte Produktansicht wurde mit Chrome DevTools bei 1440, 1280, 768 und exakt 390 Pixeln geprüft. Die Seite erzeugt keinen horizontalen Dokument-Overflow; nur der dafür vorgesehene Tabellenbereich scrollt. Bei 1280 Pixeln wurde dabei ein zu breites Filter-Aktionsraster gefunden und responsiv korrigiert. Desktop-Sidebar, mobile Navigation, Sticky Header, Sticky-Identität, Vollbild-Drawer und Fokus-Rückgabe funktionieren in den vorgesehenen Zuständen.
 
-Prisma-Validierung/-Generierung, TypeScript, ESLint, Vitest und `git diff --check` laufen lokal. `integrity:check` erreicht die konfigurierte externe PostgreSQL-Instanz aus der Sandbox nicht. Der Production Build kompiliert bis zum erwarteten Download der drei Google Fonts und stoppt dort wegen gesperrtem Netzwerk. Beide Blocker sind Infrastrukturzugriffe; sie ersetzen dennoch keinen bestandenen Gate-Lauf.
+Browsergeprüft sind außerdem case-insensitive Suche, kombinierte Kategorie-/Markenfilter, bidirektionale Sortierung, modulspezifische Presets, Pagination, optionale Spalten, Dichtepersistenz, gespeicherte Ansichten, Einzel-/Seiten-/Gesamtmengenauswahl, der geschützte Einstieg in die Bulk-Kategorisierung sowie CSV-/XLSX-Vorlagen und gefilterter Export. Die Prüfung hinterließ keine fachliche Datenänderung und setzte temporäre Tabellenpräferenzen anschließend zurück.
+
+Der finale 390-Pixel-Lauf hatte eine leere Console/Issues-Liste und 34 von 34 erfolgreiche Requests. Tastaturfokus bewegt sich in DOM-Reihenfolge und erhält einen sichtbaren teal-farbenen `:focus-visible`-Rahmen. Zwei zunächst unbenannte Select-Felder wurden mit tabellenspezifischen `id`-/`name`-Attributen korrigiert.
+
+Prisma-Validierung/-Generierung, TypeScript, ESLint, Vitest, `integrity:check`, Production Build und `git diff --check` wurden als Abschluss-Gates erfolgreich ausgeführt. Die Integritätsprüfung der konfigurierten PostgreSQL-Instanz meldet für alle 13 Invarianten null Verstöße. Der Production Build läuft mit freigegebenem Zugriff auf die konfigurierten Google Fonts vollständig durch.

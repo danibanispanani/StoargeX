@@ -243,4 +243,102 @@
 - Template downloads are authenticated and membership-checked. CSV is semicolon/BOM compatible; XLSX contains an `Import` sheet and a separate `Spaltenbeschreibung` sheet.
 - No Prisma schema or migration file is changed. The current product model is sufficient for the reference slice; archive lifecycle remains deliberately deferred.
 
+## Prompt 3 reopened gate evidence (2026-07-13)
+- With restored external access, `npm run integrity:check` passed all 13 inventory, allocation, tenant-link, document-number, and movement-replay invariants against the configured Supabase database.
+- The sandboxed build reproduced only the known Google-Fonts network failure. The approved network-enabled rerun completed compilation, type/lint validation, all 26 static pages, build traces, and the route manifest successfully; `/produkte` builds as a dynamic route at 13.3 kB route size and 326 kB first-load JS.
+- The first Chrome navigation reached `/produkte`, but the sandboxed dev-server process could not reach Supabase and rendered the Next.js Prisma error overlay. This is the same network boundary already disproved by the approved integrity run, so browser QA requires restarting the dev server with approved network access rather than changing application code.
+- The network-enabled dev server is healthy, but the reused Chrome profile carries stale auth/navigation state: the first reload ended on `chrome-error://chromewebdata`, and direct `/produkte` navigation reported `ERR_TOO_MANY_REDIRECTS`. Browser QA should continue in a fresh isolated Chrome context and authenticate with the repository's documented development account if available.
+- Code and server-log inspection explain the loop without a Prompt-3 regression: the stale JWT is treated as signed in by middleware, while `requireOrg()` can no longer resolve its active membership from the database, producing `/produkte -> /login -> /dashboard -> /login`. A fresh isolated context removes this invalid session boundary.
+- Fresh isolated Chrome context `prompt3-qa` loads `/login` successfully with the expected email/password fields, legal links, no redirect loop, and the Next.js app surface. Repository search found no documented development credentials, so authenticated `/produkte` QA requires the user to sign in through the visible browser; credentials must not be requested or stored by Codex.
+- Human sign-in succeeded and the isolated context reached `/dashboard`. The configured database has not applied the already-committed Prompt-1 beta-domain migration (`feature_entitlements` table and `sales.marketplace_account_id` are absent), which breaks Dashboard reporting but does not prevent `/produkte` from rendering because the shell's entitlement lookup degrades to disabled.
+- Authenticated `/produkte` renders 216 tenant-scoped results with all Prompt-3 controls in the accessibility tree: templates, CSV/XLSX export, import, product create, four presets, case-insensitive search/filter form, date ranges, page sizes, columns, density, saved views, tri-state selection, sortable headers, row actions, and 9-page pagination.
+- Chrome console on authenticated `/produkte` contains only Fast Refresh logs: zero warnings, errors, or hydration messages. All 34 requests in the scoped navigation are successful HTTP 200 responses.
+- Desktop geometry at requested 1440 px (Chrome content viewport 1442x828) has no document-level horizontal overflow. The table owns its required horizontal scroll (`1114px` client vs `1666px` content) and bounded vertical scroll (`548px` client vs `1140px` content); the desktop sidebar remains visible.
+- 1440 px visual evidence is stored in ignored build output at `.next/prompt3-products-1440.png`. Computed styles confirm sticky header cells (`position: sticky; top: 0; z-index: 30`) and sticky product identity (`left: 40px; z-index: 30`); the main content stays between the 240 px sidebar and viewport edge.
+- Requested 1280 px check currently fails the no-document-overflow contract: Chrome content viewport is 1282 px while `documentElement.scrollWidth` is 1363 px. The main region itself ends at 1266 px and the table correctly scrolls internally (`954px` client vs `1666px` content), so a control outside the table is imposing the extra 81 px and requires targeted diagnosis.
+- Overflow diagnosis identifies the exact source: the page-size/apply control group begins at 1148 px and ends at 1363 px. Its no-wrap flex row (`25 / Seite` plus `Anwenden`) exceeds the available final grid track; table descendants are correctly clipped by their scroll container and are not the document-overflow cause.
+- The responsive filter-grid fix changes 1280 px to three equal tracks and lets its action group wrap. Retest passes: document width 1266 px within the 1282 px content viewport, action group contained at 923–1246 px, table still independently scrollable, and console empty after HMR. Evidence: `.next/prompt3-products-1280.png`.
+- Tablet check at requested 768 px passes: Chrome content viewport 770x828, document width 754 with no overflow, two-column filter grid, desktop sidebar hidden, mobile navigation trigger visible, header contained, and table scroll confined to a 690 px container.
+- Tablet viewport evidence saved at `.next/prompt3-products-768.png`; fresh accessibility snapshot confirms breadcrumbs, all table controls, row actions, and the mobile navigation trigger remain exposed with accessible names.
+- Mobile navigation interaction passes at 768 px: trigger opens the named `App-Navigation` modal with the complete grouped route list, Escape closes it, and focus returns to `Navigation öffnen`.
+- Chrome window resizing enforces a 502 px minimum content width when asked for 390 px; that intermediate width still has no document overflow and a one-column filter form. Exact phone verification must use DevTools viewport emulation (`390x844x1,mobile,touch`) rather than window resize.
+- Exact 390x844 mobile emulation passes: document width equals 390 px, main content is contained, filters use one 366 px column, and the table confines its 1666 px content to a 365 px horizontal scroller. Off-viewport preset/header actions belong to explicit horizontal-scroll regions; no interactive control creates document overflow.
+- Mobile evidence saved at `.next/prompt3-products-390.png`. Console remains free of warnings/errors/hydration messages after responsive HMR; only Fast Refresh lifecycle logs are present.
+- Mobile detail drawer is functionally healthy. Chrome's coordinate-based click command twice failed on the horizontally scrolled table action despite reporting success; a diagnostic DOM click on the exact visible button opened the standard Radix dialog. The drawer fills 390x844 and exposes product identity, catalog fields, usage counts, images, and history. This isolates the anomaly to the automation click driver rather than application code.
+
 ---
+### Mobile detail drawer focus return (2026-07-13)
+- Closing the full-screen product detail drawer with `Escape` removed the dialog, restored `body` pointer events, and returned focus to the originating `Details` button.
+### Product table controls at 390 px (2026-07-13)
+- The mobile toolbar exposes template download, CSV/Excel export, import, column control, and saved-view controls without document overflow.
+- A scripted template-button activation was issued; portal state needs a follow-up check because the dialog was not present in the same synchronous evaluation tick.
+### Import-template dialog (2026-07-13)
+- The product template dialog is keyboard reachable and exposes empty and example downloads in both CSV and XLSX.
+- It renders the required column contract inline: required markers, accepted formats, and descriptions for name, variant, brand, category, EAN, default purchase price, size, and images.
+- `Escape` closes the dialog.
+### Template/export endpoints and import entry (2026-07-13)
+- Authenticated browser fetches returned HTTP 200 with attachment headers for empty CSV template (65 bytes), example XLSX template (20,326 bytes), and filtered product CSV export (16,015 bytes).
+- The product import dialog exposes a file input and the existing staged flow; `Dry Run prüfen` and final import remain safely disabled before a file is selected.
+### Row selection (2026-07-13)
+- Selecting the first product row through its semantic checkbox updates `aria-checked` to true and renders the `1 ausgewählt` bulk-selection state.
+- Import-dialog `Escape` close was also verified before the selection flow.
+### Safe bulk categorization entry (2026-07-13)
+- With one row selected, `Kategorie zuordnen` opens a confirmation workflow that explicitly states the server revalidates the result set.
+- Without choosing a target category, `Zuordnung prüfen` is disabled; the dialog was closed with `Escape`, so browser QA made no product mutation.
+### Page-wide selection (2026-07-13)
+- Header selection checks all 25 rows on the current page, shows `25 ausgewählt`, and offers the explicit escalation `Alle 216 Treffer auswählen` for the full filtered result set.
+- `Auswahl aufheben` clears the selection without mutation.
+### Full result-set selection (2026-07-13)
+- Escalating current-page selection to the full filtered result set changes the state to `216 ausgewählt`.
+- Clearing selection returns all visible semantic checkboxes to unchecked and removes the bulk-selection state.
+### Density persistence (2026-07-13)
+- Switching the product table from comfortable to compact density reduced the first-row height from about 48 px to about 40 px.
+- The preference persisted in organization- and user-scoped local storage under the products table v1 key, alongside visible-column and saved-view state.
+### Column-control automation note (2026-07-13)
+- The column-control button is present in the mobile toolbar. Direct DOM activation did not expose its popup to the automation tree, so this control will be retried with a fresh accessibility snapshot and native DevTools click.
+### Column and view control semantics (2026-07-13)
+- A fresh accessibility snapshot exposes `Spalten` as an expandable menu button, `Dichte` as a named combobox with comfortable/compact options, and `Ansicht speichern` as an expandable dialog button.
+### Column selection menu (2026-07-13)
+- Native DevTools activation opens the named column menu and reports the expected defaults (product, variant, category, brand, usage) plus optional EAN, default purchase price, size, images, and changed-at columns.
+### Optional-column persistence (2026-07-13)
+- Selecting optional EAN adds the `EAN` header to the live table and persists `ean` in the scoped visible-columns preference.
+- Comfortable density restoration returned row height to about 48 px.
+### Saved-view dialog (2026-07-13)
+- `Ansicht speichern` opens a named dialog stating that filters, sorting, columns, and density are stored for the organization.
+- Save is disabled until a name is supplied; `Escape` closes the dialog. No test view was persisted.
+### Search and sort semantics (2026-07-13)
+- Lowercase `pattfield` search returned 49 matching products whose displayed brand is `Pattfield`, confirming case-insensitive operational search.
+- The product header exposes direction-aware links and accessible labels; active name ascending offers `Produkt absteigend sortieren`, while other sortable columns offer ascending.
+- Exact 390 px search results retain zero document overflow.
+### Descending sort execution (2026-07-13)
+- Activating the name header changed the URL to `sort=name&direction=desc` and inverted the accessible action to `Produkt aufsteigend sortieren`, confirming bidirectional state.
+### Pagination (2026-07-13)
+- The filtered 49-result search paginates correctly: page 2 renders 24 rows with `26–49 von 49 Treffern`, enables previous, and disables next.
+### Combined filters (2026-07-13)
+- Combining brand `Pattfield` with category `Garten & Terrasse > Hand-Gartengeräte > Grasscheren` yields exactly one row, and both selected values round-trip through the URL and controls.
+### Product-specific presets (2026-07-13)
+- The reference module exposes product-specific presets `Katalog`, `Verwendet`, `Unbenutzt`, and `Niedriger Bestand`; the active preset is identified with `aria-current=page`.
+### Preset execution (2026-07-13)
+- Activating `Verwendet` round-trips as `preset=used`, marks that preset current, and returns 191 matching products with normal pagination.
+### Browser state cleanup (2026-07-13)
+- Restored the authenticated QA account to canonical `/produkte`, comfortable density, default columns, no saved test views, no dialog, and no row selection.
+### Chrome form-control issue (2026-07-13)
+- Final Chrome issue audit identified two form controls with neither `id` nor `name`; these correspond to the density and saved-view selects and should be named to keep the browser issue panel clean.
+### Named table controls fix (2026-07-13)
+- Added stable table-key-scoped `id`/`name` attributes to density and saved-view selects, plus a name for the saved-view input.
+- After reload, Chrome reports no console messages or issue-panel findings on authenticated `/produkte` at exact 390 px.
+### Final route health (2026-07-13)
+- Final authenticated 390 px reload produced 34/34 successful network requests (all HTTP 200), including the document, app chunks, fonts, and favicon.
+- The operational search field accepts programmatic keyboard focus by its semantic name.
+### Keyboard focus visibility (2026-07-13)
+- Pressing `Tab` from product search advances to the category filter in DOM order.
+- The destination matches `:focus-visible` and receives a 1.6 px teal outline, confirming visible keyboard focus.
+### Final quality gates (2026-07-13)
+- `prisma validate`: pass.
+- `prisma generate`: pass after stopping the QA dev server that held the Windows engine DLL open.
+- TypeScript (`tsc --noEmit`): pass.
+- ESLint: pass.
+- Vitest: 30 files and 214 tests pass.
+- `integrity:check`: 13 checks pass with zero violations.
+- Next.js 15.5.20 Turbopack production build: pass; 26 static pages generated and `/produkte` reports 13.3 kB route size / 326 kB first-load JS.
+- `git diff --check`: pass; only Git's existing LF-to-CRLF working-copy notices are emitted.

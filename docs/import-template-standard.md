@@ -99,11 +99,11 @@ Dry Runs dürfen keine dieser Schreiboperationen ausführen.
 
 Produktzeilen werden beim Commit in Blöcken bis 500 Datensätzen mit `createManyAndReturn` geschrieben; die zugehörigen `SourceReference`-Zeilen folgen je Block mit `createMany` in derselben Transaktion. Die Konfliktprüfung lädt nur Katalogprodukte, deren Namen in der aktuellen Quelldatei vorkommen.
 
-### ParallelitÃ¤t und Fehlerdiagnose
+### Parallelität und Fehlerdiagnose
 
-Produktimporte werden durch einen transaktionsgebundenen Advisory Lock pro Organisation serialisiert, damit parallele Dateien nicht dieselbe ProduktidentitÃ¤t gleichzeitig anlegen. SchlÃ¤gt die Schreibtransaktion fehl, werden Domainzeilen und der darin begonnene Batch vollstÃ¤ndig zurÃ¼ckgerollt. Danach protokolliert der tenant-gescoppte Client einen separaten `FAILED`-Batch mit Quelldatei, Hash, Nutzer und Fehlermeldung. Ein Fehler dieser Diagnoseoperation verdeckt den ursprÃ¼nglichen Importfehler nicht.
+Produktimporte werden durch einen transaktionsgebundenen Advisory Lock pro Organisation serialisiert, damit parallele Dateien nicht dieselbe Produktidentität gleichzeitig anlegen. Schlägt die Schreibtransaktion fehl, werden Domainzeilen und der darin begonnene Batch vollständig zurückgerollt. Danach protokolliert der tenant-gescoppte Client einen separaten `FAILED`-Batch mit Quelldatei, Hash, Nutzer und Fehlermeldung. Ein Fehler dieser Diagnoseoperation verdeckt den ursprünglichen Importfehler nicht.
 
-Die Export-/Import-Konvention fÃ¼r spreadsheet-formelfÃ¤hige Textwerte ist reversibel: Beim Export wird ein fÃ¼hrendes Apostroph als Escape verdoppelt und ein potenzielles FormelprÃ¤fix mit Apostroph neutralisiert; das Mapping dekodiert genau diese beiden FÃ¤lle beim Reimport.
+Die Export-/Import-Konvention für spreadsheet-formelfähige Textwerte ist reversibel: Beim Export wird ein führendes Apostroph als Escape verdoppelt und ein potenzielles Formelpräfix mit Apostroph neutralisiert; das Mapping dekodiert genau diese beiden Fälle beim Reimport.
 
 ## Download- und Tenant-Sicherheit
 
@@ -129,4 +129,8 @@ Die Export-/Import-Konvention fÃ¼r spreadsheet-formelfÃ¤hige Textwerte ist r
 
 Unit- und Route-Tests decken leere und beispielhafte Vorlagen, CSV-BOM, beide XLSX-Sheets, Pflichtbeispiele aller Tabellen, Auth-/Membership-Fehler, Konsignations-Entitlement, Produktvalidierung, Konflikte, Batch-Provenienz und aktiven Exportfilter ab.
 
-Die echte Browserprüfung des Upload-, Mapping- und Review-Flows blieb durch das externe Chrome-DevTools-Nutzungslimit blockiert. `integrity:check` und Production Build konnten aus derselben eingeschränkten Umgebung wegen Datenbank- beziehungsweise Google-Fonts-Netzwerkzugriff nicht erfolgreich abgeschlossen werden.
+Chrome DevTools bestätigt im authentifizierten Produktmodul den Vorlagendialog mit leerer und beispielhafter CSV-/XLSX-Ausgabe, Pflichtfeldkennzeichnung, Formaten und Spaltenbeschreibungen. Die Endpunkte lieferten HTTP 200 mit korrekten Attachment-Headern für leere CSV (65 Byte) und Beispiel-XLSX (20.326 Byte). Der gefilterte CSV-Export lieferte ebenfalls HTTP 200.
+
+Der Importdialog nutzt die bestehende Pipeline und zeigt Datei-Upload, Mapping-/Dry-Run-Einstieg und Importabschluss. Ohne Datei bleiben `Dry Run prüfen` und Import deaktiviert. Die Prüfung schloss den Dialog per Escape und führte bewusst keinen Import aus; Mapping, Fehler-/Konfliktlisten und Commit-Provenienz bleiben zusätzlich durch die automatisierten Tests abgedeckt.
+
+`integrity:check` meldet für alle 13 konfigurierten Invarianten null Verstöße. Der Production Build läuft mit freigegebenem Netzwerkzugriff vollständig durch.

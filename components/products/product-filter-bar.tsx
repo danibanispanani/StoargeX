@@ -44,7 +44,10 @@ export function ProductFilterBar({
         })}
       </nav>
 
-      <form method="GET" className="grid gap-2 lg:grid-cols-[minmax(15rem,1fr)_repeat(2,minmax(9rem,0.45fr))_auto_auto_auto] lg:items-end">
+      <form
+        method="GET"
+        className="grid gap-2 sm:grid-cols-2 sm:items-end xl:grid-cols-3 min-[1360px]:grid-cols-[minmax(15rem,1fr)_repeat(2,minmax(9rem,0.45fr))_auto_auto_auto]"
+      >
         <label className="relative min-w-0">
           <span className="sr-only">Produkte durchsuchen</span>
           <SearchIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
@@ -65,7 +68,7 @@ export function ProductFilterBar({
           bis
           <Input name="to" type="date" defaultValue={query.to} className="mt-1 w-40" />
         </label>
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           <input type="hidden" name="preset" value={query.preset} />
           <input type="hidden" name="sort" value={query.sort} />
           <input type="hidden" name="direction" value={query.direction} />

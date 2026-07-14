@@ -4,7 +4,7 @@
 Create a reusable, information-dense operational table module, extend the existing import pipeline with documented downloadable templates and review states, migrate only `/produkte` as the reference module, verify tenant-safe filter/export/action behavior, document the contracts, pass all quality gates, and commit the requested result.
 
 ## Current Phase
-Final validation, documented infrastructure blockers, and requested commit
+Prompt 3 complete; final commit and handoff
 
 ## Phases
 
@@ -33,10 +33,12 @@ Final validation, documented infrastructure blockers, and requested commit
 - **Status:** completed
 
 ### Phase 5: Browser QA, documentation, review, gates, and commit
-- [ ] Validate responsive layout, keyboard/focus, drawers/dialogs, states, console/network/hydration, and representative product workflows in Chrome (blocked by external tool usage limit)
+- [x] Validate responsive layout, keyboard/focus, drawers/dialogs, states, console/network/hydration, and representative product workflows in Chrome
 - [x] Create `docs/operational-table-system.md` and `docs/import-template-standard.md`
-- [ ] Run focused tests, full tests, typecheck, lint, integrity check, production build, diff review, and requested commit (integrity/build blocked by external network; remaining checks pass)
-- **Status:** in_progress with documented infrastructure blockers
+- [x] Re-run integrity check and production build with restored tool/network allowance
+- [x] Update acceptance documentation and run final diff review
+- [x] Commit the completed gate evidence
+- **Status:** completed
 
 ## Constraints
 - Do not migrate every module; `/produkte` is the only full reference migration.
@@ -65,6 +67,11 @@ Final validation, documented infrastructure blockers, and requested commit
 | Chrome DevTools, Next DevTools and Docker approval were rejected by the external usage limit. | 1 each | Did not retry through a workaround; recorded the missing browser evidence and kept external data read-only. |
 | `integrity:check` cannot reach the configured external PostgreSQL host from the sandbox. | 1 | Recorded the network blocker; no destructive or production write was attempted. |
 | Production Build cannot fetch Inter, JetBrains Mono and Space Grotesk from Google Fonts. | 1 | Recorded the network-only build blocker after compilation reached the font fetch. |
+| Sandboxed dev server cannot reach Supabase during Chrome QA. | 1 | Verified the network boundary with the passing approved integrity check; restart the identical server with approved network access. |
+| `Stop-Process -Id 100384` returned an internal PowerShell NullReferenceException. | 1 | Re-verified that PID 100384 still owned port 3000, then terminated only that verified Node process tree with `taskkill /PID 100384 /T /F`. |
+| Chrome reported a successful click on an off-screen mobile `Details` control, but no drawer appeared and `wait_for` timed out. | 1 | Treat the saved accessibility reference as stale/off-screen interaction evidence; scroll the table action column into view, take a fresh snapshot, and retry from the current rendered state. |
+| Fresh visible `Details` reference still produced no Sheet via the Chrome click command. | 2 | Component inspection confirms a standard Radix `SheetTrigger`; direct DOM activation opened it, and semantic, Escape, and focus-return checks passed. This isolates a Chrome coordinate-driver limitation rather than an app defect. |
+| `prisma generate` could not replace the Windows query engine while Next Dev held it open. | 1 | Stopped the already-finished QA server and reran generation successfully. |
 
 ---
 

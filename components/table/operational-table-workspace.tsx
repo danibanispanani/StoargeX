@@ -223,6 +223,8 @@ export function OperationalTableWorkspace({
             <Rows3Icon className="size-3.5" aria-hidden="true" />
             <span className="sr-only sm:not-sr-only">Dichte</span>
             <select
+              id={`${scope.tableKey}-table-density`}
+              name={`${scope.tableKey}-table-density`}
               value={preferences.density}
               onChange={(event) => setDensity(event.target.value as TableDensity)}
               className="border-input h-8 rounded-md border bg-background px-2 text-xs text-foreground"
@@ -236,6 +238,8 @@ export function OperationalTableWorkspace({
             <BookmarkIcon className="size-3.5" aria-hidden="true" />
             <span className="sr-only">Gespeicherte Ansicht</span>
             <select
+              id={`${scope.tableKey}-saved-table-view`}
+              name={`${scope.tableKey}-saved-table-view`}
               value={selectedViewId}
               onChange={(event) => applySavedView(event.target.value)}
               className="border-input h-8 max-w-48 rounded-md border bg-background px-2 text-xs text-foreground"
@@ -266,6 +270,7 @@ export function OperationalTableWorkspace({
                 className="space-y-3"
               >
                 <Input
+                  name="saved-view-name"
                   value={viewName}
                   onChange={(event) => setViewName(event.target.value)}
                   placeholder="z. B. Elektronik ohne EAN"

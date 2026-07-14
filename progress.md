@@ -300,3 +300,62 @@
 - Production Build reaches Google Font resolution and fails because outbound font downloads are blocked.
 - Final review hardening added stable all-result digests for bulk confirmation, per-organization product-import serialization, durable failed-batch diagnostics after rollback, and monotonic UI revisions for file parsing and Dry Runs.
 - Final focused suite: 9 files and 61 tests pass. Final full suite: 30 files and 214 tests pass. TypeScript, full ESLint, Prisma validate/generate and `git diff --check` pass.
+
+### Phase 5 resumed after restored usage allowance
+- `npm run integrity:check`: pass against the configured external database; all 13 checks report zero violations.
+- `npm run build`: pass with approved network access after the sandboxed attempt reproduced the expected Google-Fonts-only failure.
+- Remaining gate: authenticated Chrome DevTools QA for `/produkte` at 1440/1280/768/390, including keyboard/focus, table controls, drawers/dialogs, console, network, and hydration.
+- Selected the host-native Chrome DevTools driver for the entire run. Port 3000 had no listener and Chrome opened with only `about:blank`, so a fresh project dev server is required before route testing.
+- The sandboxed server became ready, but `/produkte` produced a Prisma connectivity overlay because that process had no external database access. Stop it and restart the identical command with approved network access; no app edit is indicated.
+- Verified PID 100384 as the Node listener started for this run. PowerShell `Stop-Process` failed internally, so the same verified process tree was terminated with `taskkill`; port 3000 can now be reused for the network-enabled server.
+- Network-enabled server is ready on port 3000. The existing Chrome profile produced a redirect loop, so the next step is a clean isolated browser context rather than reusing stale cookies.
+- Confirmed the redirect loop is caused by stale JWT membership state in the reused profile, not table rendering. No development credentials are stored in repository docs or seed fixtures.
+- Opened clean isolated Chrome context `prompt3-qa` at `/login`; the authentication UI is ready for human sign-in. Dev server session 95454 remains active on port 3000 with approved database access.
+- Human authentication completed. `/produkte` now renders successfully in Chrome with 216 results and the complete operational-table control surface.
+- Observed unrelated deployment drift from Prompt 1 on `/dashboard`: the external database lacks the beta-domain migration. Prompt 3 did not authorize or create migrations; continue scoped `/produkte` QA and record the drift separately.
+- `/produkte` console/network pass: no browser errors/warnings/hydration issues and 34/34 scoped requests succeeded. 1440 px desktop geometry passes without document overflow; scrolling remains confined to the operational table.
+- Captured 1440 px viewport evidence and verified sticky table header/identity computed styles.
+- 1280 px QA found a real horizontal document overflow (81 px beyond the viewport) even though the table container itself is correctly scrollable. Diagnose the exact element before changing styles.
+- 1280 px root cause isolated to the page-size/apply group in `ProductFilterBar`, not the table. Apply a responsive wrapping/min-width fix and retest all viewports.
+- Updated `ProductFilterBar` to use 1/2/3 columns until 1360 px, the dense six-column layout above that, and a wrapping action group. 1280 px retest passes with no document overflow and an empty console.
+- 768 px geometry passes with the expected mobile shell transition, two-column filters, and independently scrollable table.
+- Captured 768 px evidence and refreshed the accessibility tree before testing the mobile navigation interaction.
+- 768 px mobile navigation modal, Escape handling, and focus restoration pass.
+- Direct 390 px window resize bottomed out at Chrome's 502 px minimum. Switch to DevTools mobile viewport emulation for the exact requested width.
+- Exact 390x844 mobile/touch emulation passes without document overflow; one-column filters and table-local scrolling behave as designed.
+- Captured exact 390 px evidence; browser console remains clean.
+- Saved the 390 px accessibility tree to ignored output and resolved the first `Details` control from that fresh snapshot for drawer/focus testing.
+- First mobile drawer click did not open the drawer despite Chrome reporting success; likely off-screen table action handling. Reposition the table scroller and use a fresh element reference before retrying.
+- Scrolled the table to its 1301 px maximum; the first `Details` button is now visibly positioned at x=114–183, y=406–438. Captured a fresh action-column accessibility snapshot for retry.
+- The fresh visible Chrome click still did not activate the standard Radix Sheet trigger. Run a DOM-click diagnostic before treating this as an application defect.
+- DOM-click diagnostic opened the mobile product drawer successfully; semantic inspection confirms the complete detail content and full-viewport bounds. Continue keyboard close/focus verification.
+- Verified the 390 px product detail drawer keyboard close path: `Escape` closes the dialog and returns focus to `Details`.
+- Located all Prompt 3 import/export, column, and saved-view controls in the exact 390 px layout; continuing their dialog and network checks.
+- Browser-verified the product import-template contract at 390 px, including CSV/XLSX empty/example variants and inline column documentation.
+- Browser-verified the authenticated template/export endpoints and safe initial import-dialog state (no file means Dry Run/import disabled).
+- Browser-verified keyboard close for import and single-row bulk selection state.
+- Verified the guarded bulk-categorization entry without executing a data mutation.
+- Browser-verified current-page Select All and the explicit full-result-set selection affordance (25 of 216).
+- Browser-verified full filtered-result selection and clean selection reset without running a bulk action.
+- Browser-verified compact density behavior and tenant/user-scoped table preference persistence.
+- Density/persistence passed; switching the column-control check to a native snapshot-based click after scripted activation did not expose the popup.
+- Captured the product-control accessibility snapshot and confirmed named menu/combobox/dialog semantics.
+- Browser-verified product standard and optional columns through the native column menu.
+- Native column-menu activation selected optional EAN; verifying the rendered header and persisted state next.
+- Browser-verified optional EAN rendering/persistence and restored comfortable density.
+- Browser-verified the guarded saved-view dialog and closed it without creating user data.
+- Submitted lowercase `pattfield` search through the real product filter form; verifying case-insensitive result state next.
+- Browser-verified case-insensitive search (49 results) and accessible bidirectional sort controls.
+- Executed and verified descending product-name sort in the browser.
+- Activated the enabled next-page link for the filtered 49-result set; verifying page state next.
+- Browser-verified pagination boundaries for a filtered result set and reset to the canonical product route.
+- Browser-verified combined category and brand filters with a one-result intersection.
+- Browser-verified module-specific product presets and active-state semantics.
+- Executed and browser-verified the `Verwendet` product preset (191 results).
+- Removed all temporary browser preference/selection state created during QA.
+- Traced Chrome's two unnamed fields to the reusable density and saved-view `<select>` controls; preparing a scoped naming fix.
+- Fixed the two unnamed reusable table controls and re-audited the route with a completely clean Chrome console/issues panel.
+- Completed the final route network audit (34/34 HTTP 200) and began the final tab-order check from product search.
+- Final keyboard tab-order/focus-visible check passed from search to category filter.
+- Final gates after the responsive/a11y fixes: Prisma validate/generate pass, TypeScript pass, ESLint pass, 30 Vitest files/214 tests pass, Production Build passes, and `git diff --check` passes.
+- The already-restored `integrity:check` remains green with 13/13 invariants and zero violations. Browser QA artifacts under `.next/prompt3-*` remain ignored.
