@@ -1,0 +1,41 @@
+{
+  "marketplaceCode": "EBAY_DE",
+  "marketplaceName": "eBay.de",
+  "sellerProfile": "COMMERCIAL_ABOVE_STANDARD",
+  "version": "2026-07",
+  "sourceUrl": "https://www.ebay.de/help/selling/fees-credits-invoices/selling-fees?id=4809",
+  "retrievedAt": "2026-07-14T00:00:00.000Z",
+  "validFrom": "2026-07-01T00:00:00.000Z",
+  "feeVatRateBasisPoints": 1900,
+  "calculationBasis": "ITEM_PLUS_BUYER_SHIPPING",
+  "fixedOrderFeeCents": 35,
+  "fixedOrderThresholdCents": 1000,
+  "fixedOrderFeeAboveCents": 45,
+  "listingFeeByShopCents": { "NONE": 35, "BASIC": 10, "TOP": 5, "PREMIUM": 0, "PLATINUM": 0 },
+  "shopDiscountBasisPoints": { "PLATINUM": 1000 },
+  "categories": [
+    { "group": "Technik-Kategorien und elektronische Geräte", "officialName": "Computer, Tablets & Netzwerk", "externalCategoryId": "58058", "percentageBasisPoints": 700, "conditionPercentageBasisPoints": 500 },
+    { "group": "Technik-Kategorien und elektronische Geräte", "officialName": "Handys & Kommunikation", "externalCategoryId": "15032", "percentageBasisPoints": 700, "conditionPercentageBasisPoints": 500 },
+    { "group": "Technik-Kategorien und elektronische Geräte", "officialName": "TV, Video & Audio", "externalCategoryId": "293", "percentageBasisPoints": 700, "conditionPercentageBasisPoints": 500 },
+    { "group": "Technik-Kategorien und elektronische Geräte", "officialName": "Haushaltsgeräte", "externalCategoryId": "20710", "percentageBasisPoints": 700, "conditionPercentageBasisPoints": 500 },
+    { "group": "Technik-Kategorien und elektronische Geräte", "officialName": "Drucker, Scanner & Zubehör", "externalCategoryId": "171961", "percentageBasisPoints": 1200, "conditionPercentageBasisPoints": 500 },
+    { "group": "Technik-Kategorien und elektronische Geräte", "officialName": "Handy-Zubehör", "externalCategoryId": "9394", "percentageBasisPoints": 1200, "conditionPercentageBasisPoints": 500 },
+    { "group": "Garten, Terrasse, Heimwerker und Business und Industrie", "officialName": "Business & Industrie", "externalCategoryId": "12576", "percentageBasisPoints": 1400, "conditionPercentageBasisPoints": 500 },
+    { "group": "Garten, Terrasse, Heimwerker und Business und Industrie", "officialName": "Garten & Terrasse", "externalCategoryId": "159912", "percentageBasisPoints": 1300, "conditionPercentageBasisPoints": 500 },
+    { "group": "Garten, Terrasse, Heimwerker und Business und Industrie", "officialName": "Heimwerker", "externalCategoryId": "3187", "percentageBasisPoints": 1300, "conditionPercentageBasisPoints": 500 },
+    { "group": "Kleidung, Accessoires, Uhren, Schmuck und Münzen", "officialName": "Kleidung & Accessoires", "externalCategoryId": "11450", "percentageBasisPoints": 1200, "tierThresholdCents": 99000, "percentageAboveBasisPoints": 300 },
+    { "group": "Kleidung, Accessoires, Uhren, Schmuck und Münzen", "officialName": "Münzen", "externalCategoryId": "11116", "percentageBasisPoints": 650, "tierThresholdCents": 99000, "percentageAboveBasisPoints": 300 },
+    { "group": "Medien-Kategorien", "officialName": "Filme & Serien", "externalCategoryId": "11232", "percentageBasisPoints": 1200, "tierThresholdCents": 99000, "percentageAboveBasisPoints": 300 },
+    { "group": "Medien-Kategorien", "officialName": "PC- & Videospiele", "externalCategoryId": "1249", "percentageBasisPoints": 1200, "tierThresholdCents": 99000, "percentageAboveBasisPoints": 300 },
+    { "group": "Musikinstrumente", "officialName": "Musikinstrumente", "externalCategoryId": "619", "percentageBasisPoints": 1100, "conditionPercentageBasisPoints": 500 },
+    { "group": "Übersicht der Kategorien mit Standardgebühren", "officialName": "Sport", "externalCategoryId": "888", "percentageBasisPoints": 1400, "conditionPercentageBasisPoints": 500 },
+    { "group": "Übersicht der Kategorien mit Standardgebühren", "officialName": "Möbel & Wohnen", "externalCategoryId": "11700", "percentageBasisPoints": 1400, "conditionPercentageBasisPoints": 500 },
+    { "group": "Übersicht der Kategorien mit Standardgebühren", "officialName": "Modellbau", "externalCategoryId": "22128", "percentageBasisPoints": 1100, "tierThresholdCents": 99000, "percentageAboveBasisPoints": 300 }
+  ],
+  "reviewRequired": [
+    "Sneaker: Schwellwert 100 EUR ist eine vollständige Preisfallregel und wird erst nach eigenem Regeltyp aktiviert.",
+    "Uhren & Schmuck: mehrere Shop- und Kategorieschwellen benötigen einen gesonderten Review.",
+    "Auto & Motorrad: zahlreiche Unterkategorie- und Shopausnahmen sind in dieser Startversion nicht aktiv.",
+    "Internationale Gebühren werden nur als explizite manuelle Option gerechnet."
+  ]
+}

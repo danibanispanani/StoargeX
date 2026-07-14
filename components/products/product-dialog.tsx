@@ -26,10 +26,17 @@ interface EditableProduct {
   ean: string;
   size: string;
   defaultPriceCents: number | null;
+  defaultCondition?: string | null;
+  defaultShippingCostCents?: number | null;
+  defaultPackagingCostCents?: number | null;
+  ebayFeeCategoryId?: string | null;
+  kauflandFeeCategoryId?: string | null;
 }
 
+interface FeeCategoryOption { id: string; label: string; externalId: string; }
+
 /** Anlegen (ohne product-Prop) oder Bearbeiten (mit product-Prop). */
-export function ProductDialog({ product }: { product?: EditableProduct }) {
+export function ProductDialog({ product, ebayCategories = [], kauflandCategories = [] }: { product?: EditableProduct; ebayCategories?: FeeCategoryOption[]; kauflandCategories?: FeeCategoryOption[] }) {
   const [open, setOpen] = useState(false);
   const action = product
     ? updateProductAction.bind(null, product.id)
@@ -57,7 +64,7 @@ export function ProductDialog({ product }: { product?: EditableProduct }) {
           <Button>Produkt anlegen</Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {product ? "Produkt bearbeiten" : "Produkt anlegen"}
@@ -93,6 +100,16 @@ export function ProductDialog({ product }: { product?: EditableProduct }) {
                 placeholder="z.B. 4K Max, 2. Gen"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="prod-condition">Standardzustand</Label>
+              <select id="prod-condition" name="defaultCondition" defaultValue={product?.defaultCondition ?? ""} className="border-input h-9 w-full border bg-background px-3 text-sm">
+                <option value="">Kein Standard</option><option value="NEW">Neu</option><option value="OPEN_BOX">Geöffnete Verpackung</option><option value="REFURBISHED">Generalüberholt</option><option value="USED">Gebraucht</option><option value="DEFECTIVE">Defekt</option>
+              </select>
+            </div>
+            <div className="space-y-2"><Label htmlFor="prod-shipping">Standardversand (€)</Label><Input id="prod-shipping" name="defaultShippingCost" inputMode="decimal" defaultValue={formatCents(product?.defaultShippingCostCents)} placeholder="0,00" /></div>
+            <div className="space-y-2"><Label htmlFor="prod-packaging">Verpackung (€)</Label><Input id="prod-packaging" name="defaultPackagingCost" inputMode="decimal" defaultValue={formatCents(product?.defaultPackagingCostCents)} placeholder="0,00" /></div>
+            <div className="space-y-2"><Label htmlFor="prod-ebay-category">eBay-Gebührenkategorie</Label><select id="prod-ebay-category" name="ebayFeeCategoryId" defaultValue={product?.ebayFeeCategoryId ?? ""} className="border-input h-9 w-full border bg-background px-3 text-sm"><option value="">Nicht zugeordnet</option>{ebayCategories.map((item) => <option key={item.id} value={item.id}>{item.label} · #{item.externalId}</option>)}</select></div>
+            <div className="space-y-2"><Label htmlFor="prod-kaufland-category">Kaufland-Gebührenkategorie</Label><select id="prod-kaufland-category" name="kauflandFeeCategoryId" defaultValue={product?.kauflandFeeCategoryId ?? ""} className="border-input h-9 w-full border bg-background px-3 text-sm"><option value="">Nicht zugeordnet</option>{kauflandCategories.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
             <div className="space-y-2">
               <Label htmlFor="prod-category">Kategorie</Label>
               <Input
@@ -156,4 +173,8 @@ export function ProductDialog({ product }: { product?: EditableProduct }) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatCents(cents: number | null | undefined) {
+  return cents == null ? "" : (cents / 100).toFixed(2).replace(".", ",");
 }

@@ -42,6 +42,7 @@ export interface EditableSale {
   soldAt: string;
   itemLabels: string[];
   platformId: string;
+  marketplaceAccountId: string;
   saleGross: string;
   buyerCountry: string;
   shippingMethod: string;
@@ -66,6 +67,7 @@ export function SaleDialog({
   sale,
   items,
   platforms,
+  marketplaceAccounts,
   payoutOptions,
   shippingRates,
   trigger,
@@ -73,6 +75,7 @@ export function SaleDialog({
   sale?: EditableSale;
   items: SellableItem[];
   platforms: Array<{ id: string; name: string }>;
+  marketplaceAccounts: Array<{ id: string; platformId: string; displayName: string; catalogVersion: string | null }>;
   payoutOptions: string[];
   shippingRates: ShippingRateOption[];
   trigger?: React.ReactNode;
@@ -304,6 +307,13 @@ export function SaleDialog({
                 platforms={platforms}
                 defaultValue={sale?.platformId ?? ""}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sale-marketplace-account">Marktplatzkonto</Label>
+              <select id="sale-marketplace-account" name="marketplaceAccountId" defaultValue={sale?.marketplaceAccountId ?? ""} className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm">
+                <option value="">Kein Konto / manuelle Gebühren</option>
+                {marketplaceAccounts.map((account) => <option key={account.id} value={account.id}>{account.displayName}{account.catalogVersion ? ` · Katalog ${account.catalogVersion}` : ""}</option>)}
+              </select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="sale-country">Land *</Label>

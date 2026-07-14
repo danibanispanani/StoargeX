@@ -39,6 +39,7 @@ const createSaleSchema = z.object({
     .min(1, "Bitte mindestens eine Bestandsposition wählen."),
   itemQuantities: z.array(z.coerce.number().int().min(1).max(100000)),
   platformId: z.string().min(1, "Bitte eine Plattform wählen."),
+  marketplaceAccountId: z.string().optional().or(z.literal("")),
   soldAt: z.string().optional().or(z.literal("")),
   saleGross: z.string().min(1, "VK brutto fehlt."),
   buyerCountry: z
@@ -94,6 +95,7 @@ function parseCreateSaleForm(formData: FormData) {
     itemRefs: formData.getAll("itemRefs").map(String),
     itemQuantities: formData.getAll("itemQuantities").map(String),
     platformId: formData.get("platformId"),
+    marketplaceAccountId: formData.get("marketplaceAccountId"),
     soldAt: formData.get("soldAt"),
     saleGross: formData.get("saleGross"),
     buyerCountry: formData.get("buyerCountry"),
@@ -123,6 +125,7 @@ function parseCreateSaleForm(formData: FormData) {
 function parseUpdateSaleForm(formData: FormData) {
   const parsed = updateSaleSchema.safeParse({
     platformId: formData.get("platformId"),
+    marketplaceAccountId: formData.get("marketplaceAccountId"),
     soldAt: formData.get("soldAt"),
     saleGross: formData.get("saleGross"),
     buyerCountry: formData.get("buyerCountry"),
@@ -161,8 +164,9 @@ export async function createSaleAction(
   const inventoryPositionIds = data.itemRefs.map((ref: string) =>
     ref.slice("inventory:".length)
   );
-  const [platform, taxRates, consignmentPosition] = await Promise.all([
+  const [platform, marketplaceAccount, taxRates, consignmentPosition] = await Promise.all([
     db.platform.findFirst({ where: { id: data.platformId } }),
+    data.marketplaceAccountId ? db.marketplaceAccount.findFirst({ where: { id: data.marketplaceAccountId, platformId: data.platformId }, include: { defaultFeeSchedule: true } }) : Promise.resolve(null),
     db.taxRate.findMany({
       select: { country: true, ratePercent: true, isDefault: true },
     }),
@@ -175,6 +179,7 @@ export async function createSaleAction(
     }),
   ]);
   if (!platform) return { error: "Plattform nicht gefunden." };
+  if (data.marketplaceAccountId && !marketplaceAccount) return { error: "Marktplatzkonto passt nicht zur Plattform." };
 
   if (consignmentPosition) {
     try {
@@ -202,6 +207,18 @@ export async function createSaleAction(
       organizationId: organization.id,
       createdById: userId,
       platformId: platform.id,
+      marketplaceAccountId: marketplaceAccount?.id,
+      feeScheduleId: marketplaceAccount?.defaultFeeSchedule?.id,
+      marketplaceFeeSnapshot: {
+        source: data.platformFeeNetManual?.trim() ? "MANUAL_NET" : "MANUAL_GROSS",
+        platformFeeGrossCents: data.platformFeeGross,
+        platformFeeNetCents,
+        feeInclVat: data.feeInclVat,
+        marketplaceAccountId: marketplaceAccount?.id ?? null,
+        feeScheduleId: marketplaceAccount?.defaultFeeSchedule?.id ?? null,
+        catalogVersion: marketplaceAccount?.defaultFeeSchedule?.version ?? null,
+        capturedAt: new Date().toISOString(),
+      },
       soldAt,
       selections: data.itemRefs.map((ref: string, index: number) => ({
         inventoryPositionId: ref.slice("inventory:".length),
@@ -271,8 +288,12 @@ export async function updateSaleAction(
   if (!("data" in result)) return { error: result.error };
   const { data, saleGrossCents, platformFeeNetCents } = result;
 
-  const platform = await db.platform.findFirst({ where: { id: data.platformId } });
+  const [platform, marketplaceAccount] = await Promise.all([
+    db.platform.findFirst({ where: { id: data.platformId } }),
+    data.marketplaceAccountId ? db.marketplaceAccount.findFirst({ where: { id: data.marketplaceAccountId, platformId: data.platformId }, include: { defaultFeeSchedule: true } }) : Promise.resolve(null),
+  ]);
   if (!platform) return { error: "Plattform nicht gefunden." };
+  if (data.marketplaceAccountId && !marketplaceAccount) return { error: "Marktplatzkonto passt nicht zur Plattform." };
 
   const taxRates = await db.taxRate.findMany({
     select: { country: true, ratePercent: true, isDefault: true },
@@ -295,6 +316,18 @@ export async function updateSaleAction(
     where: { id: saleId },
     data: {
       platformId: platform.id,
+      marketplaceAccountId: marketplaceAccount?.id ?? null,
+      feeScheduleId: marketplaceAccount?.defaultFeeSchedule?.id ?? null,
+      marketplaceFeeSnapshot: {
+        source: data.platformFeeNetManual?.trim() ? "MANUAL_NET" : "MANUAL_GROSS",
+        platformFeeGrossCents: data.platformFeeGross,
+        platformFeeNetCents,
+        feeInclVat: data.feeInclVat,
+        marketplaceAccountId: marketplaceAccount?.id ?? null,
+        feeScheduleId: marketplaceAccount?.defaultFeeSchedule?.id ?? null,
+        catalogVersion: marketplaceAccount?.defaultFeeSchedule?.version ?? null,
+        capturedAt: new Date().toISOString(),
+      },
       soldAt: data.soldAt ? new Date(data.soldAt) : existing.soldAt,
       salePriceCents: saleGrossCents,
       saleNetCents: calc.saleNetCents,

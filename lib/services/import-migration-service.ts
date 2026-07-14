@@ -177,6 +177,9 @@ export async function runMigrationImport(input: {
     case "aufgaben":
       importedCount = await commitTaskImport(input, batch.id, validRows);
       break;
+    case "ausgaben":
+      importedCount = await commitExpenseImport(input, batch.id, validRows);
+      break;
   }
 
   await input.tx.importBatch.update({
@@ -909,6 +912,80 @@ async function commitTaskImport(input: ImportRunInput, batchId: string, plannedR
   return imported;
 }
 
+async function commitExpenseImport(input: ImportRunInput, batchId: string, plannedRows: PlannedRow[]): Promise<number> {
+  let imported = 0;
+  for (const planned of plannedRows) {
+    const row = planned.row;
+    const grossCents = requiredCents(row.brutto);
+    const taxRatePercent = parsePercentTolerant(row.steuer) ?? 0;
+    const netCents = parseEuroTolerant(row.netto) ?? grossToNetCents(grossCents, taxRatePercent);
+    const category = row.kategorie?.trim()
+      ? await input.tx.expenseCategory.upsert({
+          where: { organizationId_name: { organizationId: input.organizationId, name: row.kategorie.trim() } },
+          create: { organizationId: input.organizationId, name: row.kategorie.trim() },
+          update: { active: true },
+        })
+      : null;
+    const [supplier, paymentAccount, marketplaceAccount] = await Promise.all([
+      row.lieferant?.trim() ? input.tx.businessPartner.findFirst({ where: { organizationId: input.organizationId, displayName: row.lieferant.trim() } }) : Promise.resolve(null),
+      row.zahlungskonto?.trim() ? input.tx.payoutAccount.findFirst({ where: { organizationId: input.organizationId, displayName: row.zahlungskonto.trim() } }) : Promise.resolve(null),
+      row.marktplatzkonto?.trim() ? input.tx.marketplaceAccount.findFirst({ where: { organizationId: input.organizationId, displayName: row.marktplatzkonto.trim() } }) : Promise.resolve(null),
+    ]);
+    const incurredAt = parseDateFlexible(row.zahlungsdatum)!;
+    const recurring = normalize(row.art).startsWith("wieder") || normalize(row.art) === "recurring";
+    const expense = await input.tx.expense.create({
+      data: {
+        organizationId: input.organizationId,
+        categoryId: category?.id,
+        supplierId: supplier?.id,
+        paymentAccountId: paymentAccount?.id,
+        marketplaceAccountId: marketplaceAccount?.id,
+        description: row.bezeichnung.trim(),
+        incurredAt,
+        dueAt: parseDateFlexible(row.faelligkeit),
+        paidAt: expenseStatus(row.status) === "POSTED" ? incurredAt : null,
+        amountGross: centsToDecimalString(grossCents),
+        amountNet: centsToDecimalString(netCents),
+        taxRatePercent: taxRatePercent.toFixed(2),
+        taxAmount: centsToDecimalString(grossCents - netCents),
+        receiptReference: optional(row.beleg),
+        notes: [
+          optional(row.notiz),
+          row.lieferant?.trim() && !supplier ? `Import-Lieferant: ${row.lieferant.trim()}` : null,
+          row.zahlungskonto?.trim() && !paymentAccount ? `Import-Zahlungskonto: ${row.zahlungskonto.trim()}` : null,
+          row.marktplatzkonto?.trim() && !marketplaceAccount ? `Import-Marktplatzkonto: ${row.marktplatzkonto.trim()}` : null,
+        ].filter(Boolean).join(" · ") || null,
+        status: expenseStatus(row.status),
+      },
+    });
+    if (recurring) {
+      const startsAt = parseDateFlexible(row.startdatum) ?? incurredAt;
+      const rule = await input.tx.expenseRecurrenceRule.create({
+        data: {
+          organizationId: input.organizationId,
+          expenseId: expense.id,
+          interval: expenseInterval(row.intervall),
+          startsAt,
+          endsAt: parseDateFlexible(row.enddatum),
+          nextOccurrenceAt: startsAt,
+        },
+      });
+      await input.tx.expense.update({ where: { id: expense.id }, data: { occurrenceKey: `${rule.id}:${startsAt.toISOString().slice(0, 10)}` } });
+    }
+    await createSourceReference(input.tx, {
+      organizationId: input.organizationId,
+      batchId,
+      sheetName: input.metadata?.sheetName,
+      planned,
+      targetEntity: "EXPENSE",
+      targetEntityId: expense.id,
+      status: "NEW",
+    });
+    imported++;
+  }
+  return imported;
+}
+
 interface ImportRunInput {
   tx: Tx;
   organizationId: string;
@@ -1114,6 +1191,26 @@ function validateRow(
     }
     warnings.push(...consignmentHistoricalCsvInfo(row));
     return { status: "NEW", message: "Neue K-Position wird importiert.", warnings, errors, targetEntity: "CONSIGNMENT_LOT" };
+  }
+  if (table === "ausgaben") {
+    if (!row.bezeichnung?.trim()) errors.push("Bezeichnung fehlt.");
+    if (!row.zahlungsdatum?.trim() || !parseDateFlexible(row.zahlungsdatum)) errors.push("Zahlungsdatum ist ungültig.");
+    needMoney("brutto", "Betrag brutto");
+    if (row.netto?.trim() && parseEuroTolerant(row.netto) === null) errors.push("Betrag netto ist ungültig.");
+    const grossCents = parseEuroTolerant(row.brutto);
+    const netCents = parseEuroTolerant(row.netto);
+    if (grossCents !== null && netCents !== null && netCents > grossCents) errors.push("Betrag netto darf Betrag brutto nicht überschreiten.");
+    if (row.steuer?.trim() && parsePercentTolerant(row.steuer) === null) errors.push("Steuersatz ist ungültig.");
+    const recurring = normalize(row.art).startsWith("wieder") || normalize(row.art) === "recurring";
+    if (!recurring && !["einmalig", "one_time", "one-time"].includes(normalize(row.art))) errors.push("Art muss Einmalig oder Wiederkehrend sein.");
+    if (recurring && row.intervall?.trim() && !["DAY", "WEEK", "MONTH", "QUARTER", "YEAR"].includes(row.intervall.trim().toUpperCase())) errors.push("Intervall ist ungültig.");
+    const startsAt = parseDateFlexible(row.startdatum);
+    const endsAt = parseDateFlexible(row.enddatum);
+    if (row.startdatum?.trim() && !startsAt) errors.push("Startdatum ist ungültig.");
+    if (row.enddatum?.trim() && !endsAt) errors.push("Enddatum ist ungültig.");
+    if (startsAt && endsAt && endsAt <= startsAt) errors.push("Enddatum muss nach dem Startdatum liegen.");
+    if (row.faelligkeit?.trim() && !parseDateFlexible(row.faelligkeit)) errors.push("Fälligkeit ist ungültig.");
+    return { status: errors.length ? "ERROR" : "NEW", message: recurring ? "Wiederkehrende Ausgabe wird importiert." : "Einmalige Ausgabe wird importiert.", warnings, errors, targetEntity: "EXPENSE" };
   }
   if (table === "aufgaben" && !row.aufgabe?.trim()) errors.push("Aufgabe fehlt.");
   return { status: errors.length ? "ERROR" : "NEW", message: `Zeile ${rowNumber} wird importiert.`, warnings, errors, targetEntity: table === "aufgaben" ? "TASK" : "LEGACY_ONLY" };
@@ -1401,6 +1498,7 @@ function primaryLegacyReference(table: TableKey, row: ImportRow, rowNumber: numb
     case "konsignation": value = row.nr || row.sku; break;
     case "schulden": value = row.refid; break;
     case "aufgaben": value = undefined; break;
+    case "ausgaben": value = `${row.zahlungsdatum}:${row.bezeichnung}:${row.brutto}`; break;
   }
   return normalizeLegacy(value) || `${table}:row:${rowNumber}`;
 }
@@ -1439,6 +1537,31 @@ function parseEuroTolerant(value: string | undefined): number | null {
     return euroToCents(value);
   } catch {
     return null;
+  }
+}
+
+function parsePercentTolerant(value: string | undefined): number | null {
+  if (!value?.trim()) return null;
+  const parsed = Number(value.trim().replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function expenseStatus(value: string | undefined): "DRAFT" | "POSTED" | "CANCELLED" {
+  const normalized = value?.trim().toUpperCase();
+  return normalized === "POSTED" || normalized === "CANCELLED" ? normalized : "DRAFT";
+}
+
+function expenseInterval(value: string | undefined): "DAY" | "WEEK" | "MONTH" | "QUARTER" | "YEAR" {
+  const normalized = value?.trim().toUpperCase();
+  switch (normalized) {
+    case "DAY":
+    case "WEEK":
+    case "MONTH":
+    case "QUARTER":
+    case "YEAR":
+      return normalized;
+    default:
+      return "MONTH";
   }
 }
 

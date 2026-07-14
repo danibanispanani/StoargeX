@@ -255,6 +255,7 @@ function validateRequiredFields(table: TableKey, rows: Row[]) {
 function revalidateImportViews(table: TableKey) {
   revalidatePath(`/${table === "verkauf" ? "verkauf" : table}`);
   if (table === "einkauf" || table === "wareneingang") revalidatePath("/einkauf");
+  if (table === "ausgaben") revalidatePath("/finanzen/ausgaben");
   revalidatePath("/produkte");
   revalidatePath("/lager");
   revalidatePath("/dashboard");

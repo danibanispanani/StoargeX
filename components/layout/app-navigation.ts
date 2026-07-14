@@ -2,14 +2,17 @@ import type { LucideIcon } from "lucide-react";
 import {
   Boxes,
   CheckSquare,
+  Calculator,
   HandCoins,
   Handshake,
   KeyRound,
   LayoutDashboard,
   Package,
+  ReceiptText,
   RotateCcw,
   ShoppingCart,
   Settings2,
+  Store,
   Tags,
   Truck,
   Users,
@@ -46,7 +49,13 @@ export const APP_NAVIGATION: readonly AppNavigationSection[] = [
   },
   {
     label: "Finanzen",
-    items: [{ href: "/schulden", label: "Schulden", Icon: HandCoins }],
+    items: [
+      { href: "/finanzen/preisrechner/ebay", label: "eBay-Preisrechner", shortLabel: "eBay-Rechner", Icon: Calculator },
+      { href: "/finanzen/preisrechner/kaufland", label: "Kaufland-Preisrechner", shortLabel: "Kaufland-Rechner", Icon: Calculator },
+      { href: "/finanzen/gebuehren", label: "Gebührenregeln", Icon: ReceiptText },
+      { href: "/finanzen/ausgaben", label: "Ausgaben", Icon: HandCoins },
+      { href: "/schulden", label: "Schulden", Icon: HandCoins },
+    ],
   },
   {
     label: "Betrieb",
@@ -66,6 +75,7 @@ export const APP_NAVIGATION: readonly AppNavigationSection[] = [
     items: [
       { href: "/team", label: "Team", Icon: Users },
       { href: "/zugangsdaten", label: "Zugangsdaten", Icon: KeyRound },
+      { href: "/einstellungen/marktplatzkonten", label: "Marktplatzkonten", Icon: Store },
       { href: "/einstellungen", label: "Einstellungen", Icon: Settings2 },
     ],
   },

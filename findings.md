@@ -1,5 +1,49 @@
 # Findings and Decisions
 
+## Prompt 5 — Marketplace Price Calculators, Fee Catalogs and Expenses
+
+### Execution frame
+- The branch starts clean at `3eb3731`; Prompt 5 is a cross-layer additive phase and must end before Prompt 6.
+- The prompt explicitly preselects the top architecture candidate: a deep deterministic Marketplace Pricing module with a small calculation/break-even interface. Marketplace-specific route modules remain separate callers; fee resolution, rounding, tax, profit, margin, and numerical search stay behind the seam.
+- TDD seams are confirmed in `task_plan.md`: pricing/catalog interfaces plus established tenant-scoped domain actions. Tests must use independent worked literals and must not reproduce formulas tautologically.
+- Huashu is applied as design direction only because its own routing excludes production backend apps. StorageX's existing operational-console design system is authoritative; no prototype, logo download, or separate UI framework is warranted.
+- `improve-codebase-architecture` will produce its required report in `%TEMP%`, not the repository. The user request already selects the Pricing module candidate, so the report informs implementation without an extra blocking choice.
+- Browser Trace requires the external `browse cdp` CLI; availability will be checked once, logged, and a supported Chrome/Browser path used if unavailable.
+
+### Tool availability
+- The current tool catalog does not expose callable codebase-memory, shadcn, Chrome DevTools, Next DevTools, or Better Icons MCP methods directly. Local repository search/design-system inspection is the safe fallback; unavailable Context7 is non-blocking by prompt.
+
+### Governing document evidence
+- Prompt 1 already owns the required foundations: `MarketplaceAccount`, `FeeSchedule`, versioned `FeeRule`, `ExpenseCategory`, `Expense`, `ExpenseRecurrenceRule`, canonical `ItemCondition`, and tenant/RLS rules. Its documented fee selector is policy-only and does not yet alter sales calculations.
+- Product categories are intentionally distinct from marketplace fee categories. Existing `Product.category` remains internal; Prompt 5 needs additive marketplace-category references/mapping status and immutable calculation/sale snapshots.
+- The operational-table module owns query/preferences/selection framing while each marketplace, fee, expense, and product-calculation route must keep its own definition and mutations.
+- Prompt 4 leaves its additive migration unapplied on the configured external QA database. Prompt 5's required database/browser gates therefore depend on explicit approval to deploy both pending additive migrations in order; this must not be silently bypassed.
+- Existing app-shell navigation intentionally omitted fees/profit/expenses until their domain phase. Prompt 5 is the authorized phase to add only real routes.
+- Current product editing is intentionally small (`name`, internal `category`, brand/EAN/size/default EK); marketplace category mappings, condition defaults and shipping/packaging defaults need additive fields or separate mappings without repurposing `Product.category`.
+- Current sale entry accepts a tenant platform plus manually entered fee amounts. It does not resolve a marketplace account or persist the source catalog/version/rule inputs; integration must keep manual override while adding a proposal and immutable snapshot.
+- Existing settings still manages tenant `Platform` records as if they were accounts. Prompt 5 needs a dedicated marketplace-account surface while preserving those legacy platform controls for compatibility.
+- The product operational table already has the shared workspace mechanics and detail drawer. Prompt 5 should extend its module definition/row details instead of introducing another table framework.
+- Official eBay DE business-fee page (checked 2026-07-14) states that displayed fees exclude VAT; final value fee is a percentage of total transaction amount plus €0.35/order, or €0.45 for orders over €10.00; total transaction includes item, buyer-paid shipping, VAT and other charges. Its published category table supplies category IDs, condition discounts and tiered thresholds. These are safe source facts, but seller-status and shop-specific exceptions must remain explicit rule dimensions.
+- Official Kaufland conditions page (checked 2026-07-14) publishes DE category commissions from 7% to 16%, with media at 13% + €0.70/item; commission basis is gross selling price including shipping, with VAT added to the commission. Basic is €39.95/month and Plus €59.95/month net. Monthly plans belong in account/expense defaults, not unit contribution margin.
+- No separate eBay fee-catalog attachment exists alongside the supplied prompt. The official eBay page is sufficiently detailed for a curated initial subset, but any unrepresented exception must be `REVIEW_REQUIRED` rather than silently generalized.
+- The existing import engine is a single `TableKey` registry plus one dry-run/commit service with `ImportBatch` and `SourceReference`; Prompt 5 imports must extend this registry/service, not create fee- or expense-specific upload engines.
+- The repo has only basic shadcn primitives (no command/combobox/popover package wrapper), while `lucide-react` is already installed. New searchable selectors should reuse the established accessible input+datalist/listbox patterns unless the requested icon/primitive tools are actually callable.
+- Local PostgreSQL bootstrap and Docker scripts exist. The migration gate can target an isolated local database and avoid touching the configured shared/external environment.
+- Navigation is defined under `components/layout`; Prompt 5 can add the real finance/settings routes to the shared desktop/mobile source once those pages exist.
+- The pricing kernel now treats all money as integer cents and rates as integer basis points. Percentage components round independently to cents; tiered commissions are marginal; fee VAT is separated from profit-effective fee cost; monthly account costs are structurally fixed at zero in product results.
+- The break-even service reuses the exact calculation function, searches a bounded cent interval, returns the first non-loss cent and emits an explicit `NO_BREAK_EVEN` error at the configured ceiling.
+- `better-icons` is not installed as a callable CLI/MCP in this environment. The implementation therefore uses the project's existing Lucide dependency and established icon vocabulary; no additional icon package was introduced.
+- The initial eBay catalog intentionally activates only the source-backed subset expressible without ambiguity. Sneaker, complex watches/jewelry and automotive exception families remain explicit review notes; Kaufland.de's published 13 fee groups are fully normalized.
+- Expense CSV/XLSX support extends the existing `TableKey` registry and dry-run/commit service. Recurrences receive a deterministic `ruleId:YYYY-MM-DD` occurrence key, making repeat materialization idempotent at both service and database levels.
+- Existing calculation convention mixes integer cents for service functions with Prisma Decimal at persistence seams. Marketplace pricing should remain integer-cent based internally and convert only at storage adapters.
+- Final review confirmed that quantity denotes item count: item sale price and purchase price scale by quantity, buyer-paid shipping and direct order costs apply once, and fixed per-item fees scale separately. Break-even and maximum-EK results are therefore per item.
+- `FeeRule.minimumFeeCents` and `maximumFeeCents` are now honored by the same deterministic commission path; their earlier schema-only presence would otherwise have produced misleading future catalog results.
+- Catalog activation must update matching `MarketplaceAccount.defaultFeeScheduleId` in the same transaction. Without this, calculators used the new active schedule while later sale snapshots could still cite the archived account default.
+- A free calculation is converted to Product + confirmed mapping + converted snapshot atomically under tenant RLS. Partial conversion is not an acceptable failure mode.
+- Offline verification is complete. Remaining gates need the configured QA database/network or approved local Docker runtime; this is an environment authorization boundary, not an unresolved code/test failure.
+
+---
+
 ## Prompt 4 — Purchasing, Suppliers and Inbound Workflow
 
 ### Execution frame
@@ -438,3 +482,10 @@
 - Dev-server output for the verification run contains successful compile/request lines and no Prisma, entitlement, auth, or route errors.
 - Post-deploy `integrity:check` passes all 13 inventory, allocation, tenant-link, document-number, and movement-replay invariants with zero violations.
 - Temporary provisioning/verification/inspection helpers were removed. Only the ignored local `.env.qa.local` credential file remains for future autonomous login.
+# Prompt 5 browser and deployment findings (2026-07-14)
+
+- Docker Desktop is installed but its service/engine is unavailable on this laptop. The safe workaround was the user's explicitly approved isolated external QA database, not an unreviewed local database substitution.
+- The QA account intentionally remains a password-only `MEMBER`: the existing application policy requires 2FA for `ADMIN` and `OWNER`. Browser data setup used an isolated tenant-scoped maintenance transaction and did not introduce an authentication bypass.
+- The active QA catalogs contain 17 reviewed eBay leaf categories with 265 generated rules and 13 published Kaufland groups. Ambiguous or structurally unsupported fee cases remain excluded/review-required rather than being presented as official active facts.
+- Responsive QA showed no document-level horizontal overflow. Dense product and expense tables keep their own bounded horizontal scrollers at tablet/mobile widths.
+- Coordinate activation of some Radix controls was unreliable in the local browser driver, while semantic DOM activation and keyboard behavior worked correctly. This was treated as an automation-driver limitation after dialogs, selection state, Escape close, and focus restoration were verified in the live application.

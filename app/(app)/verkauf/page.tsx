@@ -119,7 +119,7 @@ export default async function SalesPage({
       : {}),
   };
 
-  const [sales, platforms, payoutOptions, rates, sellablePositions] =
+  const [sales, platforms, payoutOptions, rates, sellablePositions, marketplaceAccounts] =
     await Promise.all([
       db.sale.findMany({
         where,
@@ -183,6 +183,7 @@ export default async function SalesPage({
         orderBy: [{ inventoryType: "asc" }, { receivedAt: "asc" }],
         take: 500,
       }),
+      db.marketplaceAccount.findMany({ where: { active: true }, include: { defaultFeeSchedule: true }, orderBy: { displayName: "asc" } }),
     ]);
 
   const sellable: SellableItem[] = sellablePositions.map((position) => ({
@@ -274,6 +275,7 @@ export default async function SalesPage({
       soldAt: sale.soldAt.toISOString().slice(0, 10),
       itemLabels: row.itemInfos.map((item) => `${item.sku} ${item.model}`),
       platformId: sale.platformId,
+      marketplaceAccountId: sale.marketplaceAccountId ?? "",
       saleGross: (sale.salePriceCents / 100).toFixed(2).replace(".", ","),
       buyerCountry: sale.buyerCountry,
       shippingMethod: sale.shippingMethod ?? "",
@@ -373,7 +375,7 @@ export default async function SalesPage({
         actions={
           <>
             <ImportExportBar table="verkauf" />
-            <SaleDialog items={sellable} platforms={platforms} payoutOptions={payoutOptions} shippingRates={rates} />
+            <SaleDialog items={sellable} platforms={platforms} marketplaceAccounts={marketplaceAccounts.map((account) => ({ id: account.id, platformId: account.platformId, displayName: account.displayName, catalogVersion: account.defaultFeeSchedule?.version ?? null }))} payoutOptions={payoutOptions} shippingRates={rates} />
           </>
         }
       />
@@ -523,6 +525,7 @@ export default async function SalesPage({
                         sale={toEditable(row)}
                         items={sellable}
                         platforms={platforms}
+                        marketplaceAccounts={marketplaceAccounts.map((account) => ({ id: account.id, platformId: account.platformId, displayName: account.displayName, catalogVersion: account.defaultFeeSchedule?.version ?? null }))}
                         payoutOptions={payoutOptions}
                         shippingRates={rates}
                         trigger={

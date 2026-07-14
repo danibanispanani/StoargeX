@@ -219,6 +219,48 @@ enum FeeVatTreatment {
   UNKNOWN
 }
 
+enum FeeCatalogStatus {
+  DRAFT
+  REVIEW_REQUIRED
+  ACTIVE
+  ARCHIVED
+}
+
+enum MarketplaceMappingStatus {
+  UNASSIGNED
+  SUGGESTED
+  CONFIRMED
+  REVIEW_REQUIRED
+}
+
+enum PricingCalculationStatus {
+  IDEA
+  REVIEW
+  INTERESTING
+  REJECTED
+  PURCHASED
+  CONVERTED_TO_PRODUCT
+}
+
+enum PricingInputMode {
+  PRODUCT
+  FREE
+}
+
+enum MarketplacePriceSource {
+  EBAY
+  IDEALO
+  KAUFLAND
+  EXPERIENCE
+  OTHER
+}
+
+enum TaxProfile {
+  PRIVATE
+  SMALL_BUSINESS
+  VAT_REGISTERED
+}
+
 enum EntitlementStatus {
   ACTIVE
   INACTIVE
@@ -350,6 +392,10 @@ enum ImportTargetEntity {
   SUPPLIER_RETURN
   SUPPLIER_RETURN_LINE
   FEE_RULE
+  FEE_SCHEDULE
+  FEE_CATEGORY
+  PRICING_CALCULATION
+  PRODUCT_MARKETPLACE_MAPPING
   FEATURE_ENTITLEMENT
   LEGACY_ONLY
 }
@@ -387,62 +433,67 @@ model Organization {
   zipCode              String?          @map("zip_code")
   city                 String?
   country              String           @default("DE")
+  taxProfile           TaxProfile?      @map("tax_profile")
+  inputTaxDeductible   Boolean          @default(false) @map("input_tax_deductible")
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  memberships               Membership[]
-  invitations               Invitation[]
-  platforms                 Platform[]
-  carriers                  Carrier[]
-  taxRates                  TaxRate[]
-  stockItems                StockItem[]
-  sales                     Sale[]
-  returns                   Return[]
-  consignments              ConsignmentInventory[]
-  debts                     Debt[]
-  tasks                     Task[]
-  credentials               Credential[]
-  auditLogs                 AuditLog[]
-  listings                  StockItemListing[]
-  shippingRates             ShippingRate[]
-  saleItems                 SaleItem[]
-  selectOptions             SelectOption[]
-  products                  Product[]
+  memberships                Membership[]
+  invitations                Invitation[]
+  platforms                  Platform[]
+  carriers                   Carrier[]
+  taxRates                   TaxRate[]
+  stockItems                 StockItem[]
+  sales                      Sale[]
+  returns                    Return[]
+  consignments               ConsignmentInventory[]
+  debts                      Debt[]
+  tasks                      Task[]
+  credentials                Credential[]
+  auditLogs                  AuditLog[]
+  listings                   StockItemListing[]
+  shippingRates              ShippingRate[]
+  saleItems                  SaleItem[]
+  selectOptions              SelectOption[]
+  products                   Product[]
   // Phase 1 – additives Datenmodell
-  documentSequences         DocumentSequence[]
-  purchases                 Purchase[]
-  purchaseLines             PurchaseLine[]
-  purchaseReceipts          PurchaseReceipt[]
-  purchaseReceiptLines      PurchaseReceiptLine[]
-  inventoryPositions        InventoryPosition[]
-  ownedStockLots            OwnedStockLot[]
-  consignmentLots           ConsignmentLot[]
-  inventoryMovements        InventoryMovement[]
-  inventoryPositionListings InventoryPositionListing[]
-  saleLines                 SaleLine[]
-  saleLineAllocations       SaleLineAllocation[]
-  returnLines               ReturnLine[]
-  returnAllocations         ReturnAllocation[]
-  debtPurchaseLinks         DebtPurchaseLink[]
-  debtSaleLinks             DebtSaleLink[]
-  debtInventoryLinks        DebtInventoryLink[]
-  importBatches             ImportBatch[]
-  sourceReferences          SourceReference[]
-  businessPartners          BusinessPartner[]
-  businessPartnerRoles      BusinessPartnerRole[]
-  marketplaceAccounts       MarketplaceAccount[]
-  payoutAccounts            PayoutAccount[]
-  expenseCategories         ExpenseCategory[]
-  expenses                  Expense[]
-  expenseRecurrenceRules    ExpenseRecurrenceRule[]
-  supplierReturns           SupplierReturn[]
-  supplierReturnLines       SupplierReturnLine[]
-  taskAssignments           TaskAssignment[]
-  taskChecklistItems        TaskChecklistItem[]
-  taskActivities            TaskActivity[]
-  feeSchedules              FeeSchedule[]
-  feeRules                  FeeRule[]
-  featureEntitlements       FeatureEntitlement[]
+  documentSequences          DocumentSequence[]
+  purchases                  Purchase[]
+  purchaseLines              PurchaseLine[]
+  purchaseReceipts           PurchaseReceipt[]
+  purchaseReceiptLines       PurchaseReceiptLine[]
+  inventoryPositions         InventoryPosition[]
+  ownedStockLots             OwnedStockLot[]
+  consignmentLots            ConsignmentLot[]
+  inventoryMovements         InventoryMovement[]
+  inventoryPositionListings  InventoryPositionListing[]
+  saleLines                  SaleLine[]
+  saleLineAllocations        SaleLineAllocation[]
+  returnLines                ReturnLine[]
+  returnAllocations          ReturnAllocation[]
+  debtPurchaseLinks          DebtPurchaseLink[]
+  debtSaleLinks              DebtSaleLink[]
+  debtInventoryLinks         DebtInventoryLink[]
+  importBatches              ImportBatch[]
+  sourceReferences           SourceReference[]
+  businessPartners           BusinessPartner[]
+  businessPartnerRoles       BusinessPartnerRole[]
+  marketplaceAccounts        MarketplaceAccount[]
+  payoutAccounts             PayoutAccount[]
+  expenseCategories          ExpenseCategory[]
+  expenses                   Expense[]
+  expenseRecurrenceRules     ExpenseRecurrenceRule[]
+  supplierReturns            SupplierReturn[]
+  supplierReturnLines        SupplierReturnLine[]
+  taskAssignments            TaskAssignment[]
+  taskChecklistItems         TaskChecklistItem[]
+  taskActivities             TaskActivity[]
+  feeSchedules               FeeSchedule[]
+  feeRules                   FeeRule[]
+  feeCategories              FeeCategory[]
+  productMarketplaceMappings ProductMarketplaceMapping[]
+  pricingCalculations        MarketplacePricingCalculation[]
+  featureEntitlements        FeatureEntitlement[]
 
   @@map("organizations")
 }
@@ -527,6 +578,7 @@ model Platform {
   id                String   @id @default(cuid())
   organizationId    String   @map("organization_id")
   name              String // z.B. eBay, Vinted, Kleinanzeigen
+  marketplaceCode   String?  @map("marketplace_code")
   url               String?
   defaultFeePercent Decimal  @default(0) @map("default_fee_percent") @db.Decimal(5, 2)
   active            Boolean  @default(true)
@@ -540,6 +592,7 @@ model Platform {
   inventoryListings   InventoryPositionListing[]
   marketplaceAccounts MarketplaceAccount[]
   feeRules            FeeRule[]
+  feeSchedules        FeeSchedule[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -716,23 +769,29 @@ model SelectOption {
 
 // Produktkatalog: wiederkehrende Produkte für schnelles Eintragen
 model Product {
-  id                String   @id @default(cuid())
-  organizationId    String   @map("organization_id")
-  name              String
-  brand             String?
-  variant           String? // Variante/Version
-  size              String? // Größe (Phase-1-Ergänzung fürs neue Datenmodell)
-  category          String?
-  ean               String?
-  defaultPriceCents Int?     @map("default_price_cents") // Standard-EK brutto
-  imageUrls         String[] @default([]) @map("image_urls")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                          String         @id @default(cuid())
+  organizationId              String         @map("organization_id")
+  name                        String
+  brand                       String?
+  variant                     String? // Variante/Version
+  size                        String? // Größe (Phase-1-Ergänzung fürs neue Datenmodell)
+  category                    String?
+  ean                         String?
+  defaultPriceCents           Int?           @map("default_price_cents") // Standard-EK brutto
+  defaultCondition            ItemCondition? @map("default_condition")
+  defaultShippingCostCents    Int?           @map("default_shipping_cost_cents")
+  defaultPackagingCostCents   Int?           @map("default_packaging_cost_cents")
+  lastReferenceSalePriceCents Int?           @map("last_reference_sale_price_cents")
+  imageUrls                   String[]       @default([]) @map("image_urls")
+  createdAt                   DateTime       @default(now()) @map("created_at")
+  updatedAt                   DateTime       @updatedAt @map("updated_at")
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  purchaseLines      PurchaseLine[]
-  inventoryPositions InventoryPosition[]
-  saleLines          SaleLine[]
+  organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseLines       PurchaseLine[]
+  inventoryPositions  InventoryPosition[]
+  saleLines           SaleLine[]
+  marketplaceMappings ProductMarketplaceMapping[]
+  pricingCalculations MarketplacePricingCalculation[]
 
   @@unique([organizationId, name, variant])
   @@index([organizationId])
@@ -746,6 +805,8 @@ model Sale {
   platformId               String                   @map("platform_id")
   marketplaceAccountId     String?                  @map("marketplace_account_id")
   payoutAccountId          String?                  @map("payout_account_id")
+  pricingCalculationId     String?                  @map("pricing_calculation_id")
+  feeScheduleId            String?                  @map("fee_schedule_id")
   carrierId                String?                  @map("carrier_id")
   taxRateId                String?                  @map("tax_rate_id")
   soldAt                   DateTime                 @default(now()) @map("sold_at")
@@ -765,6 +826,7 @@ model Sale {
   platformFeeNetCents      Int                      @default(0) @map("platform_fee_net_cents") // berechnet oder manuell
   feeInclVat               Boolean                  @default(true) @map("fee_incl_vat") // Gebühren inkl. MwSt?
   paymentFeeCents          Int                      @default(0) @map("payment_fee_cents") // Alt-Feld (in Plattformgebühren aufgegangen)
+  marketplaceFeeSnapshot   Json                     @default("{}") @map("marketplace_fee_snapshot")
   // Informative Checkbox-Status:
   invoiceCreated           Boolean                  @default(false) @map("invoice_created")
   postageBooked            Boolean                  @default(false) @map("postage_booked")
@@ -778,13 +840,15 @@ model Sale {
   createdAt                DateTime                 @default(now()) @map("created_at")
   updatedAt                DateTime                 @updatedAt @map("updated_at")
 
-  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  stockItem          StockItem?             @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
-  platform           Platform               @relation(fields: [platformId], references: [id], onDelete: Restrict)
-  marketplaceAccount MarketplaceAccount?    @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
-  payoutAccount      PayoutAccount?         @relation(fields: [payoutAccountId], references: [id], onDelete: SetNull)
-  carrier            Carrier?               @relation(fields: [carrierId], references: [id], onDelete: SetNull)
-  taxRate            TaxRate?               @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  organization       Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stockItem          StockItem?                     @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
+  platform           Platform                       @relation(fields: [platformId], references: [id], onDelete: Restrict)
+  marketplaceAccount MarketplaceAccount?            @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
+  payoutAccount      PayoutAccount?                 @relation(fields: [payoutAccountId], references: [id], onDelete: SetNull)
+  pricingCalculation MarketplacePricingCalculation? @relation(fields: [pricingCalculationId], references: [id], onDelete: SetNull)
+  feeSchedule        FeeSchedule?                   @relation(fields: [feeScheduleId], references: [id], onDelete: SetNull)
+  carrier            Carrier?                       @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  taxRate            TaxRate?                       @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   items              SaleItem[]
   saleLines          SaleLine[]
   returns            Return[]
@@ -796,6 +860,8 @@ model Sale {
   @@index([organizationId, status])
   @@index([marketplaceAccountId])
   @@index([payoutAccountId])
+  @@index([pricingCalculationId])
+  @@index([feeScheduleId])
   @@map("sales")
 }
 
@@ -1583,26 +1649,39 @@ model BusinessPartnerRole {
 }
 
 model MarketplaceAccount {
-  id                     String                 @id @default(cuid())
-  organizationId         String                 @map("organization_id")
-  platformId             String                 @map("platform_id")
-  displayName            String                 @map("display_name")
-  externalAccountId      String?                @map("external_account_id")
-  accountType            MarketplaceAccountType @default(BUSINESS) @map("account_type")
-  active                 Boolean                @default(true)
-  defaultPayoutAccountId String?                @map("default_payout_account_id")
-  defaultFeeScheduleId   String?                @map("default_fee_schedule_id")
-  metadata               Json                   @default("{}")
-  createdAt              DateTime               @default(now()) @map("created_at")
-  updatedAt              DateTime               @updatedAt @map("updated_at")
+  id                        String                 @id @default(cuid())
+  organizationId            String                 @map("organization_id")
+  platformId                String                 @map("platform_id")
+  displayName               String                 @map("display_name")
+  externalAccountId         String?                @map("external_account_id")
+  accountType               MarketplaceAccountType @default(BUSINESS) @map("account_type")
+  marketplaceCode           String?                @map("marketplace_code")
+  marketplaceCountry        String?                @map("marketplace_country")
+  sellerProfile             String?                @map("seller_profile")
+  shopModel                 String?                @map("shop_model")
+  taxProfile                TaxProfile?            @map("tax_profile")
+  standardCondition         ItemCondition?         @map("standard_condition")
+  defaultShippingCostCents  Int?                   @map("default_shipping_cost_cents")
+  defaultPackagingCostCents Int?                   @map("default_packaging_cost_cents")
+  promotedListingsDefault   Boolean                @default(false) @map("promoted_listings_default")
+  defaultAdvertisingPercent Decimal                @default(0) @map("default_advertising_percent") @db.Decimal(7, 4)
+  active                    Boolean                @default(true)
+  defaultPayoutAccountId    String?                @map("default_payout_account_id")
+  defaultFeeScheduleId      String?                @map("default_fee_schedule_id")
+  metadata                  Json                   @default("{}")
+  createdAt                 DateTime               @default(now()) @map("created_at")
+  updatedAt                 DateTime               @updatedAt @map("updated_at")
 
-  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  platform             Platform       @relation(fields: [platformId], references: [id], onDelete: Cascade)
-  defaultPayoutAccount PayoutAccount? @relation(fields: [defaultPayoutAccountId], references: [id], onDelete: SetNull)
-  defaultFeeSchedule   FeeSchedule?   @relation(fields: [defaultFeeScheduleId], references: [id], onDelete: SetNull)
+  organization         Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform             Platform                        @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  defaultPayoutAccount PayoutAccount?                  @relation(fields: [defaultPayoutAccountId], references: [id], onDelete: SetNull)
+  defaultFeeSchedule   FeeSchedule?                    @relation(fields: [defaultFeeScheduleId], references: [id], onDelete: SetNull)
   sales                Sale[]
   credentials          Credential[]
   feeRules             FeeRule[]
+  expenses             Expense[]
+  productMappings      ProductMarketplaceMapping[]
+  pricingCalculations  MarketplacePricingCalculation[]
 
   @@unique([organizationId, platformId, displayName])
   @@index([organizationId])
@@ -1659,35 +1738,46 @@ model ExpenseCategory {
 }
 
 model Expense {
-  id               String        @id @default(cuid())
-  organizationId   String        @map("organization_id")
-  categoryId       String?       @map("category_id")
-  supplierId       String?       @map("supplier_id")
-  paymentAccountId String?       @map("payment_account_id")
-  description      String
-  incurredAt       DateTime      @map("incurred_at")
-  amountGross      Decimal       @map("amount_gross") @db.Decimal(12, 2)
-  amountNet        Decimal       @map("amount_net") @db.Decimal(12, 2)
-  taxRatePercent   Decimal       @default(0) @map("tax_rate_percent") @db.Decimal(5, 2)
-  taxAmount        Decimal       @default(0) @map("tax_amount") @db.Decimal(12, 2)
-  receiptReference String?       @map("receipt_reference")
-  notes            String?
-  status           ExpenseStatus @default(DRAFT)
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
+  id                       String        @id @default(cuid())
+  organizationId           String        @map("organization_id")
+  categoryId               String?       @map("category_id")
+  supplierId               String?       @map("supplier_id")
+  paymentAccountId         String?       @map("payment_account_id")
+  marketplaceAccountId     String?       @map("marketplace_account_id")
+  recurringSourceExpenseId String?       @map("recurring_source_expense_id")
+  occurrenceKey            String?       @map("occurrence_key")
+  description              String
+  incurredAt               DateTime      @map("incurred_at")
+  dueAt                    DateTime?     @map("due_at")
+  paidAt                   DateTime?     @map("paid_at")
+  amountGross              Decimal       @map("amount_gross") @db.Decimal(12, 2)
+  amountNet                Decimal       @map("amount_net") @db.Decimal(12, 2)
+  taxRatePercent           Decimal       @default(0) @map("tax_rate_percent") @db.Decimal(5, 2)
+  taxAmount                Decimal       @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  receiptReference         String?       @map("receipt_reference")
+  notes                    String?
+  status                   ExpenseStatus @default(DRAFT)
+  createdAt                DateTime      @default(now()) @map("created_at")
+  updatedAt                DateTime      @updatedAt @map("updated_at")
 
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category       ExpenseCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  supplier       BusinessPartner?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  paymentAccount PayoutAccount?         @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
-  recurrence     ExpenseRecurrenceRule?
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category             ExpenseCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  supplier             BusinessPartner?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  paymentAccount       PayoutAccount?         @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
+  recurrence           ExpenseRecurrenceRule?
+  marketplaceAccount   MarketplaceAccount?    @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
+  recurringSource      Expense?               @relation("ExpenseOccurrences", fields: [recurringSourceExpenseId], references: [id], onDelete: SetNull)
+  generatedOccurrences Expense[]              @relation("ExpenseOccurrences")
 
+  @@unique([organizationId, occurrenceKey])
   @@index([organizationId])
   @@index([organizationId, incurredAt])
   @@index([organizationId, status])
   @@index([categoryId])
   @@index([supplierId])
   @@index([paymentAccountId])
+  @@index([marketplaceAccountId])
+  @@index([recurringSourceExpenseId])
   @@map("expenses")
 }
 
@@ -1834,51 +1924,83 @@ model TaskActivity {
 }
 
 model FeeSchedule {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  name           String
-  description    String?
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id              String           @id @default(cuid())
+  organizationId  String           @map("organization_id")
+  platformId      String?          @map("platform_id")
+  name            String
+  description     String?
+  marketplaceCode String?          @map("marketplace_code")
+  sellerProfile   String?          @map("seller_profile")
+  version         String?          @map("catalog_version")
+  sourceUrl       String?          @map("source_url")
+  retrievedAt     DateTime?        @map("retrieved_at")
+  validFrom       DateTime?        @map("valid_from")
+  validUntil      DateTime?        @map("valid_until")
+  sourceHash      String?          @map("source_hash")
+  status          FeeCatalogStatus @default(DRAFT)
+  notes           String?
+  importReport    Json             @default("{}") @map("import_report")
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  defaultForAccounts MarketplaceAccount[]
-  rules              FeeRule[]
+  organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform            Platform?                       @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  defaultForAccounts  MarketplaceAccount[]
+  rules               FeeRule[]
+  categories          FeeCategory[]
+  pricingCalculations MarketplacePricingCalculation[]
+  sales               Sale[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
   @@index([organizationId, active])
+  @@index([platformId])
+  @@index([organizationId, marketplaceCode, status])
   @@map("fee_schedules")
 }
 
 model FeeRule {
-  id                   String          @id @default(cuid())
-  organizationId       String          @map("organization_id")
-  feeScheduleId        String?         @map("fee_schedule_id")
-  platformId           String          @map("platform_id")
-  marketplaceAccountId String?         @map("marketplace_account_id")
-  category             String?
-  itemCondition        ItemCondition?  @map("item_condition")
-  validFrom            DateTime        @map("valid_from")
-  validUntil           DateTime?       @map("valid_until")
-  percentage           Decimal         @default(0) @db.Decimal(7, 4)
-  fixedFeeCents        Int             @default(0) @map("fixed_fee_cents")
-  minimumFeeCents      Int?            @map("minimum_fee_cents")
-  maximumFeeCents      Int?            @map("maximum_fee_cents")
-  advertisingPercent   Decimal         @default(0) @map("advertising_percent") @db.Decimal(7, 4)
-  paymentFeePercent    Decimal         @default(0) @map("payment_fee_percent") @db.Decimal(7, 4)
-  vatTreatment         FeeVatTreatment @default(UNKNOWN) @map("vat_treatment")
-  priority             Int             @default(0)
-  origin               FeeRuleOrigin   @default(MANUAL)
-  source               String?
-  active               Boolean         @default(true)
-  metadata             Json            @default("{}")
-  createdAt            DateTime        @default(now()) @map("created_at")
-  updatedAt            DateTime        @updatedAt @map("updated_at")
+  id                       String          @id @default(cuid())
+  organizationId           String          @map("organization_id")
+  feeScheduleId            String?         @map("fee_schedule_id")
+  feeCategoryId            String?         @map("fee_category_id")
+  platformId               String          @map("platform_id")
+  marketplaceAccountId     String?         @map("marketplace_account_id")
+  category                 String?
+  sellerProfile            String?         @map("seller_profile")
+  shopModel                String?         @map("shop_model")
+  itemCondition            ItemCondition?  @map("item_condition")
+  validFrom                DateTime        @map("valid_from")
+  validUntil               DateTime?       @map("valid_until")
+  percentage               Decimal         @default(0) @db.Decimal(7, 4)
+  percentageAbove          Decimal?        @map("percentage_above") @db.Decimal(7, 4)
+  tierThresholdCents       Int?            @map("tier_threshold_cents")
+  fixedFeeCents            Int             @default(0) @map("fixed_fee_cents")
+  fixedOrderFeeCents       Int             @default(0) @map("fixed_order_fee_cents")
+  fixedOrderThresholdCents Int?            @map("fixed_order_threshold_cents")
+  fixedOrderFeeAboveCents  Int?            @map("fixed_order_fee_above_cents")
+  fixedItemFeeCents        Int             @default(0) @map("fixed_item_fee_cents")
+  listingFeeCents          Int             @default(0) @map("listing_fee_cents")
+  shopDiscountPercent      Decimal         @default(0) @map("shop_discount_percent") @db.Decimal(7, 4)
+  calculationBasis         String          @default("ITEM_PLUS_BUYER_SHIPPING") @map("calculation_basis")
+  minimumFeeCents          Int?            @map("minimum_fee_cents")
+  maximumFeeCents          Int?            @map("maximum_fee_cents")
+  advertisingPercent       Decimal         @default(0) @map("advertising_percent") @db.Decimal(7, 4)
+  paymentFeePercent        Decimal         @default(0) @map("payment_fee_percent") @db.Decimal(7, 4)
+  vatTreatment             FeeVatTreatment @default(UNKNOWN) @map("vat_treatment")
+  priority                 Int             @default(0)
+  origin                   FeeRuleOrigin   @default(MANUAL)
+  source                   String?
+  sourceReference          String?         @map("source_reference")
+  active                   Boolean         @default(true)
+  metadata                 Json            @default("{}")
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
 
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   feeSchedule        FeeSchedule?        @relation(fields: [feeScheduleId], references: [id], onDelete: SetNull)
+  feeCategory        FeeCategory?        @relation(fields: [feeCategoryId], references: [id], onDelete: SetNull)
   platform           Platform            @relation(fields: [platformId], references: [id], onDelete: Cascade)
   marketplaceAccount MarketplaceAccount? @relation(fields: [marketplaceAccountId], references: [id], onDelete: Cascade)
 
@@ -1887,7 +2009,109 @@ model FeeRule {
   @@index([platformId])
   @@index([marketplaceAccountId])
   @@index([feeScheduleId])
+  @@index([feeCategoryId])
   @@map("fee_rules")
+}
+
+model FeeCategory {
+  id                 String    @id @default(cuid())
+  organizationId     String    @map("organization_id")
+  feeScheduleId      String    @map("fee_schedule_id")
+  parentId           String?   @map("parent_id")
+  marketplaceCode    String    @map("marketplace_code")
+  officialName       String    @map("official_name")
+  externalCategoryId String?   @map("external_category_id")
+  validFrom          DateTime? @map("valid_from")
+  validUntil         DateTime? @map("valid_until")
+  sourceReference    String?   @map("source_reference")
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  feeSchedule         FeeSchedule                     @relation(fields: [feeScheduleId], references: [id], onDelete: Restrict)
+  parent              FeeCategory?                    @relation("FeeCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children            FeeCategory[]                   @relation("FeeCategoryTree")
+  rules               FeeRule[]
+  productMappings     ProductMarketplaceMapping[]
+  pricingCalculations MarketplacePricingCalculation[]
+
+  @@unique([feeScheduleId, marketplaceCode, officialName, parentId])
+  @@index([organizationId])
+  @@index([feeScheduleId])
+  @@index([parentId])
+  @@index([marketplaceCode, externalCategoryId])
+  @@map("fee_categories")
+}
+
+model ProductMarketplaceMapping {
+  id                   String                   @id @default(cuid())
+  organizationId       String                   @map("organization_id")
+  productId            String                   @map("product_id")
+  marketplaceAccountId String?                  @map("marketplace_account_id")
+  feeCategoryId        String                   @map("fee_category_id")
+  marketplaceCode      String                   @map("marketplace_code")
+  status               MarketplaceMappingStatus @default(UNASSIGNED)
+  confirmedAt          DateTime?                @map("confirmed_at")
+  confirmedById        String?                  @map("confirmed_by_id")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketplaceAccount MarketplaceAccount? @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
+  feeCategory        FeeCategory         @relation(fields: [feeCategoryId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, marketplaceCode])
+  @@index([organizationId])
+  @@index([feeCategoryId])
+  @@index([marketplaceAccountId])
+  @@map("product_marketplace_mappings")
+}
+
+model MarketplacePricingCalculation {
+  id                     String                   @id @default(cuid())
+  organizationId         String                   @map("organization_id")
+  productId              String?                  @map("product_id")
+  marketplaceAccountId   String?                  @map("marketplace_account_id")
+  feeScheduleId          String                   @map("fee_schedule_id")
+  feeCategoryId          String                   @map("fee_category_id")
+  marketplaceCode        String                   @map("marketplace_code")
+  inputMode              PricingInputMode         @map("input_mode")
+  status                 PricingCalculationStatus @default(IDEA)
+  itemCondition          ItemCondition?           @map("item_condition")
+  purchasePriceCents     Int                      @map("purchase_price_cents")
+  expectedSalePriceCents Int                      @map("expected_sale_price_cents")
+  priceSource            MarketplacePriceSource?  @map("price_source")
+  inputSnapshot          Json                     @map("input_snapshot")
+  feeBreakdown           Json                     @map("fee_breakdown")
+  feeRuleIds             String[]                 @default([]) @map("fee_rule_ids")
+  profitCents            Int                      @map("profit_cents")
+  marginCents            Int                      @map("margin_cents")
+  marginBasisPoints      Int?                     @map("margin_basis_points")
+  breakEvenCents         Int                      @map("break_even_cents")
+  expectedPayoutCents    Int                      @map("expected_payout_cents")
+  fingerprint            String
+  stale                  Boolean                  @default(false)
+  note                   String?
+  calculatedAt           DateTime                 @default(now()) @map("calculated_at")
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product            Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  marketplaceAccount MarketplaceAccount? @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
+  feeSchedule        FeeSchedule         @relation(fields: [feeScheduleId], references: [id], onDelete: Restrict)
+  feeCategory        FeeCategory         @relation(fields: [feeCategoryId], references: [id], onDelete: Restrict)
+  sales              Sale[]
+
+  @@index([organizationId])
+  @@index([organizationId, marketplaceCode, calculatedAt])
+  @@index([productId])
+  @@index([marketplaceAccountId])
+  @@index([feeScheduleId])
+  @@index([feeCategoryId])
+  @@map("marketplace_pricing_calculations")
 }
 
 model FeatureEntitlement {

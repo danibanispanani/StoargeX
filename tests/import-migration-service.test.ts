@@ -96,6 +96,24 @@ async function dryRun(table: Parameters<typeof runMigrationImport>[0]["table"], 
 }
 
 describe("import migration pipeline", () => {
+  it("Dry Run: Ausgaben validieren Pflichtfelder und Wiederholungsintervall", async () => {
+    const valid = await dryRun("ausgaben", [{
+      bezeichnung: "eBay-Shop",
+      kategorie: "Plattformabo",
+      brutto: "29,95",
+      netto: "25,17",
+      steuer: "19",
+      zahlungsdatum: "14.07.2026",
+      art: "Wiederkehrend",
+      intervall: "MONTH",
+    }]);
+    const invalid = await dryRun("ausgaben", [{ bezeichnung: "", brutto: "x", zahlungsdatum: "morgen", art: "Einmalig" }]);
+    expect(valid.validCount).toBe(1);
+    expect(valid.summary.errors).toBe(0);
+    expect(invalid.summary.errors).toBe(1);
+    expect(invalid.summary.review[0].errors).toEqual(expect.arrayContaining(["Bezeichnung fehlt.", "Zahlungsdatum ist ungültig.", "Betrag brutto ist ungültig."]));
+  });
+
   it("parst Einzelreferenzen, & und Bereiche", () => {
     expect(parseLegacyReferences("L-26-600 & L-26-601")).toEqual(["L-26-600", "L-26-601"]);
     expect(parseLegacyReferences("L-26-594 - L-26-596")).toEqual(["L-26-594", "L-26-595", "L-26-596"]);

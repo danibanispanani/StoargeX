@@ -320,6 +320,32 @@ export async function GET(
       }));
       break;
     }
+    case "ausgaben": {
+      const expenses = await db.expense.findMany({
+        include: { category: true, supplier: true, paymentAccount: true, marketplaceAccount: true, recurrence: true },
+        orderBy: { incurredAt: "desc" },
+      });
+      rows = expenses.map((expense) => ({
+        Bezeichnung: expense.description,
+        Kategorie: expense.category?.name ?? "",
+        Art: expense.recurrence ? "Wiederkehrend" : "Einmalig",
+        Lieferant: expense.supplier?.displayName ?? "",
+        "Betrag brutto": expense.amountGross.toFixed(2).replace(".", ","),
+        "Betrag netto": expense.amountNet.toFixed(2).replace(".", ","),
+        "Steuer (%)": expense.taxRatePercent.toFixed(2).replace(".", ","),
+        Zahlungsdatum: date(expense.incurredAt),
+        Fälligkeit: date(expense.dueAt),
+        Zahlungskonto: expense.paymentAccount?.displayName ?? "",
+        Intervall: expense.recurrence?.interval ?? "",
+        Startdatum: date(expense.recurrence?.startsAt),
+        Enddatum: date(expense.recurrence?.endsAt),
+        Status: expense.status,
+        Beleg: expense.receiptReference ?? "",
+        Notiz: expense.notes ?? "",
+        Marktplatzkonto: expense.marketplaceAccount?.displayName ?? "",
+      }));
+      break;
+    }
   }
 
   const filenameBase = `storagex-${table}-${new Date().toISOString().slice(0, 10)}`;

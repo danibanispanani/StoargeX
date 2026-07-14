@@ -67,6 +67,9 @@ export interface CreateInventorySaleInput {
   organizationId: string;
   createdById: string;
   platformId: string;
+  marketplaceAccountId?: string | null;
+  feeScheduleId?: string | null;
+  marketplaceFeeSnapshot?: Prisma.InputJsonValue;
   soldAt: Date;
   selections: SaleSelectionInput[];
   saleGrossCents: number;
@@ -293,6 +296,9 @@ async function createInventorySaleInTransaction(
     data: {
       organizationId: input.organizationId,
       platformId: input.platformId,
+      marketplaceAccountId: input.marketplaceAccountId || null,
+      feeScheduleId: input.feeScheduleId || null,
+      marketplaceFeeSnapshot: input.marketplaceFeeSnapshot ?? {},
       soldAt: input.soldAt,
       quantity: linesWithAmounts.reduce((sum, line) => sum + line.quantity, 0),
       salePriceCents: input.saleGrossCents,

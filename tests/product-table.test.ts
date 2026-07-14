@@ -17,12 +17,27 @@ describe("product table configuration", () => {
       .map((column) => column.key);
 
     expect(defaults).toEqual(["name", "variant", "category", "brand", "usage"]);
-    expect(optional).toEqual(["ean", "defaultPrice", "size", "images", "updatedAt"]);
+    expect(optional).toEqual([
+      "ean",
+      "defaultPrice",
+      "size",
+      "images",
+      "updatedAt",
+      "condition",
+      "ebayCategory",
+      "ebayBreakEven",
+      "ebayProfit",
+      "kauflandCategory",
+      "kauflandBreakEven",
+      "kauflandProfit",
+      "calculationStatus",
+    ]);
     expect(PRODUCT_TABLE_DEFINITION.presets.map((preset) => preset.key)).toEqual([
       "catalog",
       "used",
       "unused",
       "low-stock",
+      "pricing",
     ]);
   });
 

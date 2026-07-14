@@ -18,12 +18,17 @@ describe("app navigation metadata", () => {
       "/produkte",
       "/verkauf",
       "/retouren",
+      "/finanzen/preisrechner/ebay",
+      "/finanzen/preisrechner/kaufland",
+      "/finanzen/gebuehren",
+      "/finanzen/ausgaben",
       "/schulden",
       "/versand",
       "/konsignation",
       "/aufgaben",
       "/team",
       "/zugangsdaten",
+      "/einstellungen/marktplatzkonten",
       "/einstellungen",
     ]);
   });

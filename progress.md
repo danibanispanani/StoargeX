@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-07-14 — Prompt 5
+- Read the complete attached Prompt 5 and confirmed a clean Prompt-4 commit baseline.
+- Loaded planning, deep-module architecture, architecture-report, diagnosis, TDD, Huashu, Better Icons, and Browser Trace instructions plus required references.
+- Established the public TDD seams and a six-phase plan before product edits. No product or schema file has been changed yet.
+- Inspected the current product table/dialog, sale dialog/action seam, settings surface and catalog settings actions. Confirmed that pricing/category/account snapshots are additive gaps rather than replacements for existing flows.
+- Verified the official eBay DE commercial-fee page and current Kaufland conditions page. Captured calculation bases, VAT treatment, fixed components, category rates and monthly plan prices for reviewed source metadata.
+- Audited the shared import pipeline, available UI primitives, local database scripts and app-shell navigation seams. No parallel subsystem is needed.
+- Added red-first tests and implemented the deterministic marketplace pricing, cent-exact break-even, product snapshot fingerprint and idempotent expense occurrence planners. Focused result: 13/13 tests pass.
+- Added additive Prisma models/migration, structured eBay/Kaufland source data, catalog import/activation with shared provenance, two calculators, fee management, account settings, expenses, exports and product category/snapshot surfaces.
+- Focused verification now passes: TypeScript clean and 66/66 pricing, catalog, snapshot, occurrence, tenant, import and product tests.
+- Fully reviewed the Prompt 0–4 governing documents and confirmed the concrete extension seams for fee/account/expense/product/import/table/navigation work.
+- Completed the manual ce-code-review fallback required by the no-subagent policy. Fixed category/group import key collisions, catalog-to-account activation drift, stale category conversion, active-catalog archival safety, discount scope, account/profile validation, quantity economics, minimum/maximum fee application, atomic free-calculation conversion, product search/defaults, and explicit manual-fee/direct-cost presentation.
+- Expanded active fee-catalog inspection to show category and individual rule rows, and documented the reviewed import/activation lifecycle, account binding, manual overrides, and direct-cost calculations.
+- Final offline gates pass: Prisma format/validate/generate, TypeScript, ESLint, `git diff --check`, 38 Vitest files and 263 tests.
+- Environment-dependent gates are not claimed: `integrity:check` cannot reach the configured Supabase host, the production build cannot fetch the three established Google fonts, and migration plus authenticated responsive browser QA require explicit network/Docker permission. No external database or app state was changed in this phase.
+
+---
+
 ## 2026-07-14 — Prompt 4
 - Loaded the persistent-planning, codebase-design/deepening, and end-to-end work instructions.
 - Confirmed the requested scope is an additive extension of the existing purchasing/inventory chain and created a five-phase execution plan covering audit, domain foundation, operational UI/imports, verification, and shipping.
@@ -402,3 +420,11 @@
 - Repeated the real credentials/session chain after migration: PASS. Nine of nine representative protected routes now return HTTP 200 with no server-side errors.
 - Integrity check passed 13/13. Stopped the test server and removed temporary helpers; retained only ignored `.env.qa.local` for future logins.
 - **Status:** complete
+# Prompt 5 final verification (2026-07-14)
+
+- Deployed the Prompt 4 and Prompt 5 additive migrations to the explicitly approved isolated QA database; Prisma reports all 20 migrations applied and the schema current.
+- Seeded only reviewed eBay.de and Kaufland.de QA fee catalogs plus two secret-free marketplace accounts in the isolated QA organization; no products, sales, purchases, inventory, or historical records were mutated.
+- Browser-verified eBay at 1440 px, Kaufland/account settings at 1280 px, expenses at 768 px, and product pricing at 390 px, plus fees and sales integration.
+- Verified deterministic non-writing calculator results, account defaults, fee provenance, category rule selection, break-even/profit output, sale snapshot account selection, product pricing columns, responsive internal table scrolling, mobile navigation, dialogs, Escape focus restoration, and visible keyboard focus order.
+- Browser console/trace showed no runtime, hydration, or application errors. Network capture contains 380 requests, 380 responses, zero HTTP errors, and zero parse errors.
+- Final database integrity check passes 13/13. Prisma validate/generate, TypeScript, ESLint, all 263 tests, production build, and diff check pass.

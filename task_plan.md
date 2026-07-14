@@ -1,4 +1,68 @@
-# Task Plan: Prompt 4 Purchasing, Suppliers and Inbound Workflow
+# Task Plan: Prompt 5 Marketplace Price Calculators, Fee Catalogs and Expenses
+
+## Goal
+Extend the existing Prompt-1 fee/account/expense foundations into two marketplace-specific, deterministic pricing workflows for eBay.de and Kaufland.de, versioned reviewed catalogs, explicit product/snapshot integration, separate operating expenses, imports/exports, browser validation, documentation, and the requested commit without parallel models or unsupported official claims.
+
+## Current Phase
+Phase 6: complete; final commit pending
+
+## Phases
+
+### Phase 1: Evidence, sources, and architecture
+- [x] Read all Prompt 0–4 documents, schema/migrations, calculations, sales/product/settings/forms, package scripts, and current history
+- [x] Verify official eBay/Kaufland sources and inventory every existing fee/account/category/expense seam
+- [x] Produce the required temporary architecture report and select the prompt-mandated deep Pricing module
+- **Status:** completed
+
+### Phase 2: TDD domain and additive migration
+- [x] Write red tests at the pricing/catalog, snapshot, expense-recurrence, import, role, and tenant interfaces
+- [x] Add only additive models/fields and a safe migration; create reviewed structured catalog fixtures with provenance
+- [x] Implement cent-safe fee resolution, tax treatment, profit/margin, break-even, target margin, maximum purchase price, snapshots, staleness, and expense occurrence invariants
+- **Status:** completed
+
+### Phase 3: Product workflows and management surfaces
+- [x] Build separate eBay and Kaufland calculators with saved/free modes and explicit save/update/convert actions
+- [x] Add fee management, marketplace-account settings, expenses, product calculation view/bulk mappings, and purchase/sale integration at established seams
+- [x] Extend the existing import/export pipeline for expenses, mappings, and calculation exports
+- **Status:** completed
+
+### Phase 4: Documentation and design polish
+- [x] Create the five required documents and import report with only verified ACTIVE facts
+- [x] Apply Huashu operational-console direction and Better Icons without a parallel prototype or decorative UI system
+- **Status:** completed
+
+### Phase 5: Database, browser, and quality gates
+- [x] Validate/generate Prisma, deploy the additive migration to the approved test environment, run typecheck/lint/all tests/integrity/diff-check/build
+- [x] Run Chrome/available browser validation at 1440/1280/768/390 with console/network/hydration/a11y checks and browser trace where supported
+- **Status:** completed; the authorized isolated QA database is current and all browser/runtime checks pass
+
+### Phase 6: Review and commit
+- [x] Run ce-code-review and fix all locally inspectable in-scope findings; prepare ce-test-browser/ce-polish
+- [x] Confirm no secrets, source-page dumps, temp files, or ambiguous ACTIVE rules; commit with the exact requested subject
+- **Status:** complete; commit is the remaining shipping action
+
+## Confirmed test seams
+- `MarketplacePricingService.calculate`: deterministic calculation and fee breakdown from explicit inputs plus a reviewed catalog snapshot.
+- `MarketplacePricingService.findBreakEven`: cent-exact bounded numerical result through the same calculation interface.
+- Catalog resolver/import interface: category/profile/shop/condition/tier validity and unsupported states.
+- Existing tenant-scoped action/service seams: saved calculation, product mapping/staleness, expense recurrence/import, role enforcement, and sale fee snapshot.
+
+## Constraints
+- No title classification, live fee scraping per calculation, product auto-mutation, automatic product creation, fixed-cost allocation, marketplace advertising beyond eBay basis ads, external marketplace APIs, or unsupported official claims.
+- eBay and Kaufland keep separate route/UI interfaces while sharing one deep calculation implementation.
+- Existing `MarketplaceAccount`, fee, product, expense, import, sale snapshot, tax, RLS, and role foundations must be extended rather than duplicated.
+- An official catalog fact is ACTIVE only when directly supported by a documented supplied/official source and covered by tests; ambiguity remains REVIEW_REQUIRED.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| `integrity:check` cannot reach the configured Supabase PostgreSQL host from the restricted runtime. | 1 | Re-ran with the user's explicit external-QA approval after additive migration deployment; all 13 checks pass. |
+| Production build reaches Next compilation but cannot download Inter, JetBrains Mono, and Space Grotesk from Google Fonts. | 1 | Re-ran with approved network access; the production build passes without altering the established font setup. |
+| Migration/browser validation needs the existing QA database or an approved local Docker PostgreSQL runtime. | 1 | Docker Desktop was unavailable, so the user-approved isolated external QA database was migrated additively and used for browser verification. |
+
+---
+
+# Historical Task Plan: Prompt 4 Purchasing, Suppliers and Inbound Workflow
 
 ## Goal
 Extend the existing Product -> Purchase -> PurchaseLine -> InventoryPosition -> OwnedStockLot -> PURCHASE_RECEIPT flow into an additive, tenant-safe procurement and partial-receipt workflow, with separate purchasing and stock workspaces, deadline attention, reusable import templates, tests, documentation, and no destructive legacy-data conversion.

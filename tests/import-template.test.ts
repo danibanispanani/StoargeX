@@ -66,4 +66,11 @@ describe("import template standard", () => {
       expect(decodeSpreadsheetSafeText(encodeSpreadsheetSafeText(value))).toBe(value);
     }
   });
+
+  it("liefert für Ausgaben Pflichtfelder, Dry-Run-Mapping und Wiederholungsmetadaten", () => {
+    const template = buildImportTemplate("ausgaben", "example");
+    expect(template.headers).toEqual(expect.arrayContaining(["Bezeichnung *", "Art *", "Betrag brutto *", "Zahlungsdatum *", "Intervall"]));
+    expect(template.rows[0]).toMatchObject({ art: "Wiederkehrend", intervall: "MONTH", status: "POSTED" });
+    expect(autoMapColumns(IMPORT_TABLES.ausgaben.fields, template.headers)).toMatchObject({ bezeichnung: "Bezeichnung *", brutto: "Betrag brutto *", marktplatzkonto: "Marktplatzkonto" });
+  });
 });

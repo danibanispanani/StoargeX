@@ -115,6 +115,9 @@ export default async function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <Button asChild variant="outline" className="mb-4">
+            <Link href="/einstellungen/marktplatzkonten">Marktplatzkonten verwalten</Link>
+          </Button>
           <PlatformsCard
             platforms={platforms.map((p) => ({
               id: p.id,

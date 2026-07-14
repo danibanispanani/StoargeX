@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PackageSearchIcon, TagsIcon } from "lucide-react";
+import { PackageSearchIcon, RefreshCwIcon, TagsIcon } from "lucide-react";
 import { toast } from "sonner";
-import { bulkCategorizeProductsAction } from "@/lib/actions/products";
+import { bulkCategorizeProductsAction, bulkMapProductsToMarketplaceCategoryAction } from "@/lib/actions/products";
+import { recalculateProductPricingAction } from "@/lib/actions/marketplace-pricing";
 import { formatEuro } from "@/lib/calculations";
 import type { TablePreferenceScope, TableSelection } from "@/lib/operational-table";
 import {
@@ -51,6 +52,13 @@ export interface ProductOperationalRow {
   ean: string;
   size: string;
   defaultPriceCents: number | null;
+  defaultCondition: string | null;
+  defaultShippingCostCents: number | null;
+  defaultPackagingCostCents: number | null;
+  ebayMapping: { feeCategoryId: string; label: string } | null;
+  kauflandMapping: { feeCategoryId: string; label: string } | null;
+  ebayCalculation: { breakEvenCents: number; profitCents: number; status: string; stale: boolean } | null;
+  kauflandCalculation: { breakEvenCents: number; profitCents: number; status: string; stale: boolean } | null;
   imageUrls: string[];
   createdAt: string;
   updatedAt: string;
@@ -78,6 +86,8 @@ export function ProductTable({
   allResultDigest,
   scope,
   categories,
+  ebayCategories,
+  kauflandCategories,
 }: {
   rows: ProductOperationalRow[];
   totalResults: number;
@@ -86,18 +96,23 @@ export function ProductTable({
   allResultDigest: string | null;
   scope: TablePreferenceScope;
   categories: string[];
+  ebayCategories: Array<{ id: string; label: string; externalId: string }>;
+  kauflandCategories: Array<{ id: string; label: string; externalId: string }>;
 }) {
+  const presetVisibleColumns = query.preset === "pricing"
+    ? ["name", "defaultPrice", "condition", "ebayCategory", "ebayBreakEven", "ebayProfit", "kauflandCategory", "kauflandBreakEven", "kauflandProfit", "calculationStatus"]
+    : defaultVisibleColumns;
   return (
     <div className="overflow-hidden border bg-card shadow-xs">
       <OperationalTableWorkspace
         scope={scope}
         basePath={PRODUCT_TABLE_DEFINITION.path}
         columns={columns}
-        defaultVisibleColumns={defaultVisibleColumns}
+        defaultVisibleColumns={presetVisibleColumns}
         pageRowIds={rows.map((row) => row.id)}
         totalResults={totalResults}
         currentQuery={queryString}
-        renderBulkActions={(selection, count, clearSelection) => (
+        renderBulkActions={(selection, count, clearSelection) => (<>
           <BulkCategoryDialog
             selection={selection}
             selectedCount={count}
@@ -106,7 +121,9 @@ export function ProductTable({
             categories={categories}
             clearSelection={clearSelection}
           />
-        )}
+          <BulkMarketplaceCategoryDialog selection={selection} selectedCount={count} queryString={queryString} allResultDigest={allResultDigest} ebayCategories={ebayCategories} kauflandCategories={kauflandCategories} clearSelection={clearSelection} />
+          {selection.mode === "explicit" ? <><PricingRecalculationButton productIds={selection.ids} marketplaceCode="EBAY_DE" label="eBay neu" onSuccess={clearSelection} /><PricingRecalculationButton productIds={selection.ids} marketplaceCode="KAUFLAND_DE" label="Kaufland neu" onSuccess={clearSelection} /></> : null}
+        </>)}
         renderTable={(state) => {
           const visibleCount = state.visibleColumns.size + 2;
           return (
@@ -135,6 +152,14 @@ export function ProductTable({
                     {state.visibleColumns.has("size") ? <SortableHead label="Größe" column="size" query={query} queryString={queryString} /> : null}
                     {state.visibleColumns.has("images") ? <TableHead>Bilder</TableHead> : null}
                     {state.visibleColumns.has("updatedAt") ? <SortableHead label="Geändert" column="updatedAt" query={query} queryString={queryString} /> : null}
+                    {state.visibleColumns.has("condition") ? <TableHead>Zustand</TableHead> : null}
+                    {state.visibleColumns.has("ebayCategory") ? <TableHead>eBay-Kategorie</TableHead> : null}
+                    {state.visibleColumns.has("ebayBreakEven") ? <TableHead className="text-right">eBay-Mindestpreis</TableHead> : null}
+                    {state.visibleColumns.has("ebayProfit") ? <TableHead className="text-right">eBay-Gewinn</TableHead> : null}
+                    {state.visibleColumns.has("kauflandCategory") ? <TableHead>Kaufland-Kategorie</TableHead> : null}
+                    {state.visibleColumns.has("kauflandBreakEven") ? <TableHead className="text-right">Kaufland-Mindestpreis</TableHead> : null}
+                    {state.visibleColumns.has("kauflandProfit") ? <TableHead className="text-right">Kaufland-Gewinn</TableHead> : null}
+                    {state.visibleColumns.has("calculationStatus") ? <TableHead>Kalkulationsstatus</TableHead> : null}
                     <TableHead className="w-64">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -188,9 +213,19 @@ export function ProductTable({
                         {state.visibleColumns.has("size") ? <TableCell>{row.size || "–"}</TableCell> : null}
                         {state.visibleColumns.has("images") ? <TableCell>{row.imageUrls.length}</TableCell> : null}
                         {state.visibleColumns.has("updatedAt") ? <TableCell className="whitespace-nowrap">{formatDate(row.updatedAt)}</TableCell> : null}
+                        {state.visibleColumns.has("condition") ? <TableCell>{row.defaultCondition ?? "–"}</TableCell> : null}
+                        {state.visibleColumns.has("ebayCategory") ? <TableCell className="max-w-64 truncate">{row.ebayMapping?.label ?? "Unvollständig"}</TableCell> : null}
+                        {state.visibleColumns.has("ebayBreakEven") ? <TableCell className="text-right font-mono">{row.ebayCalculation ? formatEuro(row.ebayCalculation.breakEvenCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("ebayProfit") ? <TableCell className="text-right font-mono">{row.ebayCalculation ? formatEuro(row.ebayCalculation.profitCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("kauflandCategory") ? <TableCell className="max-w-64 truncate">{row.kauflandMapping?.label ?? "Unvollständig"}</TableCell> : null}
+                        {state.visibleColumns.has("kauflandBreakEven") ? <TableCell className="text-right font-mono">{row.kauflandCalculation ? formatEuro(row.kauflandCalculation.breakEvenCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("kauflandProfit") ? <TableCell className="text-right font-mono">{row.kauflandCalculation ? formatEuro(row.kauflandCalculation.profitCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("calculationStatus") ? <TableCell>{row.ebayCalculation?.stale || row.kauflandCalculation?.stale ? "Veraltet" : row.ebayCalculation?.status ?? row.kauflandCalculation?.status ?? "Unvollständig"}</TableCell> : null}
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <ProductDetail row={row} />
+                            {row.ebayCalculation ? <PricingRecalculationButton productIds={[row.id]} marketplaceCode="EBAY_DE" label="eBay neu" compact /> : null}
+                            {row.kauflandCalculation ? <PricingRecalculationButton productIds={[row.id]} marketplaceCode="KAUFLAND_DE" label="Kaufland neu" compact /> : null}
                             <ProductDialog product={{
                               id: row.id,
                               name: row.name,
@@ -200,7 +235,12 @@ export function ProductTable({
                               ean: row.ean,
                               size: row.size,
                               defaultPriceCents: row.defaultPriceCents,
-                            }} />
+                              defaultCondition: row.defaultCondition,
+                              defaultShippingCostCents: row.defaultShippingCostCents,
+                              defaultPackagingCostCents: row.defaultPackagingCostCents,
+                              ebayFeeCategoryId: row.ebayMapping?.feeCategoryId,
+                              kauflandFeeCategoryId: row.kauflandMapping?.feeCategoryId,
+                            }} ebayCategories={ebayCategories} kauflandCategories={kauflandCategories} />
                             <DeleteProductButton productId={row.id} name={row.name} />
                           </div>
                         </TableCell>
@@ -216,6 +256,16 @@ export function ProductTable({
       />
     </div>
   );
+}
+
+function PricingRecalculationButton({ productIds, marketplaceCode, label, compact = false, onSuccess }: { productIds: string[]; marketplaceCode: "EBAY_DE" | "KAUFLAND_DE"; label: string; compact?: boolean; onSuccess?: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  return <Button size="sm" variant="secondary" disabled={pending} title={`${label} berechnen`} aria-label={`${label} berechnen`} onClick={() => startTransition(async () => {
+    const result = await recalculateProductPricingAction({ marketplaceCode, productIds });
+    if (result.error) toast.error(result.error);
+    else { toast.success(result.success); onSuccess?.(); router.refresh(); }
+  })}><RefreshCwIcon className={pending ? "animate-spin" : ""} />{compact ? <span className="sr-only">{label}</span> : label}</Button>;
 }
 
 function SortableHead({ label, column, query, queryString, className }: { label: string; column: ProductSortKey; query: ProductTableQuery; queryString: string; className?: string }) {
@@ -310,6 +360,13 @@ function BulkCategoryDialog({ selection, selectedCount, queryString, allResultDi
       </DialogContent>
     </Dialog>
   );
+}
+
+function BulkMarketplaceCategoryDialog({ selection, selectedCount, queryString, allResultDigest, ebayCategories, kauflandCategories, clearSelection }: { selection: TableSelection; selectedCount: number; queryString: string; allResultDigest: string | null; ebayCategories: Array<{ id: string; label: string }>; kauflandCategories: Array<{ id: string; label: string }>; clearSelection: () => void }) {
+  const router = useRouter(); const [open, setOpen] = useState(false); const [marketplaceCode, setMarketplaceCode] = useState<"EBAY_DE" | "KAUFLAND_DE">("EBAY_DE"); const [feeCategoryId, setFeeCategoryId] = useState(""); const [pending, startTransition] = useTransition();
+  const options = marketplaceCode === "EBAY_DE" ? ebayCategories : kauflandCategories;
+  function run() { startTransition(async () => { const result = await bulkMapProductsToMarketplaceCategoryAction({ marketplaceCode, feeCategoryId, expectedCount: selectedCount, expectedResultDigest: selection.mode === "all" ? allResultDigest ?? undefined : undefined, selection, query: Object.fromEntries(new URLSearchParams(queryString)) }); if (result?.error) { toast.error(result.error); return; } toast.success(result?.success); setOpen(false); clearSelection(); router.refresh(); }); }
+  return <Dialog open={open} onOpenChange={(next) => { if (!pending) setOpen(next); }}><DialogTrigger asChild><Button size="sm" variant="secondary"><TagsIcon /> Marktplatzkategorie</Button></DialogTrigger><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>{selectedCount} Produkte zuordnen</DialogTitle><DialogDescription>Die interne StorageX-Kategorie bleibt unverändert.</DialogDescription></DialogHeader><select value={marketplaceCode} onChange={(event) => { const value = event.target.value; if (value === "EBAY_DE" || value === "KAUFLAND_DE") setMarketplaceCode(value); setFeeCategoryId(""); }} className="border-input h-9 border bg-background px-3 text-sm"><option value="EBAY_DE">eBay.de</option><option value="KAUFLAND_DE">Kaufland.de</option></select><select value={feeCategoryId} onChange={(event) => setFeeCategoryId(event.target.value)} className="border-input h-9 border bg-background px-3 text-sm"><option value="">Gebührenkategorie wählen…</option>{options.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select><ConfirmActionDialog trigger={<Button disabled={!feeCategoryId || pending}>Zuordnung prüfen</Button>} title="Gebührenkategorie zuordnen?" description={`${selectedCount} Produkte erhalten eine bestätigte ${marketplaceCode === "EBAY_DE" ? "eBay" : "Kaufland"}-Zuordnung. Bestehende Kalkulationen werden als veraltet markiert.`} confirmLabel="Zuordnen" onConfirm={run} disabled={!feeCategoryId || pending} /></DialogContent></Dialog>;
 }
 
 function formatDate(value: string) {

@@ -27,13 +27,18 @@ export default async function ProductsPage({
   const requestedQuery = parseProductTableQuery(rawParams);
   const where = buildProductWhere(requestedQuery, organization.lowStockThreshold);
 
-  const [totalResults, categoryRows, brandRows] = await Promise.all([
+  const [totalResults, categoryRows, feeCategoryRows, brandRows] = await Promise.all([
     db.product.count({ where }),
     db.product.findMany({
       where: { category: { not: null } },
       select: { category: true },
       distinct: ["category"],
       orderBy: { category: "asc" },
+    }),
+    db.feeCategory.findMany({
+      where: { marketplaceCode: { in: ["EBAY_DE", "KAUFLAND_DE"] }, externalCategoryId: { not: null }, feeSchedule: { status: "ACTIVE" }, active: true },
+      select: { id: true, marketplaceCode: true, officialName: true, externalCategoryId: true },
+      orderBy: [{ marketplaceCode: "asc" }, { officialName: "asc" }],
     }),
     db.product.findMany({
       where: { brand: { not: null } },
@@ -55,6 +60,8 @@ export default async function ProductsPage({
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
       include: {
+        marketplaceMappings: { include: { feeCategory: true } },
+        pricingCalculations: { orderBy: { calculatedAt: "desc" }, take: 10 },
         _count: {
           select: {
             purchaseLines: true,
@@ -69,7 +76,12 @@ export default async function ProductsPage({
       : Promise.resolve([]),
   ]);
 
-  const rows: ProductOperationalRow[] = products.map((product) => ({
+  const rows: ProductOperationalRow[] = products.map((product) => {
+    const ebayMapping = product.marketplaceMappings.find((item) => item.marketplaceCode === "EBAY_DE");
+    const kauflandMapping = product.marketplaceMappings.find((item) => item.marketplaceCode === "KAUFLAND_DE");
+    const ebayCalculation = product.pricingCalculations.find((item) => item.marketplaceCode === "EBAY_DE");
+    const kauflandCalculation = product.pricingCalculations.find((item) => item.marketplaceCode === "KAUFLAND_DE");
+    return ({
     id: product.id,
     name: product.name,
     variant: product.variant ?? "",
@@ -78,6 +90,13 @@ export default async function ProductsPage({
     ean: product.ean ?? "",
     size: product.size ?? "",
     defaultPriceCents: product.defaultPriceCents,
+    defaultCondition: product.defaultCondition,
+    defaultShippingCostCents: product.defaultShippingCostCents,
+    defaultPackagingCostCents: product.defaultPackagingCostCents,
+    ebayMapping: ebayMapping ? { feeCategoryId: ebayMapping.feeCategoryId, label: ebayMapping.feeCategory.officialName } : null,
+    kauflandMapping: kauflandMapping ? { feeCategoryId: kauflandMapping.feeCategoryId, label: kauflandMapping.feeCategory.officialName } : null,
+    ebayCalculation: ebayCalculation ? { breakEvenCents: ebayCalculation.breakEvenCents, profitCents: ebayCalculation.profitCents, status: ebayCalculation.status, stale: ebayCalculation.stale } : null,
+    kauflandCalculation: kauflandCalculation ? { breakEvenCents: kauflandCalculation.breakEvenCents, profitCents: kauflandCalculation.profitCents, status: kauflandCalculation.status, stale: kauflandCalculation.stale } : null,
     imageUrls: product.imageUrls,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
@@ -86,7 +105,7 @@ export default async function ProductsPage({
       inventory: product._count.inventoryPositions,
       sales: product._count.saleLines,
     },
-  }));
+  }); });
   const categories = categoryRows
     .map((row) => row.category)
     .filter((value): value is string => Boolean(value));
@@ -94,6 +113,8 @@ export default async function ProductsPage({
     .map((row) => row.brand)
     .filter((value): value is string => Boolean(value));
   const queryString = productQueryToSearchParams(query).toString();
+  const ebayCategories = feeCategoryRows.filter((item) => item.marketplaceCode === "EBAY_DE").map((item) => ({ id: item.id, label: item.officialName, externalId: item.externalCategoryId ?? "" }));
+  const kauflandCategories = feeCategoryRows.filter((item) => item.marketplaceCode === "KAUFLAND_DE").map((item) => ({ id: item.id, label: item.officialName, externalId: item.externalCategoryId ?? "" }));
   const allResultDigest =
     totalResults <= 5000
       ? createHash("sha256")
@@ -110,7 +131,7 @@ export default async function ProductsPage({
         actions={
           <>
             <ImportExportBar table="produkte" />
-            <ProductDialog />
+            <ProductDialog ebayCategories={ebayCategories} kauflandCategories={kauflandCategories} />
           </>
         }
       />
@@ -124,6 +145,8 @@ export default async function ProductsPage({
         queryString={queryString}
         allResultDigest={allResultDigest}
         categories={categories}
+        ebayCategories={ebayCategories}
+        kauflandCategories={kauflandCategories}
         scope={{
           organizationId: organization.id,
           userId,

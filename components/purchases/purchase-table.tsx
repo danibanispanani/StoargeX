@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { formatEuro } from "@/lib/calculations";
 import { classifyReturnDeadline } from "@/lib/services/owned-purchase-service";
 import { PURCHASE_TABLE_DEFINITION, type PurchaseTableQuery } from "@/lib/purchases/purchase-table";
@@ -11,6 +12,7 @@ import { OperationalPagination } from "@/components/table/operational-pagination
 import { OperationalTableWorkspace, TableSelectionCheckbox } from "@/components/table/operational-table-workspace";
 import { TableSortHeader } from "@/components/table/table-sort-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface PurchaseOperationalRow {
@@ -33,7 +35,7 @@ export interface PurchaseOperationalRow {
   documentReference: string;
   comment: string;
   debtCount: number;
-  lines: Array<{ id: string; product: string; quantity: number; received: number; grossCents: number; netCents: number }>;
+  lines: Array<{ id: string; productId: string; product: string; condition: string | null; quantity: number; received: number; grossCents: number; unitGrossCents: number; netCents: number }>;
   lots: Array<{ inventoryNumber: string; quantity: number; receivedAt: string; movementId: string }>;
 }
 
@@ -93,7 +95,7 @@ export function PurchaseTable({ rows, totalResults, query, queryString, scope, n
               {state.visibleColumns.has("tax") && <TableCell>{row.lines.some((line) => line.netCents !== line.grossCents) ? "VSt. abziehbar" : "brutto"}</TableCell>}
               {state.visibleColumns.has("debt") && <TableCell>{row.debtCount ? `${row.debtCount} verknüpft` : "–"}</TableCell>}
               {state.visibleColumns.has("comment") && <TableCell className="max-w-56 truncate">{row.comment || "–"}</TableCell>}
-              <TableCell><div className="flex gap-1"><PurchaseReceiptDialog purchaseId={row.id} purchaseNumber={row.purchaseNumber} lines={openLines} /><DetailDrawer title={row.purchaseNumber} description={`${row.supplier} · ${date(row.purchaseDate)}`}><DetailGrid items={[{ label: "Lieferanten-Bestellnr.", value: row.supplierOrderNumber || "–" }, { label: "Tracking", value: row.trackingNumber || "–" }, { label: "Beleg", value: row.documentReference || "–" }, { label: "Rückgabefrist", value: <Deadline value={row.returnDeadline} nowIso={nowIso} /> }]} /><DetailSection title="Positionen">{row.lines.map((line) => <p key={line.id}>{line.product}: {line.received}/{line.quantity} · {formatEuro(line.grossCents)}</p>)}</DetailSection><DetailSection title="Lots und Bewegungen">{row.lots.length ? row.lots.map((lot) => <p key={lot.inventoryNumber}><span className="font-mono">{lot.inventoryNumber}</span> · {lot.quantity} Stk. · {date(lot.receivedAt)} · Movement {lot.movementId}</p>) : <p>Noch kein Wareneingang.</p>}</DetailSection></DetailDrawer></div></TableCell>
+              <TableCell><div className="flex gap-1"><PurchaseReceiptDialog purchaseId={row.id} purchaseNumber={row.purchaseNumber} lines={openLines} /><DetailDrawer title={row.purchaseNumber} description={`${row.supplier} · ${date(row.purchaseDate)}`}><DetailGrid items={[{ label: "Lieferanten-Bestellnr.", value: row.supplierOrderNumber || "–" }, { label: "Tracking", value: row.trackingNumber || "–" }, { label: "Beleg", value: row.documentReference || "–" }, { label: "Rückgabefrist", value: <Deadline value={row.returnDeadline} nowIso={nowIso} /> }]} /><DetailSection title="Positionen">{row.lines.map((line) => <div key={line.id} className="mb-2 flex flex-wrap items-center justify-between gap-2"><p>{line.product}: {line.received}/{line.quantity} · {formatEuro(line.grossCents)}</p><span className="flex gap-1"><Button asChild size="sm" variant="outline"><Link href={`/finanzen/preisrechner/ebay?productId=${line.productId}&purchasePriceCents=${line.unitGrossCents}${line.condition ? `&condition=${line.condition}` : ""}`}>eBay kalkulieren</Link></Button><Button asChild size="sm" variant="outline"><Link href={`/finanzen/preisrechner/kaufland?productId=${line.productId}&purchasePriceCents=${line.unitGrossCents}`}>Kaufland kalkulieren</Link></Button></span></div>)}</DetailSection><DetailSection title="Lots und Bewegungen">{row.lots.length ? row.lots.map((lot) => <p key={lot.inventoryNumber}><span className="font-mono">{lot.inventoryNumber}</span> · {lot.quantity} Stk. · {date(lot.receivedAt)} · Movement {lot.movementId}</p>) : <p>Noch kein Wareneingang.</p>}</DetailSection></DetailDrawer></div></TableCell>
             </TableRow>;
           })}</TableBody>
         </Table>

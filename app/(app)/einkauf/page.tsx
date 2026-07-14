@@ -34,7 +34,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
         debtLinks: { select: { id: true } },
         lines: {
           include: {
-            product: { select: { name: true, variant: true } },
+            product: { select: { name: true, variant: true, defaultCondition: true } },
             receiptLines: {
               include: {
                 inventoryPosition: { select: { inventoryNumber: true, receivedAt: true } },
@@ -98,13 +98,16 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
     debtCount: purchase.debtLinks.length,
     lines: purchase.lines.map((line) => ({
       id: line.id,
+      productId: line.productId,
       product: [line.product.name, line.product.variant].filter(Boolean).join(" · "),
+      condition: line.product.defaultCondition,
       quantity: line.quantity,
       received: effectiveReceivedQuantity({
         receiptQuantities: line.receiptLines.map((receipt) => receipt.quantity),
         legacyLotQuantities: line.ownedLots.map((lot) => lot.inventoryPosition.quantityReceived),
       }),
       grossCents: decimalToCents(line.totalGross),
+      unitGrossCents: decimalToCents(line.unitPriceGross),
       netCents: decimalToCents(line.totalNet),
     })),
     lots: purchase.lines.flatMap((line) => line.receiptLines.length > 0

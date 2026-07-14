@@ -22,6 +22,11 @@ const productSchema = z.object({
   ean: z.string().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional().or(z.literal("")),
   defaultPrice: z.string().optional().or(z.literal("")),
   size: z.string().max(100).optional().or(z.literal("")),
+  defaultCondition: z.enum(["NEW", "OPEN_BOX", "REFURBISHED", "USED", "DEFECTIVE"]).optional().or(z.literal("")),
+  defaultShippingCost: z.string().optional().or(z.literal("")),
+  defaultPackagingCost: z.string().optional().or(z.literal("")),
+  ebayFeeCategoryId: z.string().optional().or(z.literal("")),
+  kauflandFeeCategoryId: z.string().optional().or(z.literal("")),
 });
 
 function parseProductForm(formData: FormData) {
@@ -33,6 +38,11 @@ function parseProductForm(formData: FormData) {
     ean: formData.get("ean"),
     defaultPrice: formData.get("defaultPrice"),
     size: formData.get("size"),
+    defaultCondition: formData.get("defaultCondition") ?? "",
+    defaultShippingCost: formData.get("defaultShippingCost") ?? "",
+    defaultPackagingCost: formData.get("defaultPackagingCost") ?? "",
+    ebayFeeCategoryId: formData.get("ebayFeeCategoryId") ?? "",
+    kauflandFeeCategoryId: formData.get("kauflandFeeCategoryId") ?? "",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Ungültige Eingaben." } as const;
@@ -45,7 +55,15 @@ function parseProductForm(formData: FormData) {
       return { error: "Ungültiger Standard-EK." } as const;
     }
   }
-  return { data: parsed.data, defaultPriceCents } as const;
+  let defaultShippingCostCents: number | null = null;
+  let defaultPackagingCostCents: number | null = null;
+  try {
+    defaultShippingCostCents = parsed.data.defaultShippingCost?.trim() ? euroToCents(parsed.data.defaultShippingCost) : null;
+    defaultPackagingCostCents = parsed.data.defaultPackagingCost?.trim() ? euroToCents(parsed.data.defaultPackagingCost) : null;
+  } catch {
+    return { error: "Ungültige Versand- oder Verpackungskosten." } as const;
+  }
+  return { data: parsed.data, defaultPriceCents, defaultShippingCostCents, defaultPackagingCostCents, hasMarketplaceMappingFields: formData.has("ebayFeeCategoryId") || formData.has("kauflandFeeCategoryId") } as const;
 }
 
 /** Katalogprodukt anlegen. */
@@ -57,7 +75,7 @@ export async function createProductAction(
 
   const result = parseProductForm(formData);
   if ("error" in result) return { error: result.error };
-  const { data, defaultPriceCents } = result;
+  const { data, defaultPriceCents, defaultShippingCostCents, defaultPackagingCostCents, hasMarketplaceMappingFields } = result;
 
   let imageUrls: string[] = [];
   const image = formData.get("image");
@@ -85,8 +103,15 @@ export async function createProductAction(
       defaultPriceCents,
       imageUrls,
       size: data.size || null,
+      defaultCondition: data.defaultCondition || null,
+      defaultShippingCostCents,
+      defaultPackagingCostCents,
     },
   });
+  if (hasMarketplaceMappingFields) {
+    const mappingError = await saveProductMarketplaceMappings(db, product.id, data.ebayFeeCategoryId, data.kauflandFeeCategoryId, userId);
+    if (mappingError) return { error: mappingError };
+  }
 
   await writeAuditLog({
     organizationId: organization.id,
@@ -114,7 +139,7 @@ export async function updateProductAction(
 
   const result = parseProductForm(formData);
   if ("error" in result) return { error: result.error };
-  const { data, defaultPriceCents } = result;
+  const { data, defaultPriceCents, defaultShippingCostCents, defaultPackagingCostCents, hasMarketplaceMappingFields } = result;
 
   let imageUrls = existing.imageUrls;
   const image = formData.get("image");
@@ -137,8 +162,15 @@ export async function updateProductAction(
       defaultPriceCents,
       imageUrls,
       size: data.size || null,
+      defaultCondition: data.defaultCondition || null,
+      defaultShippingCostCents,
+      defaultPackagingCostCents,
     },
   });
+  if (hasMarketplaceMappingFields) {
+    const mappingError = await saveProductMarketplaceMappings(db, productId, data.ebayFeeCategoryId, data.kauflandFeeCategoryId, userId);
+    if (mappingError) return { error: mappingError };
+  }
 
   await writeAuditLog({
     organizationId: organization.id,
@@ -152,6 +184,30 @@ export async function updateProductAction(
 
   revalidatePath("/produkte");
   return { success: `Produkt "${data.name}" gespeichert ✓` };
+}
+
+async function saveProductMarketplaceMappings(
+  db: Awaited<ReturnType<typeof requireOrg>>["db"],
+  productId: string,
+  ebayFeeCategoryId: string | undefined,
+  kauflandFeeCategoryId: string | undefined,
+  userId: string
+) {
+  for (const [marketplaceCode, feeCategoryId] of [["EBAY_DE", ebayFeeCategoryId], ["KAUFLAND_DE", kauflandFeeCategoryId]] as const) {
+    if (!feeCategoryId) {
+      await db.productMarketplaceMapping.deleteMany({ where: { productId, marketplaceCode } });
+      continue;
+    }
+    const category = await db.feeCategory.findFirst({ where: { id: feeCategoryId, marketplaceCode, feeSchedule: { status: "ACTIVE" } } });
+    if (!category) return `Die gewählte ${marketplaceCode === "EBAY_DE" ? "eBay" : "Kaufland"}-Kategorie ist nicht aktiv.`;
+    await db.productMarketplaceMapping.upsert({
+      where: { productId_marketplaceCode: { productId, marketplaceCode } },
+      create: { organizationId: category.organizationId, productId, marketplaceCode, feeCategoryId: category.id, status: "CONFIRMED", confirmedAt: new Date(), confirmedById: userId },
+      update: { feeCategoryId: category.id, status: "CONFIRMED", confirmedAt: new Date(), confirmedById: userId },
+    });
+  }
+  await db.marketplacePricingCalculation.updateMany({ where: { productId }, data: { stale: true } });
+  return null;
 }
 
 /** Katalogprodukt löschen (Lager-/Verkaufsdaten bleiben unberührt). */
@@ -294,4 +350,43 @@ export async function bulkCategorizeProductsAction(
   return {
     success: `${result.count} Produkt${result.count === 1 ? "" : "e"} der Kategorie „${parsed.data.category}“ zugeordnet ✓`,
   };
+}
+
+const bulkMarketplaceCategorySchema = bulkCategorySchema.omit({ category: true }).extend({
+  marketplaceCode: z.enum(["EBAY_DE", "KAUFLAND_DE"]),
+  feeCategoryId: z.string().min(1),
+});
+
+export async function bulkMapProductsToMarketplaceCategoryAction(input: {
+  marketplaceCode: "EBAY_DE" | "KAUFLAND_DE";
+  feeCategoryId: string;
+  expectedCount: number;
+  expectedResultDigest?: string;
+  selection: TableSelection;
+  query: Record<string, string | string[] | undefined>;
+}): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+  const parsed = bulkMarketplaceCategorySchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Ungültige Auswahl." };
+  const category = await db.feeCategory.findFirst({ where: { id: parsed.data.feeCategoryId, marketplaceCode: parsed.data.marketplaceCode, feeSchedule: { status: "ACTIVE" } } });
+  if (!category) return { error: "Aktive Gebührenkategorie nicht gefunden." };
+  const query = parseProductTableQuery(parsed.data.query);
+  const where = buildProductSelectionWhere(query, parsed.data.selection, organization.lowStockThreshold);
+  const products = await db.product.findMany({ where, select: { id: true }, orderBy: { id: "asc" }, take: 5001 });
+  if (products.length === 0 || products.length > 5000 || products.length !== parsed.data.expectedCount) return { error: "Die Ergebnismenge hat sich geändert. Bitte Auswahl neu laden." };
+  if (parsed.data.selection.mode === "all") {
+    const digest = createHash("sha256").update(products.map((item) => item.id).join("\n")).digest("hex");
+    if (!parsed.data.expectedResultDigest || digest !== parsed.data.expectedResultDigest) return { error: "Die Ergebnismenge hat sich geändert. Bitte Auswahl neu laden." };
+  }
+  for (const product of products) {
+    await db.productMarketplaceMapping.upsert({
+      where: { productId_marketplaceCode: { productId: product.id, marketplaceCode: parsed.data.marketplaceCode } },
+      create: { organizationId: organization.id, productId: product.id, marketplaceCode: parsed.data.marketplaceCode, feeCategoryId: category.id, status: "CONFIRMED", confirmedAt: new Date(), confirmedById: userId },
+      update: { feeCategoryId: category.id, status: "CONFIRMED", confirmedAt: new Date(), confirmedById: userId },
+    });
+  }
+  await db.marketplacePricingCalculation.updateMany({ where: { productId: { in: products.map((item) => item.id) }, marketplaceCode: parsed.data.marketplaceCode }, data: { stale: true } });
+  await writeAuditLog({ organizationId: organization.id, userId, action: "product.bulk_marketplace_category", entityType: "ProductMarketplaceMapping", after: { marketplaceCode: parsed.data.marketplaceCode, feeCategoryId: category.id, count: products.length } });
+  revalidatePath("/produkte");
+  return { success: `${products.length} Produkte ${parsed.data.marketplaceCode === "EBAY_DE" ? "eBay" : "Kaufland"} zugeordnet ✓` };
 }

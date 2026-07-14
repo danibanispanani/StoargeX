@@ -12,6 +12,7 @@ export const TABLE_KEYS = [
   "konsignation",
   "schulden",
   "aufgaben",
+  "ausgaben",
 ] as const;
 
 export type TableKey = (typeof TABLE_KEYS)[number];
@@ -260,6 +261,29 @@ export const IMPORT_TABLES: Record<TableKey, TableDef> = {
       field("prioritaet", "Priorität", ["priorität", "prioritaet", "prio", "priority"]),
       field("status", "Status", ["status"]),
       field("anmerkung", "Anmerkung", ["anmerkung", "beschreibung", "kommentar", "notiz"]),
+    ],
+  },
+  ausgaben: {
+    label: "Betriebsausgaben",
+    example: { bezeichnung: "Kaufland Basic", kategorie: "Plattformabos", art: "Wiederkehrend", brutto: "47,54", netto: "39,95", steuer: "19", zahlungsdatum: "01.07.2026", faelligkeit: "01.07.2026", intervall: "MONTH", startdatum: "01.07.2026", status: "POSTED", marktplatzkonto: "Kaufland Deutschland" },
+    fields: [
+      field("bezeichnung", "Bezeichnung", ["bezeichnung", "beschreibung", "expense"], true, { description: "Eindeutige Beschreibung der Betriebsausgabe.", format: "Text", example: "Kaufland Basic" }),
+      field("kategorie", "Kategorie", ["kategorie", "category"], false, { description: "Ausgabenkategorie; wird bei Bedarf angelegt.", format: "Text", example: "Plattformabos" }),
+      field("art", "Art", ["art", "wiederkehrend", "type"], true, { description: "Einmalige oder wiederkehrende Ausgabe.", format: "Einmalig oder Wiederkehrend", example: "Wiederkehrend" }),
+      field("lieferant", "Lieferant", ["lieferant", "supplier"], false, { description: "Optionaler Geschäftspartnername.", format: "Text", example: "Kaufland Marketplace GmbH" }),
+      field("brutto", "Betrag brutto", ["brutto", "betrag brutto", "gross"], true, { description: "Bruttobetrag der Ausgabe.", format: "EUR-Dezimalzahl", example: "47,54" }),
+      field("netto", "Betrag netto", ["netto", "betrag netto", "net"], false, { description: "Optionaler Nettobetrag; sonst aus Steuer und Brutto berechnet.", format: "EUR-Dezimalzahl", example: "39,95" }),
+      field("steuer", "Steuer (%)", ["steuer", "ust", "tax"], false, { description: "Steuersatz in Prozent.", format: "Dezimalzahl", example: "19" }),
+      field("zahlungsdatum", "Zahlungsdatum", ["zahlungsdatum", "datum", "payment date"], true, { description: "Buchungs- beziehungsweise Zahlungsdatum.", format: "TT.MM.JJJJ oder JJJJ-MM-TT", example: "01.07.2026" }),
+      field("faelligkeit", "Fälligkeit", ["fälligkeit", "faelligkeit", "due date"], false, { description: "Optionale Fälligkeit.", format: "Datum", example: "01.07.2026" }),
+      field("zahlungskonto", "Zahlungskonto", ["zahlungskonto", "konto", "payment account"], false, { description: "Anzeigename eines vorhandenen Zahlungskontos.", format: "Text", example: "Geschäftskonto" }),
+      field("intervall", "Intervall", ["intervall", "interval"], false, { description: "Nur für wiederkehrende Ausgaben.", format: "DAY, WEEK, MONTH, QUARTER oder YEAR", example: "MONTH" }),
+      field("startdatum", "Startdatum", ["startdatum", "start", "starts at"], false, { description: "Beginn der Wiederholung.", format: "Datum", example: "01.07.2026" }),
+      field("enddatum", "Enddatum", ["enddatum", "ende", "ends at"], false, { description: "Optionales Ende der Wiederholung.", format: "Datum", example: "" }),
+      field("status", "Status", ["status"], false, { description: "Buchungsstatus.", format: "DRAFT, POSTED oder CANCELLED", example: "POSTED" }),
+      field("beleg", "Beleg", ["beleg", "receipt"], false, { description: "Optionale Belegreferenz oder URL.", format: "Text", example: "RE-2026-07" }),
+      field("notiz", "Notiz", ["notiz", "notes", "kommentar"], false, { description: "Optionale Notiz.", format: "Text", example: "Monatliches Abo" }),
+      field("marktplatzkonto", "Marktplatzkonto", ["marktplatzkonto", "marketplace account"], false, { description: "Optionaler Anzeigename eines Marktplatzkontos.", format: "Text", example: "Kaufland Deutschland" }),
     ],
   },
 };

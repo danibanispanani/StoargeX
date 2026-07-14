@@ -1,0 +1,32 @@
+{
+  "marketplaceCode": "KAUFLAND_DE",
+  "marketplaceName": "Kaufland.de",
+  "sellerProfile": "COMMERCIAL",
+  "version": "2026-07",
+  "sourceUrl": "https://www.kauflandglobalmarketplace.com/konditionen/",
+  "retrievedAt": "2026-07-14T00:00:00.000Z",
+  "validFrom": "2026-07-01T00:00:00.000Z",
+  "feeVatRateBasisPoints": 1900,
+  "calculationBasis": "ITEM_PLUS_BUYER_SHIPPING",
+  "fixedOrderFeeCents": 0,
+  "categories": [
+    { "officialName": "Computer, Unterhaltungselektronik, Staubsaugroboter, Reifen, Felgen, Kompletträder", "externalCategoryId": "COMPUTER_CONSUMER_ELECTRONICS", "percentageBasisPoints": 700 },
+    { "officialName": "Haushaltselektronik (Großgeräte)", "externalCategoryId": "LARGE_APPLIANCES", "percentageBasisPoints": 700 },
+    { "officialName": "Werkzeug & Gartengeräte", "externalCategoryId": "TOOLS_GARDEN_TOOLS", "percentageBasisPoints": 1000 },
+    { "officialName": "Parfüm", "externalCategoryId": "PERFUME", "percentageBasisPoints": 1000 },
+    { "officialName": "Haushaltselektronik (Kleingeräte), Computer- und Elektronik-Zubehör, Fahrräder & E-Bikes", "externalCategoryId": "SMALL_APPLIANCES_ACCESSORIES_BIKES", "percentageBasisPoints": 1300 },
+    { "officialName": "Körperpflege & Gesundheit, Auto und Motorrad (ohne Reifen, Felgen, Kompletträder)", "externalCategoryId": "PERSONAL_CARE_AUTO", "percentageBasisPoints": 1300 },
+    { "officialName": "Baumarkt", "externalCategoryId": "DIY", "percentageBasisPoints": 1300 },
+    { "officialName": "Möbel & Wohnen, Lampen & Leuchten, Sport & Outdoor, Babyprodukte, Spielwaren, Lebensmittel, Sexspielzeug", "externalCategoryId": "HOME_SPORT_TOYS_FOOD", "percentageBasisPoints": 1300 },
+    { "officialName": "Medien", "externalCategoryId": "MEDIA", "percentageBasisPoints": 1300, "fixedItemFeeCents": 70 },
+    { "officialName": "Garten", "externalCategoryId": "GARDEN", "percentageBasisPoints": 1400 },
+    { "officialName": "Matratzen, Küche & Haushalt, Bekleidung, Taschen & Accessoires, Schuhe, Tierbedarf, Camping, Fitness, SUP", "externalCategoryId": "HOUSEHOLD_FASHION_PETS_LEISURE", "percentageBasisPoints": 1400 },
+    { "officialName": "Schmuck", "externalCategoryId": "JEWELRY", "percentageBasisPoints": 1600 },
+    { "officialName": "Alle anderen Kategorien", "externalCategoryId": "OTHER", "percentageBasisPoints": 1300 }
+  ],
+  "accountPlans": [
+    { "code": "BASIC", "monthlyNetCents": 3995 },
+    { "code": "PLUS", "monthlyNetCents": 5995 }
+  ],
+  "reviewRequired": []
+}
