@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-07-14 — Prompt 4
+- Loaded the persistent-planning, codebase-design/deepening, and end-to-end work instructions.
+- Confirmed the requested scope is an additive extension of the existing purchasing/inventory chain and created a five-phase execution plan covering audit, domain foundation, operational UI/imports, verification, and shipping.
+- Began the architecture audit with explicit invariants for movement-based stock, legacy supplier compatibility, separate supplier returns, non-automatic deadlines, and reuse of the existing import provenance engine.
+- Located the existing purchase, inventory, debt, supplier-return, table-workspace, and import seams, and captured the exact purchase/stock projection fields from the table matrix.
+- Confirmed Prompt 1 already provides supplier/payment/condition and supplier-return foundations, and selected an additive receipt-event model with RLS as the missing persistence layer.
+- Added proof-first receipt/deadline tests and observed the expected four-test red state because the new planning functions did not yet exist.
+- Implemented the additive receipt schema/migration, order/receipt services, inspection buckets, configurable debt creditor, `/einkauf`, purchasing and stock view configurations, deadline attention, imports/templates/exports, navigation, tests, and workflow documentation.
+- Focused TypeScript completed cleanly; eight focused suites passed with 70 tests before the final debt and documentation additions.
+- The mandated simplify/manual-review fallback fixed financial filter composition, receipt concurrency, Legacy-Lot receipt projection, supplier-stamm fallback, and deterministic deadline rendering. The first full suite exposed one expected navigation fixture update; sandboxed integrity could not reach Supabase and is queued for approved network validation.
+- Final local verification passed: Prisma validate/generate, TypeScript, ESLint, 33 Vitest files with 235 tests, Production Build including `/einkauf`, `git diff --check`, and the network-enabled read-only integrity check with 13/13 invariants.
+- The external Prompt-4 migration deploy was rejected because it needs a new explicit authorization for the shared QA database. No external schema or data was changed, and no live browser result against an unmigrated route is claimed.
+- Final diff review found no remaining in-scope defect; the delivery contains only the purchasing/inbound implementation, additive migration, tests, documentation, and persistent planning record.
+
+---
+
 ## 2026-07-13 — Prompt 2
 - Confirmed the clean Prompt 1 commit baseline and no unsynced planning context.
 - Loaded the requested design/architecture/icon/polish workflows plus persistent planning.
@@ -359,3 +375,30 @@
 - Final keyboard tab-order/focus-visible check passed from search to category filter.
 - Final gates after the responsive/a11y fixes: Prisma validate/generate pass, TypeScript pass, ESLint pass, 30 Vitest files/214 tests pass, Production Build passes, and `git diff --check` passes.
 - The already-restored `integrity:check` remains green with 13/13 invariants and zero violations. Browser QA artifacts under `.next/prompt3-*` remain ignored.
+## Session: 2026-07-14 — Persistent full-access QA account
+
+- **Status:** in progress
+- Loaded the repository's replacement AGENTS.md rules and the planning-with-files workflow.
+- Confirmed the worktree is clean and started read-only discovery of auth, membership, entitlements, seeds, and database suitability.
+- Located the real credentials/TOTP path. Password-only login is supported, but current middleware mandates 2FA for OWNER/ADMIN roles, so no account will be provisioned until the highest safe role/permission path is mapped.
+- Read the schema and entitlement evaluator. A first role-usage search failed because PowerShell parsed regex alternation; it will be retried with safe quoting.
+- Completed the role map: password-only testing can cover every operational module as `MEMBER`, while full organization administration is intentionally coupled to mandatory 2FA. No account has been written yet.
+- Confirmed the entitlement migration exists locally. Sandboxed migration-status inspection failed at the schema engine, so the same read-only check requires network approval.
+- Approved migration inspection completed: the external QA database is behind by product-brand and beta-domain/entitlement migrations. The account will use an isolated BUSINESS organization and no schema migration will be applied as part of this request.
+- Mapped the idempotent provisioning shape: user/password/TOTP reset, isolated BUSINESS organization, MEMBER membership, and neutral starter master data under RLS bypass.
+- Created ignored local QA credentials and a syntax-validated, idempotent provisioning helper. The helper refuses to reuse the target organization if another member exists.
+- Idempotent database provisioning completed successfully. Browser verification is next; the globally installed `agent-browser` command is unavailable, so the documented npx fallback will be attempted.
+- The npx fallback stalled without output under restricted package access. Per the skill fallback rule, browser verification will use the repository's already-proven Chrome DevTools driver instead of repeating the failure.
+- Chrome DevTools is not exposed in this turn, and unsandboxed agent-browser download was correctly rejected. Login verification is switching to a safer first-party HTTP session check against the local Auth.js endpoints.
+- Inspected the actual login component and JWT session callback; the verification helper will assert successful credentials callback, absence of a 2FA error, and protected-route/session claims.
+- Confirmed the precise Auth.js v5 request shape from the installed dependency; no guessed endpoint behavior or third-party browser package is needed.
+- Real password-only login and session verification passed. Route smoke testing found five 500 responses caused by the known database/schema lag; diagnosis is now limited to reading server errors, not changing account permissions.
+- Confirmed the route failures map exactly to the unapplied additive beta-domain migration. Account setup is complete; making every route operational now requires separate authorization to deploy that existing migration.
+- Stopped the scoped dev server after verification; port 3000 is no longer listening.
+- User authorized migration deployment. The first deploy attempt stopped safely at the historical product-brand BOM before the beta migration; read-only schema/history inspection is next.
+- Schema/history inspection completed: brand is already present, the failed migration made no change, and beta objects are absent. Proceeding with a precise Prisma history resolution for product-brand only.
+- Marked the already-present product-brand migration applied and successfully deployed the additive beta-domain/entitlement migration.
+- Verified all 18 migrations are applied and refreshed the QA account with a database-backed manual consignment entitlement.
+- Repeated the real credentials/session chain after migration: PASS. Nine of nine representative protected routes now return HTTP 200 with no server-side errors.
+- Integrity check passed 13/13. Stopped the test server and removed temporary helpers; retained only ignored `.env.qa.local` for future logins.
+- **Status:** complete

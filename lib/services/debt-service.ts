@@ -55,6 +55,7 @@ export interface PurchaseDebtInput {
   purchaseDate: Date;
   vendor: string;
   paymentMethod: string;
+  creditorName?: string | null;
   totalGrossCents: number;
   tx: DebtTransaction;
 }
@@ -100,7 +101,7 @@ export function shouldCreateSaleDebt(payoutRecipient?: string | null): boolean {
 }
 
 export function purchaseDebtPayload(input: Omit<PurchaseDebtInput, "tx" | "createdById">): DebtPayload | null {
-  const creditor = resolvePurchaseDebtCreditor(input.paymentMethod);
+  const creditor = input.creditorName?.trim() || resolvePurchaseDebtCreditor(input.paymentMethod);
   if (!creditor) return null;
 
   return {

@@ -95,13 +95,13 @@ type ServiceInput = Omit<
 export type AdjustmentDirection = "IN" | "OUT";
 
 export async function receiveOwnedStock(
-  input: ServiceInput
+  input: ServiceInput & { bucket?: Extract<InventoryBucket, "AVAILABLE" | "INSPECTION" | "DEFECTIVE"> }
 ): Promise<InventoryMutationResult> {
   return applyInventoryMovement({
     ...input,
     movementType: "PURCHASE_RECEIPT",
     fromBucket: null,
-    toBucket: "AVAILABLE",
+    toBucket: input.bucket ?? "AVAILABLE",
     requiredInventoryType: "OWNED",
   });
 }

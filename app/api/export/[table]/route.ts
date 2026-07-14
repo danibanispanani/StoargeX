@@ -15,6 +15,11 @@ import {
   buildProductWhere,
   parseProductTableQuery,
 } from "@/lib/products/product-table";
+import {
+  buildPurchaseOrderBy,
+  buildPurchaseWhere,
+  parsePurchaseTableQuery,
+} from "@/lib/purchases/purchase-table";
 
 // Export der Haupttabellen als CSV oder XLSX – mit den aktuell gesetzten
 // Filtern (Query-Parameter identisch zur jeweiligen Seite). Spaltennamen
@@ -102,6 +107,60 @@ export async function GET(
         Größe: product.size ?? "",
         Bilder: product.imageUrls.join(", "),
       }));
+      break;
+    }
+    case "einkauf": {
+      const query = parsePurchaseTableQuery(Object.fromEntries(url.searchParams.entries()));
+      const purchases = await db.purchase.findMany({
+        where: buildPurchaseWhere(query),
+        orderBy: buildPurchaseOrderBy(query),
+        include: {
+          lines: { include: { product: { select: { name: true, variant: true } } } },
+        },
+      });
+      rows = purchases.flatMap((purchase) => purchase.lines.map((line) => ({
+        Bestellnummer: purchase.supplierOrderNumber ?? purchase.purchaseNumber,
+        Datum: date(purchase.purchaseDate),
+        Lieferant: purchase.vendor,
+        Artikel: line.product.name,
+        Variante: line.product.variant ?? "",
+        Menge: line.quantity,
+        "Preis brutto": line.unitPriceGross.toString().replace(".", ","),
+        Vorsteuer: line.vatDeductible ? "Ja" : "Nein",
+        Zahlungsmethode: purchase.paymentMethod,
+        "Erwartete Lieferung": date(purchase.expectedDeliveryAt),
+        Trackingnummer: purchase.trackingNumber ?? "",
+        Notiz: line.comment ?? purchase.comment ?? "",
+      })));
+      break;
+    }
+    case "wareneingang": {
+      const receipts = await db.purchaseReceipt.findMany({
+        where: q ? { purchase: { OR: [
+          { purchaseNumber: { contains: q, mode: "insensitive" } },
+          { vendor: { contains: q, mode: "insensitive" } },
+        ] } } : undefined,
+        include: {
+          purchase: { select: { purchaseNumber: true, vendor: true, paymentMethod: true } },
+          lines: { include: { purchaseLine: { include: { product: { select: { name: true, variant: true } } } } } },
+        },
+        orderBy: { receivedAt: "desc" },
+      });
+      rows = receipts.flatMap((receipt) => receipt.lines.map((line) => ({
+        Einkaufsnummer: receipt.purchase.purchaseNumber,
+        Datum: date(receipt.receivedAt),
+        Lieferant: receipt.purchase.vendor,
+        Artikel: line.purchaseLine.product.name,
+        Variante: line.purchaseLine.product.variant ?? "",
+        Menge: line.quantity,
+        "Preis brutto": line.purchaseLine.unitPriceGross.toString().replace(".", ","),
+        Zahlungsmethode: receipt.purchase.paymentMethod,
+        Zustand: line.itemCondition ?? line.legacyCondition ?? "",
+        Prüfung: line.inspectionStatus,
+        Rückgabefrist: date(line.returnDeadline),
+        Trackingnummer: receipt.trackingNumber ?? "",
+        Notiz: line.notes ?? receipt.notes ?? "",
+      })));
       break;
     }
     case "lager": {

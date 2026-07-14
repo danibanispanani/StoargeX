@@ -88,6 +88,7 @@ export default async function DashboardPage({
     recentSales,
     openDebts,
     lowStock,
+    purchaseDeadlines,
     auditLogs,
     members,
   ] = await Promise.all([
@@ -100,6 +101,15 @@ export default async function DashboardPage({
     loadRecentSales(db),
     loadOpenDebts(db),
     loadLowStockAlerts(db, organization.lowStockThreshold),
+    db.purchase.findMany({
+      where: {
+        returnDeadline: { not: null, lte: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) },
+        purchaseStatus: { not: "CANCELLED" },
+      },
+      select: { id: true, purchaseNumber: true, vendor: true, returnDeadline: true },
+      orderBy: { returnDeadline: "asc" },
+      take: 5,
+    }),
     isManager
       ? db.auditLog.findMany({
           where: {
@@ -203,6 +213,13 @@ export default async function DashboardPage({
       href: "/schulden",
       tone: debtBalances.length ? "critical" : "positive",
     },
+    {
+      label: "Rückgabefristen",
+      value: purchaseDeadlines.length ? `${purchaseDeadlines.length} prüfen` : "Keine akut",
+      detail: "Einkäufe mit Frist in den nächsten 14 Tagen oder überfälliger Frist · keine automatische Rückgabe",
+      href: "/einkauf?preset=deadlines",
+      tone: purchaseDeadlines.length ? "warning" : "positive",
+    },
   ];
 
   return (
@@ -223,6 +240,13 @@ export default async function DashboardPage({
               {alert.model} – nur noch {alert.onHand} Stück
             </p>
           ))}
+        </div>
+      )}
+
+      {purchaseDeadlines.length > 0 && (
+        <div className="space-y-1 border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="font-medium">Rückgabefristen brauchen Aufmerksamkeit</p>
+          {purchaseDeadlines.map((purchase) => <p key={purchase.id}><Link className="underline underline-offset-2" href={`/einkauf?preset=deadlines&q=${encodeURIComponent(purchase.purchaseNumber)}`}>{purchase.purchaseNumber}</Link> · {purchase.vendor} · {purchase.returnDeadline!.toLocaleDateString("de-DE")} · Einkauf prüfen, keine automatische Rückgabe</p>)}
         </div>
       )}
 

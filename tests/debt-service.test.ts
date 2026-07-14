@@ -225,6 +225,19 @@ describe("debt domain service", () => {
     }));
   });
 
+  it("nutzt einen konfigurierten privaten Zahlungskonto-Inhaber statt Namenslogik", () => {
+    expect(purchaseDebtPayload({
+      organizationId: "org-a",
+      purchaseId: "purchase-configured",
+      purchaseNumber: "E-26-0099",
+      purchaseDate: new Date("2026-07-14T00:00:00.000Z"),
+      vendor: "Lieferant",
+      paymentMethod: "Gesellschafterkonto",
+      creditorName: "Konfigurierter Gesellschafter",
+      totalGrossCents: 12000,
+    })).toEqual(expect.objectContaining({ creditorName: "Konfigurierter Gesellschafter" }));
+  });
+
   it("manuelle Schuld bleibt ohne Ursprungsrelation", async () => {
     const state = createDebtTx();
 

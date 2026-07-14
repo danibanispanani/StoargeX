@@ -61,6 +61,10 @@ Gleicher Name plus gleiche Variante ist kein stilles Update. Der Dry Run markier
 
 Der Dry Run erkennt gleiche Produktidentitäten auch innerhalb derselben Datei. Name, Variante und Kategorie folgen den dokumentierten Längengrenzen; EAN, Standard-EK und jede einzelne Bild-URL werden geprüft. Ungültige oder nicht öffentliche HTTPS-Bildwerte werden nicht still verworfen, sondern als Zeilenfehler gemeldet.
 
+## Einkaufs- und Wareneingangsvorlagen
+
+`einkauf` und `wareneingang` verwenden dieselbe bestehende Pipeline. Beide akzeptieren als kleinste sinnvolle Datei `Datum`, `Lieferant`, `Artikel`, `Menge` und `Preis`. Einkauf erzeugt eine Bestellung ohne Bestand; eine optionale Lieferanten-Bestellnummer gruppiert mehrere Positionen. Wareneingang bucht mit StorageX-Einkaufsnummer gegen eine eindeutig offene Bestellposition und ohne diese Nummer als direkten Zugang. Zustand, Prüfung, Tracking, Rückgabefrist, Zahlung und Notiz sind optionale, validierte Felder. Dry Runs schreiben weder Purchase noch Receipt, Lot, Movement, Debt, ImportBatch oder SourceReference.
+
 ## Mapping und Vorschau
 
 - CSV, XLS und XLSX werden weiterhin durch `xlsx` gelesen.

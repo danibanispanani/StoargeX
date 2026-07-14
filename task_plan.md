@@ -1,4 +1,104 @@
-# Task Plan: Prompt 3 Unified Operational Table System
+# Task Plan: Prompt 4 Purchasing, Suppliers and Inbound Workflow
+
+## Goal
+Extend the existing Product -> Purchase -> PurchaseLine -> InventoryPosition -> OwnedStockLot -> PURCHASE_RECEIPT flow into an additive, tenant-safe procurement and partial-receipt workflow, with separate purchasing and stock workspaces, deadline attention, reusable import templates, tests, documentation, and no destructive legacy-data conversion.
+
+## Current Phase
+Phase 5: shipping tail
+
+## Phases
+
+### Phase 1: Architecture and behavior audit
+- [x] Read the product constitution, roadmap, domain decisions, table matrix, operational table/import standards, schema, migrations, services, actions, routes, and tests that define purchasing and stock behavior
+- [x] Record current invariants, extension seams, legacy compatibility constraints, and exact table-view requirements
+- **Status:** completed
+
+### Phase 2: Additive domain foundation
+- [x] Add safe procurement, shipping, receipt, inspection, return-deadline, supplier, payment, and document fields/models without removing or requiring legacy data
+- [x] Implement one transactional receipt interface for immediate, full, and partial inbound flows while preserving InventoryMovement and debt behavior
+- **Status:** completed
+
+### Phase 3: Operational UI and import integration
+- [x] Add `/einkauf` and the required purchase presets using the shared operational-table mechanics
+- [x] Extend `/lager` with the required inventory presets, inspection state, deadline visibility, and dashboard attention
+- [x] Extend the existing import pipeline with purchase and inbound templates, simple-row compatibility, dry run, validation, and provenance
+- **Status:** completed
+
+### Phase 4: Verification and documentation
+- [x] Cover direct/full/partial/multi-lot receipt, deadlines, movements, debts, tenant isolation, import templates, and view configuration
+- [x] Document the delivered workflow and compatibility decisions in `docs/purchasing-and-inbound-workflow.md`
+- **Status:** completed
+
+### Phase 5: Shipping tail
+- [x] Run focused and full quality gates, production-route checks, diff-scoped review, and fix all in-scope failures
+- [x] Document the intentionally unapplied external migration and the resulting live-browser limitation
+- [x] Confirm only intended changes, then commit with the exact requested subject
+- **Status:** completed
+
+## Constraints
+- Preserve the existing movement-based inventory chain and established transactional services.
+- No destructive migration, required legacy backfill, automatic supplier return, or parallel import engine.
+- Keep supplier text fallback compatible while allowing a BusinessPartner reference.
+- Customer and supplier returns remain separate workflows.
+- New import paths must reuse ImportBatch and SourceReference and support template, validation, dry run, row errors, and review.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Looked for the Prompt-1 tenant test under the guessed name `domain-foundation-tenant-isolation.test.ts`; the file does not exist. | 1 | Located the actual `tests/beta-domain-tenant-isolation.test.ts` with `rg --files`; use that established RLS test surface. |
+| The first large schema patch failed because its context contained mojibake-rendered comments rather than the file's UTF-8 text. | 1 | Split the edit into small ASCII-only context patches. The same mismatch later affected a combined documentation patch; create the new document separately and patch existing UTF-8 lines using their exact text. |
+| A broad relation insertion matched `PurchaseLine.supplierReturnLines` instead of the later InventoryPosition field, creating an ambiguous Prisma relation. | 1 | Remove the misplaced singular relation and insert it beside `InventoryPosition.debtLinks`; rerun Prisma validation. |
+| The first full suite failed because the exact navigation-route expectation had not yet included the new `/einkauf` route. | 1 | Add `/einkauf` to the existing navigation metadata regression test and rerun the complete suite. |
+| Sandboxed `integrity:check` could not reach the configured Supabase database. | 1 | Repeat the required database gate with approved network access after deploying the additive migration. |
+
+---
+
+# Historical Task Plan: Persistent full-access QA account
+
+## Goal
+Provision a dedicated StorageX QA login that uses the existing credentials provider, has no 2FA requirement, belongs to an isolated organization with the highest supported role, receives every supported feature entitlement, and can be used repeatedly for autonomous browser testing without storing secrets in Git.
+
+## Current Phase
+Complete
+
+## Phases
+
+### Phase 1: Safety and architecture discovery
+- [x] Identify the credential/password and 2FA fields, organization membership roles, subscription/entitlement gates, and existing seed/admin scripts
+- [x] Determine whether the configured database is suitable for QA writes and whether its schema contains the required Prompt-1 tables
+- **Status:** completed
+
+### Phase 2: Idempotent account provisioning
+- [x] Use or add a local-only provisioning path that never stores the generated password in tracked files
+- [x] Create/update the QA user, isolated QA organization, maximum non-2FA role, subscription state, and available entitlement fallback without modifying unrelated users or domain data
+- **Status:** completed
+
+### Phase 3: Verification and handoff
+- [x] Verify credential login, password-only state, organization membership, tier claims, and representative protected routes
+- [x] Confirm repository scope and report reusable credentials securely to the user
+- **Status:** completed
+
+## Constraints
+- No hardcoded production bypass, master password, or app-level authentication exception.
+- Do not weaken 2FA for any existing user; only the dedicated QA account may have 2FA disabled.
+- Do not write credentials to tracked files, planning files, logs, commits, or screenshots.
+- Prefer an isolated QA organization and idempotent upserts so reruns do not duplicate data.
+- Do not commit unless the user separately asks.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| PowerShell interpreted regex alternation in a double-quoted `rg` pattern as a pipeline. | 1 | Retry with a single-quoted regex and no shell pipeline in the command. |
+| Sandboxed `prisma migrate status` reached only a generic schema-engine error for the configured Supabase host. | 1 | Repeat the same read-only status check with approved network access; do not infer schema state from the sandbox failure. |
+| `agent-browser` is not installed globally. | 1 | Use the skill-documented `npx agent-browser` fallback; if package download is blocked, retain Chrome DevTools as the already-proven local browser driver. |
+| `npx agent-browser skills get core --full` produced no output for more than 90 seconds in the restricted environment, and the non-PTY process cannot be interrupted through stdin. | 1 | Do not repeat the blocked package-download path; use the installed Chrome DevTools MCP already validated for this repository. |
+| Unsandboxed `npx agent-browser` was rejected as unpinned third-party code/supply-chain risk, and Chrome DevTools tools are not exposed in this turn. | 1 | Do not retry or work around the rejection. Verify the real Auth.js credential/session HTTP chain against the running local app using only repository dependencies and endpoints. |
+| Process-command-line inspection via `Get-CimInstance Win32_Process` is denied in the managed environment. | 1 | Do not escalate merely for diagnostics; the scoped Next dev session was stopped directly and port 3000 has no listener. |
+| `prisma migrate deploy` stopped with P3018 because historical migration `20260709100000_product_brand` begins with a UTF-8 BOM, which PostgreSQL parsed before `ALTER`. | 1 | Inspect whether `products.brand` already exists. If it does, resolve only that failed migration as applied; otherwise repair through an explicit safe SQL path before continuing. |
+
+---
+
+# Historical Task Plan: Prompt 3 Unified Operational Table System
 
 ## Goal
 Create a reusable, information-dense operational table module, extend the existing import pipeline with documented downloadable templates and review states, migrate only `/produkte` as the reference module, verify tenant-safe filter/export/action behavior, document the contracts, pass all quality gates, and commit the requested result.

@@ -1,5 +1,69 @@
 # Findings and Decisions
 
+## Prompt 4 — Purchasing, Suppliers and Inbound Workflow
+
+### Execution frame
+- Prompt 4 is a large cross-layer change, but the user supplied an implementation-ready contract and explicitly wants it completed on top of Prompts 0–3; continue on the existing feature branch without creating a parallel foundation.
+- The deep-module seam is the transactional inbound operation: callers should express direct, full, or partial receipt intent; the service must own Purchase/PurchaseLine, receipt/lots, InventoryPosition, InventoryMovement, debt, and audit consistency.
+- Additive schema evolution must keep legacy supplier/payment/condition text readable and nullable while allowing configured BusinessPartner, PayoutAccount, and Condition references.
+- Receipt tests must assert observable inventory/debt outcomes through the service interface, including partial and multiple-receipt behavior; internal helpers are not the contract.
+- No supplier return is triggered by a deadline. Deadlines are stored attention signals with explicit user-confirmed follow-up.
+
+### Skill-derived constraints
+- `codebase-design`: centralize mechanics but keep purchase/stock presets, columns, and actions module-specific; avoid a shallow universal service or test-only public ports.
+- `ce-work`: use proof-first or characterization-first evidence for behavioral slices, inspect the real cross-layer persistence chain, test continuously, then run the required shipping workflow and diff-scoped review.
+
+### Initial code map
+- Purchasing behavior is concentrated in `lib/services/owned-purchase-service.ts`; stock mechanics are in `lib/services/inventory-service.ts`; debt automation has its own service and relational link models.
+- The current protected stock UI is `app/(app)/lager/page.tsx`; `/einkauf` does not yet appear in the relevant file map.
+- The shared import surface already consists of `lib/actions/import.ts`, `lib/services/import-migration-service.ts`, `lib/import-export.ts`, the import/export bar, template route, and focused import tests. Prompt 4 must extend this chain.
+- Schema already contains `PurchaseStatus`, Purchase/PurchaseLine, position/lot/movement models, BusinessPartner/PayoutAccount, and separate SupplierReturn models. The audit must determine which requested fields are already present before adding anything.
+- The only dirty files at Prompt-4 start are the persistent planning logs; no product or schema edits pre-exist.
+
+### Product and table contracts
+- The current table matrix defines purchase standard columns as purchase number, date, supplier, status, lines, gross/net, payment account; optional fields are tax treatment, debt link, comment, and import source. Its drawer adds header, lines, created lots/positions, debt, movements, provenance, and audit.
+- The current stock matrix keeps inventory number, product, available/original quantity, state, supplier, received date, cost, and listings visible; EAN/variant/size/payment account/purchase-return state/location/source remain optional, with full lot/movement/listing/provenance detail in the drawer.
+- Prompt 4 explicitly expands the preset names beyond the older matrix. The column and evidence contract remains authoritative; the newer prompt governs the required view set.
+- The operational-table seam already separates shared URL/persistence/selection mechanics from module-specific query, columns, presets, drawer, and actions. Purchasing and stock should each add their own configuration rather than change the generic module into a domain engine.
+- Import templates are registry-driven and already guarantee CSV/XLSX variants, metadata, mapping preview, non-writing dry run, blocking errors/conflicts, tenant-scoped commit, ImportBatch/SourceReference, and audit. Purchasing/inbound add registry/planner/commit adapters only.
+
+### Existing-domain evidence
+- The authoritative owned flow is explicitly documented as Purchase -> PurchaseLine -> OwnedStockLot -> InventoryPosition -> InventoryMovement; no second lot table or stock counter is allowed.
+- The legacy `/lager` combines old StockItem rows and current InventoryPosition rows. New owned rows already enter through `createOwnedPurchase`; legacy editing/import compatibility must remain available while `/einkauf` becomes the procurement projection.
+- Existing purchase documents currently expose only DRAFT/CONFIRMED/CANCELLED semantics. Procurement and supplier-shipping states must be additive and must not reinterpret old rows destructively.
+- Supplier references should prefer BusinessPartner while retaining `Purchase.vendor` and `OwnedStockLot.vendor` as readable document snapshots and import fallbacks.
+- The audit records a historical named-person debt rule. Prompt 0/1 governance supersedes that pattern: new behavior must resolve configurable payment-account semantics and preserve legacy labels only for compatibility.
+- Current focused implementation surfaces are substantial (`owned-purchase-service` 356 lines, inventory service 658, stock actions 559, stock page 250); changes should deepen the owned-purchase interface rather than distribute receipt orchestration across UI actions.
+
+### Schema and service audit
+- Prompt 1 already added nullable `Purchase.businessPartnerId` and `paymentAccountId`, central `ItemCondition`, separate SupplierReturn/SupplierReturnLine, and `SUPPLIER_RETURN_OUT`; these foundations must be reused.
+- Purchase still lacks supplier order/reference, expected/actual delivery, carrier/tracking, shipping state, stored return deadline, documents, and receipt entities. PurchaseLine also has no received quantity or receipt relation.
+- The current `createOwnedPurchase` always creates a CONFIRMED Purchase, every line, one InventoryPosition/OwnedStockLot per line, and immediately posts one PURCHASE_RECEIPT movement. It cannot represent an order before receipt or multiple partial receipts.
+- Safe additive design: preserve `createOwnedPurchase` as the immediate-receipt compatibility adapter; add an order command plus a receipt command. Each accepted receipt-line slice creates its own InventoryPosition/OwnedStockLot and movement, allowing multiple lots and preserving immutable cost/condition snapshots.
+- Receipt completion should be derived from summed receipt-line quantities against ordered quantities, not a mutable stock counter. Stored header `receivedAt` marks complete receipt (or the latest receipt only if explicitly named); a dedicated receipt header provides the actual event timeline.
+- Existing document numbers cover purchase and inventory positions. Receipt records can use their purchase/sequence context without inventing another public document sequence unless the UI contract proves one is needed.
+
+### UI/import reference patterns
+- `/produkte` demonstrates the intended module split: a pure table-definition/query builder, a server page that resolves tenant-scoped projections, and a module table inside the shared workspace. Prompt 4 should follow this shape for purchases rather than reuse the legacy StockTable as its procurement table.
+- `/lager` currently remains a mixed current/legacy stock projection and is capped at 500 rows. Prompt 4 can add its required stock presets and inspection/defect projection without moving procurement records back into that table.
+- `createStockItemAction` is the required immediate-receipt compatibility entry point; it should keep calling `createOwnedPurchase`, which becomes an adapter over the new order-and-receive interface.
+- Current import registry has `lager` but no `einkauf` or `wareneingang`. The new definitions need complete field metadata and examples; the import planner/commit path must distinguish creating an unreceived order from posting an inbound event.
+- Existing owned-purchase tests characterize line planning and derived stock state only. Prompt 4 needs new proof around receipt allocation/completion/deadlines plus transactional behavior through the service seam.
+
+### Migration and isolation pattern
+- The Prompt-1 migration applies nullable foreign keys and new tenant-owned tables additively, then explicitly enables/forces RLS with organization and bypass policies. New receipt tables must use the same policy template and organization-scoped indexes.
+- Existing Organization already owns purchases and supplier returns; it will need receipt relations only if Prisma requires the backrelation. Purchase/PurchaseLine/InventoryPosition/OwnedStockLot need direct receipt relations for efficient completion and detail projections.
+- The established tenant-isolation regression file is `tests/beta-domain-tenant-isolation.test.ts`; the earlier guessed filename was incorrect.
+
+### Implemented Prompt-4 architecture
+- `PurchaseReceipt`/`PurchaseReceiptLine` are the missing event layer. Each receipt line owns a unique InventoryPosition and inbound movement reference; repeated partial receipts naturally become separate lots.
+- `createPurchaseOrder`, `receivePurchase`, and the preserved `createOwnedPurchase` compatibility adapter form the single purchasing interface. Orders create no stock; receipt confirmation owns all inventory side effects.
+- Intake inspection is represented without corrective counter writes: PURCHASE_RECEIPT targets AVAILABLE, INSPECTION, or DEFECTIVE through the inventory service according to the recorded inspection status.
+- `/einkauf` uses the shared Prompt-3 workspace with module-specific query, presets, columns, saved views, selection, pagination, detail evidence, receipt action, imports, and filtered exports. `/lager` retains the mixed current/legacy stock projection and gains its separate required presets.
+- Return deadlines remain stored evidence. UI provides textual/color status and dashboard attention with an explicit next action; no automated SupplierReturn or movement is created.
+- Purchasing and inbound imports extend the registry/planner/commit path. Five-column simple input is supported; an optional StorageX purchase number distinguishes receipt-against-order from direct inbound.
+- Configured SHAREHOLDER_PRIVATE payment accounts now supply a BusinessPartner/display-name debt creditor; named legacy payment labels remain a compatibility fallback only.
+
 ## Prompt 2 — Internal Design System and App Shell
 
 ### Baseline and direction
@@ -342,3 +406,35 @@
 - `integrity:check`: 13 checks pass with zero violations.
 - Next.js 15.5.20 Turbopack production build: pass; 26 static pages generated and `/produkte` reports 13.3 kB route size / 326 kB first-load JS.
 - `git diff --check`: pass; only Git's existing LF-to-CRLF working-copy notices are emitted.
+## Persistent QA account discovery (2026-07-14)
+
+- The worktree was clean at task start.
+- The account must be created through existing auth and tenant seams; no authentication bypass or tracked plaintext secret is acceptable.
+- Prior Prompt-3 QA established that the configured database was missing Prompt-1 entitlement schema at that time, so schema availability must be rechecked before claiming full feature access.
+- Credentials authentication verifies Argon2 password hashes and requests a TOTP only when `User.totpEnabled` is true.
+- A product-policy conflict exists: middleware redirects every `OWNER` or `ADMIN` membership with `totpEnabled=false` into 2FA setup. Therefore a normal full-administration account cannot simultaneously remain 2FA-free under the current role policy; discovery must distinguish full product entitlements from administrative organization permissions before provisioning.
+- Current known feature gating has one additive key, `CONSIGNMENT`; the legacy `BUSINESS` subscription tier also enables it. Credentials login itself does not require TOTP while `totpEnabled=false`.
+- `MEMBER` is the highest role exempt from mandatory 2FA. It can mutate all operational domains (products, purchases/imports, stock, sales, returns, shipping, debts, tasks, consignment) but cannot perform ADMIN/OWNER-only organization, team, credential-vault, catalog/tax, destructive debt/shipping, GDPR, or billing operations.
+- No existing seed/provision/test-account script or package command exists, so provisioning needs either a one-off untracked command or a deliberately added reusable script. The safer default is an untracked one-off operation because the user did not request a repository feature or commit.
+- The repository contains the additive `20260713100000_beta_domain_entitlements` migration. The configured datasource is the external Supabase `postgres/public` database previously used for QA, but sandbox networking cannot reliably query its migration status.
+- Approved read-only migration status confirms two unapplied migrations: `20260709100000_product_brand` and `20260713100000_beta_domain_entitlements`. Account provisioning must not claim database-backed add-ons or apply schema changes implicitly.
+- An isolated organization can still receive full current route-tier access through `subscriptionTier=BUSINESS`; the existing entitlement evaluator treats BUSINESS as legacy consignment access when no grant is available.
+- `.env*` is ignored except `.env.example`, so a reusable `.env.qa.local` credential file can remain local and untracked. This is preferable to putting the password in source, planning notes, or shell history.
+- Registration currently creates an OWNER and therefore immediately triggers mandatory 2FA; it cannot be reused unchanged for this account. Its transaction pattern and neutral parts of the starter-data seed can still be mirrored through RLS bypass.
+- Organization, platform, carrier, tax-rate, and select-option records have suitable organization-scoped unique keys for idempotent upserts. The QA organization should use neutral platform/account labels rather than copying the registration action's personal legacy examples.
+- The local credential file and idempotent provisioning helper are both covered by existing ignore rules (`.env*` and `/.tmp-*`). The helper passes `node --check`; tracked source remains untouched apart from the required planning notes.
+- Provisioning succeeded for `qa-codex@storagex.test`: TOTP false, isolated organization `storagex-codex-qa`, BUSINESS tier, MEMBER role, and consignment access via the existing BUSINESS fallback because the entitlement table is not deployed.
+- The UI uses the standard Auth.js `signIn("credentials", { redirect: false })` client flow. A safe verification can reproduce the same first-party CSRF/callback/session chain without adding browser libraries or exposing the password.
+- The exact client contract posts URL-encoded credentials plus CSRF token to `/api/auth/callback/credentials` with `X-Auth-Return-Redirect: 1`, then refreshes `/api/auth/session`. This can be reproduced with a small ignored Node helper and a local cookie jar.
+- First-party Auth.js verification passes: credentials callback succeeds without a TOTP code; session claims show the expected email, `totpEnabled=false`, active MEMBER role, BUSINESS tier, and isolated organization.
+- Protected-route smoke results expose database deployment drift rather than account failure: `/produkte`, `/versand`, `/einstellungen`, and `/team` return 200, while `/lager`, `/verkauf`, `/retouren`, `/konsignation`, and `/aufgaben` return 500. Server logs must identify the exact missing schema objects before the account can honestly be described as able to test every module.
+- Server diagnostics identify only missing Prompt-1 schema objects: `feature_entitlements`, `inventory_positions.item_condition`, `stock_items.item_condition`, `sales.marketplace_account_id`, and `tasks.scope`.
+- The pending additive migration `20260713100000_beta_domain_entitlements` creates exactly those columns/tables plus related domain foundation, FKs, checks, indexes, and forced RLS policies. Applying it is a meaningful external schema change and is not implicitly authorized by merely creating a user account.
+- Authorized deployment reached the known historical BOM defect in `20260709100000_product_brand` and stopped before the beta migration. Prisma recorded a failed attempt, so migration history must be reconciled before deploy can continue.
+- Read-only inspection proves `products.brand` already exists, the failed BOM migration applied zero steps, and none of the sampled beta columns/tables exists. It is therefore correct to resolve only `20260709100000_product_brand` as applied, then deploy the untouched beta migration normally.
+- Prisma history resolution succeeded for the already-present product-brand change. The untouched `20260713100000_beta_domain_entitlements` migration then deployed successfully; Prisma reports all 18 migrations applied.
+- Final migration status is clean. Re-running the idempotent QA provisioner upgraded entitlement mode from BUSINESS fallback to a real active MANUAL `CONSIGNMENT` grant while preserving MEMBER role and disabled TOTP.
+- Post-migration Auth.js verification passes without a TOTP code. All nine representative protected routes return HTTP 200: products, inventory, sales, returns, shipping, consignment, tasks, settings, and team.
+- Dev-server output for the verification run contains successful compile/request lines and no Prisma, entitlement, auth, or route errors.
+- Post-deploy `integrity:check` passes all 13 inventory, allocation, tenant-link, document-number, and movement-replay invariants with zero violations.
+- Temporary provisioning/verification/inspection helpers were removed. Only the ignored local `.env.qa.local` credential file remains for future autonomous login.

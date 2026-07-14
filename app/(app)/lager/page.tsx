@@ -8,6 +8,10 @@ import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
 import { StockTable, type StockRow } from "@/components/stock/stock-table";
 import { deriveOwnedStockStatus } from "@/lib/services/owned-purchase-service";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { parseStockView, STOCK_VIEW_DEFINITION } from "@/lib/stock/stock-views";
 
 export default async function StockPage({
   searchParams,
@@ -21,10 +25,12 @@ export default async function StockPage({
     plattform?: string;
     von?: string;
     bis?: string;
+    view?: string;
   }>;
 }) {
   const { db, organization } = await requireOrg();
   const params = await searchParams;
+  const view = parseStockView(params.view);
 
   const statusFilter =
     params.status && params.status in StockItemStatus
@@ -46,6 +52,9 @@ export default async function StockPage({
     db.inventoryPosition.findMany({
       where: {
         inventoryType: "OWNED",
+        ...(view === "stock" ? { quantityAvailable: { gt: 0 } } : {}),
+        ...(view === "listings" ? { listings: { some: {} } } : {}),
+        ...(view === "inspection" ? { OR: [{ quantityInspection: { gt: 0 } }, { quantityDefective: { gt: 0 } }] } : {}),
         ...(params.plattform
           ? { listings: { some: { platformId: params.plattform } } }
           : {}),
@@ -84,6 +93,10 @@ export default async function StockPage({
     db.stockItem.findMany({
       where: {
         ...(statusFilter ? { status: statusFilter } : {}),
+        ...(view === "stock" ? { quantity: { gt: 0 } } : {}),
+        ...(view === "purchasing" ? { purchaseDate: { not: null } } : {}),
+        ...(view === "listings" ? { listings: { some: {} } } : {}),
+        ...(view === "inspection" ? { status: { in: ["RETURNED", "OTHER"] as StockItemStatus[] } } : {}),
         ...(kaufFilter ? { kaufStatus: kaufFilter } : {}),
         ...(retoureFilter ? { retoureStatus: retoureFilter } : {}),
         ...(params.zm ? { paymentMethod: params.zm } : {}),
@@ -205,7 +218,7 @@ export default async function StockPage({
     <div className="space-y-4">
       <PageHeader
         eyebrow="Handel"
-        title="Lager & Wareneingang"
+        title="Lager"
         description={
           <>
             {ownedRows.length} Charge(n), {legacyRows.length} Legacy-Einheit(en){" "}
@@ -215,10 +228,15 @@ export default async function StockPage({
         actions={
           <>
             <ImportExportBar table="lager" />
+            <ImportExportBar table="wareneingang" />
             <StockItemDialog platforms={platforms} zmOptions={zmOptions} products={products} />
           </>
         }
       />
+
+      <div className="flex flex-wrap gap-1 border bg-card p-2" aria-label="Lageransichten">
+        {STOCK_VIEW_DEFINITION.map((item) => <Link key={item.key} href={item.key === "standard" ? "/lager" : `/lager?view=${item.key}`} className={cn(buttonVariants({ variant: view === item.key ? "default" : "outline", size: "sm" }))}>{item.label}</Link>)}
+      </div>
 
       <StockFilterBar
         filters={{

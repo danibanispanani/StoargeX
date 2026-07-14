@@ -264,9 +264,27 @@ enum InventoryType {
  * Status eines Einkaufs (Purchase).
  */
 enum PurchaseStatus {
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
   DRAFT // erfasst, aber noch nicht bestätigt
   CONFIRMED // Bestellung ausgelöst / Ware unterwegs / eingegangen
   CANCELLED // Einkauf storniert
+}
+
+enum PurchaseShippingStatus {
+  NOT_SHIPPED
+  READY
+  SHIPPED
+  PARTIALLY_RECEIVED
+  DELIVERED
+  UNKNOWN
+}
+
+enum ReceiptInspectionStatus {
+  PENDING
+  PASSED
+  DEFECTIVE
 }
 
 enum InventoryBucket {
@@ -314,6 +332,7 @@ enum ImportTargetEntity {
   PRODUCT
   PURCHASE
   PURCHASE_LINE
+  PURCHASE_RECEIPT
   INVENTORY_POSITION
   CONSIGNMENT_LOT
   SALE
@@ -393,6 +412,8 @@ model Organization {
   documentSequences         DocumentSequence[]
   purchases                 Purchase[]
   purchaseLines             PurchaseLine[]
+  purchaseReceipts          PurchaseReceipt[]
+  purchaseReceiptLines      PurchaseReceiptLine[]
   inventoryPositions        InventoryPosition[]
   ownedStockLots            OwnedStockLot[]
   consignmentLots           ConsignmentLot[]
@@ -449,6 +470,7 @@ model User {
   assignedTasks           Task[]              @relation("TaskAssignee")
   createdTasks            Task[]              @relation("TaskCreator")
   createdPurchases        Purchase[]          @relation("PurchaseCreatedBy")
+  purchaseReceiptsCreated PurchaseReceipt[]   @relation("PurchaseReceiptCreatedBy")
   inventoryMovements      InventoryMovement[] @relation("InventoryMovementCreatedBy")
   auditLogs               AuditLog[]
   importBatches           ImportBatch[]       @relation("ImportBatchCreatedBy")
@@ -1184,19 +1206,27 @@ model DocumentSequence {
 // ---------------------------------------------------------------------------
 
 model Purchase {
-  id                String         @id @default(cuid())
-  organizationId    String         @map("organization_id")
-  purchaseNumber    String         @map("purchase_number") // z.B. "E-26-0001"
-  purchaseDate      DateTime       @map("purchase_date")
-  vendor            String
-  paymentMethod     String         @map("payment_method")
-  businessPartnerId String?        @map("business_partner_id")
-  paymentAccountId  String?        @map("payment_account_id")
-  purchaseStatus    PurchaseStatus @default(DRAFT) @map("purchase_status")
-  comment           String?
-  createdById       String         @map("created_by_id")
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
+  id                  String                 @id @default(cuid())
+  organizationId      String                 @map("organization_id")
+  purchaseNumber      String                 @map("purchase_number") // z.B. "E-26-0001"
+  purchaseDate        DateTime               @map("purchase_date")
+  vendor              String
+  paymentMethod       String                 @map("payment_method")
+  businessPartnerId   String?                @map("business_partner_id")
+  paymentAccountId    String?                @map("payment_account_id")
+  supplierOrderNumber String?                @map("supplier_order_number")
+  expectedDeliveryAt  DateTime?              @map("expected_delivery_at")
+  receivedAt          DateTime?              @map("received_at")
+  shippingCarrier     String?                @map("shipping_carrier")
+  trackingNumber      String?                @map("tracking_number")
+  shippingStatus      PurchaseShippingStatus @default(NOT_SHIPPED) @map("shipping_status")
+  returnDeadline      DateTime?              @map("return_deadline")
+  documentReference   String?                @map("document_reference")
+  purchaseStatus      PurchaseStatus         @default(DRAFT) @map("purchase_status")
+  comment             String?
+  createdById         String                 @map("created_by_id")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
 
   organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy       User               @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -1205,10 +1235,14 @@ model Purchase {
   businessPartner BusinessPartner?   @relation(fields: [businessPartnerId], references: [id], onDelete: SetNull)
   paymentAccount  PayoutAccount?     @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
   supplierReturns SupplierReturn[]
+  receipts        PurchaseReceipt[]
 
   @@unique([organizationId, purchaseNumber])
   @@index([organizationId])
   @@index([organizationId, purchaseDate])
+  @@index([organizationId, purchaseStatus])
+  @@index([organizationId, shippingStatus])
+  @@index([organizationId, returnDeadline])
   @@index([createdById])
   @@index([businessPartnerId])
   @@index([paymentAccountId])
@@ -1230,15 +1264,69 @@ model PurchaseLine {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchase            Purchase              @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product             Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
   ownedLots           OwnedStockLot[]
   supplierReturnLines SupplierReturnLine[]
+  receiptLines        PurchaseReceiptLine[]
 
   @@index([organizationId])
   @@index([purchaseId])
   @@map("purchase_lines")
+}
+
+model PurchaseReceipt {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  purchaseId        String   @map("purchase_id")
+  receivedAt        DateTime @map("received_at")
+  shippingCarrier   String?  @map("shipping_carrier")
+  trackingNumber    String?  @map("tracking_number")
+  documentReference String?  @map("document_reference")
+  notes             String?
+  createdById       String   @map("created_by_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchase     Purchase              @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  createdBy    User                  @relation("PurchaseReceiptCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  lines        PurchaseReceiptLine[]
+
+  @@index([organizationId])
+  @@index([organizationId, receivedAt])
+  @@index([purchaseId])
+  @@index([createdById])
+  @@map("purchase_receipts")
+}
+
+model PurchaseReceiptLine {
+  id                  String                  @id @default(cuid())
+  organizationId      String                  @map("organization_id")
+  purchaseReceiptId   String                  @map("purchase_receipt_id")
+  purchaseLineId      String                  @map("purchase_line_id")
+  inventoryPositionId String                  @unique @map("inventory_position_id")
+  inboundMovementId   String                  @unique @map("inbound_movement_id")
+  quantity            Int
+  itemCondition       ItemCondition?          @map("item_condition")
+  legacyCondition     String?                 @map("legacy_condition")
+  inspectionStatus    ReceiptInspectionStatus @default(PASSED) @map("inspection_status")
+  returnDeadline      DateTime?               @map("return_deadline")
+  notes               String?
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseReceipt   PurchaseReceipt   @relation(fields: [purchaseReceiptId], references: [id], onDelete: Cascade)
+  purchaseLine      PurchaseLine      @relation(fields: [purchaseLineId], references: [id], onDelete: Restrict)
+  inventoryPosition InventoryPosition @relation(fields: [inventoryPositionId], references: [id], onDelete: Restrict)
+  inboundMovement   InventoryMovement @relation("PurchaseReceiptMovement", fields: [inboundMovementId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([purchaseReceiptId])
+  @@index([purchaseLineId])
+  @@index([organizationId, returnDeadline])
+  @@map("purchase_receipt_lines")
 }
 
 // ---------------------------------------------------------------------------
@@ -1275,6 +1363,7 @@ model InventoryPosition {
   saleAllocations     SaleLineAllocation[]
   debtLinks           DebtInventoryLink[]
   supplierReturnLines SupplierReturnLine[]
+  purchaseReceiptLine PurchaseReceiptLine?
 
   @@unique([organizationId, inventoryNumber])
   @@index([organizationId])
@@ -1382,10 +1471,11 @@ model InventoryMovement {
   createdById         String?               @map("created_by_id")
   createdAt           DateTime              @default(now()) @map("created_at")
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  inventoryPosition  InventoryPosition   @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
-  createdBy          User?               @relation("InventoryMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  supplierReturnLine SupplierReturnLine? @relation("SupplierReturnMovement")
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryPosition   InventoryPosition    @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+  createdBy           User?                @relation("InventoryMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  supplierReturnLine  SupplierReturnLine?  @relation("SupplierReturnMovement")
+  purchaseReceiptLine PurchaseReceiptLine? @relation("PurchaseReceiptMovement")
 
   @@unique([organizationId, idempotencyKey])
   @@index([organizationId])

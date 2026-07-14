@@ -2,6 +2,9 @@ import type {
   EntryStatus,
   Debt,
   InventoryPosition,
+  ItemCondition,
+  PurchaseReceipt,
+  ReceiptInspectionStatus,
   Prisma,
   PrismaClient,
   Product,
@@ -33,6 +36,10 @@ export interface OwnedPurchaseLineInput {
   platformIds?: string[];
   imageUrls?: string[];
   comment?: string;
+  itemCondition?: ItemCondition;
+  legacyCondition?: string;
+  inspectionStatus?: ReceiptInspectionStatus;
+  returnDeadline?: Date;
 }
 
 export interface CreateOwnedPurchaseInput {
@@ -41,6 +48,14 @@ export interface CreateOwnedPurchaseInput {
   purchaseDate: Date;
   vendor: string;
   paymentMethod: string;
+  businessPartnerId?: string;
+  paymentAccountId?: string;
+  supplierOrderNumber?: string;
+  expectedDeliveryAt?: Date;
+  shippingCarrier?: string;
+  trackingNumber?: string;
+  documentReference?: string;
+  returnDeadline?: Date;
   comment?: string;
   lines: OwnedPurchaseLineInput[];
   tx?: PurchaseTransaction;
@@ -65,6 +80,56 @@ export interface CreateOwnedPurchaseResult {
   purchaseNumber: string;
   lines: CreatedOwnedPurchaseLine[];
   debt: Debt | null;
+  receipt: PurchaseReceipt;
+}
+
+export interface CreatePurchaseOrderInput extends Omit<CreateOwnedPurchaseInput, "returnDeadline"> {
+  returnDeadline?: Date;
+}
+
+export interface CreatePurchaseOrderResult {
+  purchase: Purchase;
+  purchaseNumber: string;
+  lines: PurchaseLine[];
+  debt: Debt | null;
+}
+
+export interface ReceivePurchaseLineInput {
+  purchaseLineId: string;
+  quantity: number;
+  itemCondition?: ItemCondition;
+  legacyCondition?: string;
+  inspectionStatus?: ReceiptInspectionStatus;
+  purchaseEntryStatus?: EntryStatus;
+  returnEntryStatus?: EntryStatus;
+  ean?: string;
+  imageUrls?: string[];
+  platformIds?: string[];
+  returnDeadline?: Date;
+  notes?: string;
+}
+
+export interface ReceivePurchaseInput {
+  organizationId: string;
+  createdById: string;
+  purchaseId: string;
+  receivedAt: Date;
+  returnWindowDays?: number;
+  returnDeadline?: Date;
+  shippingCarrier?: string;
+  trackingNumber?: string;
+  documentReference?: string;
+  notes?: string;
+  lines: ReceivePurchaseLineInput[];
+  tx?: PurchaseTransaction;
+  prisma?: PurchasePrismaClient;
+}
+
+export interface ReceivePurchaseResult {
+  purchase: Purchase;
+  receipt: PurchaseReceipt;
+  lines: CreatedOwnedPurchaseLine[];
+  complete: boolean;
 }
 
 export type DerivedOwnedStockStatus =
@@ -73,6 +138,102 @@ export type DerivedOwnedStockStatus =
   | "Ausverkauft"
   | "In Prüfung"
   | "Defekt";
+
+export type ReturnDeadlineAttention = "NONE" | "ACTIVE" | "DUE_SOON" | "OVERDUE";
+
+export interface PurchaseReceiptLinePlanInput {
+  purchaseLineId: string;
+  orderedQuantity: number;
+  receivedQuantity: number;
+  quantity: number;
+}
+
+export interface PurchaseReceiptPlan {
+  receivedAt: Date;
+  returnDeadline: Date | null;
+  totalQuantity: number;
+  complete: boolean;
+  lines: Array<PurchaseReceiptLinePlanInput & { remainingAfter: number }>;
+}
+
+export function planPurchaseReceipt(input: {
+  receivedAt: Date;
+  returnWindowDays?: number | null;
+  explicitReturnDeadline?: Date | null;
+  lines: PurchaseReceiptLinePlanInput[];
+}): PurchaseReceiptPlan {
+  if (input.lines.length === 0) {
+    throw new Error("Mindestens eine Wareneingangsposition ist erforderlich.");
+  }
+  if (Number.isNaN(input.receivedAt.getTime())) {
+    throw new Error("Das Eingangsdatum ist ungültig.");
+  }
+  if (
+    input.returnWindowDays != null &&
+    (!Number.isInteger(input.returnWindowDays) || input.returnWindowDays < 0)
+  ) {
+    throw new Error("Die Rückgabefrist in Tagen ist ungültig.");
+  }
+
+  const seen = new Set<string>();
+  const lines = input.lines.map((line, index) => {
+    if (!line.purchaseLineId || seen.has(line.purchaseLineId)) {
+      throw new Error(`Position ${index + 1}: Bestellposition ist ungültig oder doppelt.`);
+    }
+    seen.add(line.purchaseLineId);
+    if (!Number.isInteger(line.orderedQuantity) || line.orderedQuantity < 1) {
+      throw new Error(`Position ${index + 1}: Bestellmenge ist ungültig.`);
+    }
+    if (!Number.isInteger(line.receivedQuantity) || line.receivedQuantity < 0) {
+      throw new Error(`Position ${index + 1}: Bereits eingegangene Menge ist ungültig.`);
+    }
+    if (!Number.isInteger(line.quantity) || line.quantity < 1) {
+      throw new Error(`Position ${index + 1}: Eingangsmenge muss mindestens 1 sein.`);
+    }
+    const remainingAfter = line.orderedQuantity - line.receivedQuantity - line.quantity;
+    if (remainingAfter < 0) {
+      throw new Error(`Position ${index + 1}: Eingangsmenge überschreitet die offene Menge.`);
+    }
+    return { ...line, remainingAfter };
+  });
+
+  let returnDeadline = input.explicitReturnDeadline ?? null;
+  if (returnDeadline && Number.isNaN(returnDeadline.getTime())) {
+    throw new Error("Die Rückgabefrist ist ungültig.");
+  }
+  if (!returnDeadline && input.returnWindowDays != null) {
+    returnDeadline = new Date(input.receivedAt);
+    returnDeadline.setUTCDate(returnDeadline.getUTCDate() + input.returnWindowDays);
+  }
+
+  return {
+    receivedAt: input.receivedAt,
+    returnDeadline,
+    totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+    complete: lines.every((line) => line.remainingAfter === 0),
+    lines,
+  };
+}
+
+export function classifyReturnDeadline(
+  deadline: Date | null | undefined,
+  now = new Date()
+): ReturnDeadlineAttention {
+  if (!deadline) return "NONE";
+  const remainingMs = deadline.getTime() - now.getTime();
+  if (remainingMs < 0) return "OVERDUE";
+  return remainingMs <= 7 * 24 * 60 * 60 * 1000 ? "DUE_SOON" : "ACTIVE";
+}
+
+export function effectiveReceivedQuantity(input: {
+  receiptQuantities: readonly number[];
+  legacyLotQuantities: readonly number[];
+}): number {
+  const receiptTotal = input.receiptQuantities.reduce((sum, quantity) => sum + quantity, 0);
+  return receiptTotal > 0
+    ? receiptTotal
+    : input.legacyLotQuantities.reduce((sum, quantity) => sum + quantity, 0);
+}
 
 export function prepareOwnedPurchaseLines(
   lines: OwnedPurchaseLineInput[]
@@ -133,20 +294,284 @@ export function deriveOwnedStockStatus(input: {
   return "Verfügbar";
 }
 
+export async function createPurchaseOrder(
+  input: CreatePurchaseOrderInput
+): Promise<CreatePurchaseOrderResult> {
+  const plans = prepareOwnedPurchaseLines(input.lines);
+  return withPurchaseTransaction(input.organizationId, input, (tx) =>
+    createPurchaseOrderInTransaction(tx, input, plans)
+  );
+}
+
+async function createPurchaseOrderInTransaction(
+  tx: PurchaseTransaction,
+  input: CreatePurchaseOrderInput,
+  plans: OwnedPurchaseLinePlan[]
+): Promise<CreatePurchaseOrderResult> {
+  const debtCreditorName = await validateCommercialReferences(tx, input.organizationId, input);
+  const purchaseNumber = (
+    await reserveDocumentNumber(input.organizationId, "PURCHASE", { tx, reference: input.purchaseDate })
+  ).display;
+  const purchase = await tx.purchase.create({
+    data: {
+      organizationId: input.organizationId,
+      purchaseNumber,
+      purchaseDate: input.purchaseDate,
+      vendor: input.vendor.trim() || "Unbekannt",
+      paymentMethod: input.paymentMethod,
+      businessPartnerId: input.businessPartnerId,
+      paymentAccountId: input.paymentAccountId,
+      supplierOrderNumber: normalizeOptional(input.supplierOrderNumber),
+      expectedDeliveryAt: input.expectedDeliveryAt,
+      shippingCarrier: normalizeOptional(input.shippingCarrier),
+      trackingNumber: normalizeOptional(input.trackingNumber),
+      shippingStatus: input.trackingNumber ? "SHIPPED" : "NOT_SHIPPED",
+      returnDeadline: input.returnDeadline,
+      documentReference: normalizeOptional(input.documentReference),
+      purchaseStatus: "ORDERED",
+      comment: normalizeOptional(input.comment),
+      createdById: input.createdById,
+    },
+  });
+
+  const lines: PurchaseLine[] = [];
+  for (const plan of plans) {
+    const product = await resolveProduct(tx, input.organizationId, plan);
+    lines.push(await tx.purchaseLine.create({
+      data: {
+        organizationId: input.organizationId,
+        purchaseId: purchase.id,
+        productId: product.id,
+        quantity: plan.quantity,
+        unitPriceGross: centsToDecimalString(plan.unitPriceGrossCents),
+        unitPriceNet: centsToDecimalString(plan.unitPriceNetCents),
+        vatDeductible: plan.inputTaxDeductible,
+        totalGross: centsToDecimalString(plan.totalGrossCents),
+        totalNet: centsToDecimalString(plan.totalNetCents),
+        comment: normalizeOptional(plan.comment),
+      },
+    }));
+  }
+
+  const debt = await ensurePurchaseDebt({
+    organizationId: input.organizationId,
+    createdById: input.createdById,
+    purchaseId: purchase.id,
+    purchaseNumber,
+    purchaseDate: input.purchaseDate,
+    vendor: input.vendor,
+    paymentMethod: input.paymentMethod,
+    creditorName: debtCreditorName,
+    totalGrossCents: plans.reduce((sum, line) => sum + line.totalGrossCents, 0),
+    tx,
+  });
+  await tx.auditLog.create({
+    data: {
+      organizationId: input.organizationId,
+      userId: input.createdById,
+      action: "purchase.order.create",
+      entityType: "Purchase",
+      entityId: purchase.id,
+      after: { purchaseNumber, lineCount: lines.length, supplier: input.vendor },
+    },
+  });
+  return { purchase, purchaseNumber, lines, debt };
+}
+
+export async function receivePurchase(
+  input: ReceivePurchaseInput
+): Promise<ReceivePurchaseResult> {
+  return withPurchaseTransaction(input.organizationId, input, (tx) =>
+    receivePurchaseInTransaction(tx, input)
+  );
+}
+
+async function receivePurchaseInTransaction(
+  tx: PurchaseTransaction,
+  input: ReceivePurchaseInput
+): Promise<ReceivePurchaseResult> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`storagex:purchase-receipt:${input.organizationId}:${input.purchaseId}`}))`;
+  const purchase = await tx.purchase.findFirst({
+    where: { id: input.purchaseId, organizationId: input.organizationId },
+    include: {
+      lines: {
+        include: {
+          product: true,
+          receiptLines: { select: { quantity: true } },
+          ownedLots: { select: { inventoryPosition: { select: { quantityReceived: true } } } },
+        },
+      },
+    },
+  });
+  if (!purchase) throw new Error("Einkauf wurde im Mandanten nicht gefunden.");
+  if (purchase.purchaseStatus === "CANCELLED") {
+    throw new Error("Ein stornierter Einkauf kann keinen Wareneingang erhalten.");
+  }
+
+  const requestedByLine = new Map(input.lines.map((line) => [line.purchaseLineId, line]));
+  if (requestedByLine.size !== input.lines.length) {
+    throw new Error("Eine Bestellposition darf pro Wareneingang nur einmal vorkommen.");
+  }
+  const orderLines = new Map(purchase.lines.map((line) => [line.id, line]));
+  for (const lineId of requestedByLine.keys()) {
+    if (!orderLines.has(lineId)) {
+      throw new Error("Bestellposition wurde im Einkauf dieses Mandanten nicht gefunden.");
+    }
+  }
+  const plan = planPurchaseReceipt({
+    receivedAt: input.receivedAt,
+    returnWindowDays: input.returnWindowDays,
+    explicitReturnDeadline: input.returnDeadline,
+    lines: input.lines.map((line) => {
+      const orderLine = orderLines.get(line.purchaseLineId)!;
+      return {
+        purchaseLineId: line.purchaseLineId,
+        orderedQuantity: orderLine.quantity,
+        receivedQuantity: effectiveReceivedQuantity({
+          receiptQuantities: orderLine.receiptLines.map((item) => item.quantity),
+          legacyLotQuantities: orderLine.ownedLots.map((item) => item.inventoryPosition.quantityReceived),
+        }),
+        quantity: line.quantity,
+      };
+    }),
+  });
+  const receipt = await tx.purchaseReceipt.create({
+    data: {
+      organizationId: input.organizationId,
+      purchaseId: purchase.id,
+      receivedAt: input.receivedAt,
+      shippingCarrier: normalizeOptional(input.shippingCarrier),
+      trackingNumber: normalizeOptional(input.trackingNumber),
+      documentReference: normalizeOptional(input.documentReference),
+      notes: normalizeOptional(input.notes),
+      createdById: input.createdById,
+    },
+  });
+
+  const createdLines: CreatedOwnedPurchaseLine[] = [];
+  for (const plannedLine of plan.lines) {
+    const orderLine = orderLines.get(plannedLine.purchaseLineId)!;
+    const request = requestedByLine.get(plannedLine.purchaseLineId)!;
+    const inventoryNumber = (
+      await reserveDocumentNumber(input.organizationId, "OWNED_STOCK", { tx, reference: input.receivedAt })
+    ).display;
+    const position = await tx.inventoryPosition.create({
+      data: {
+        organizationId: input.organizationId,
+        productId: orderLine.productId,
+        inventoryType: "OWNED",
+        inventoryNumber,
+        itemCondition: request.itemCondition,
+        receivedAt: input.receivedAt,
+      },
+    });
+    await tx.ownedStockLot.create({
+      data: {
+        organizationId: input.organizationId,
+        inventoryPositionId: position.id,
+        purchaseLineId: orderLine.id,
+        purchaseDate: purchase.purchaseDate,
+        vendor: purchase.vendor,
+        unitPriceGross: orderLine.unitPriceGross,
+        unitPriceNet: orderLine.unitPriceNet,
+        vatDeductible: orderLine.vatDeductible,
+        paymentMethod: purchase.paymentMethod,
+        purchaseEntryStatus: request.purchaseEntryStatus ?? "O",
+        returnEntryStatus: request.returnEntryStatus ?? "NN",
+        ean: normalizeOptional(request.ean),
+        imageUrls: request.imageUrls ?? [],
+      },
+    });
+    if (request.platformIds?.length) {
+      await tx.inventoryPositionListing.createMany({
+        data: request.platformIds.map((platformId) => ({
+          organizationId: input.organizationId,
+          inventoryPositionId: position.id,
+          platformId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    const inventoryReceipt = await receiveOwnedStock({
+      organizationId: input.organizationId,
+      inventoryPositionId: position.id,
+      quantity: request.quantity,
+      referenceType: "PurchaseReceipt",
+      referenceId: receipt.id,
+      referenceAction: "purchase_receipt",
+      idempotencyKey: `purchase-receipt:${receipt.id}:line:${orderLine.id}`,
+      comment: normalizeOptional(request.notes) ?? `Wareneingang ${purchase.purchaseNumber}`,
+      createdById: input.createdById,
+      bucket: receiptBucket(request.inspectionStatus),
+      tx,
+    });
+    await tx.purchaseReceiptLine.create({
+      data: {
+        organizationId: input.organizationId,
+        purchaseReceiptId: receipt.id,
+        purchaseLineId: orderLine.id,
+        inventoryPositionId: position.id,
+        inboundMovementId: inventoryReceipt.movement.id,
+        quantity: request.quantity,
+        itemCondition: request.itemCondition,
+        legacyCondition: normalizeOptional(request.legacyCondition),
+        inspectionStatus: request.inspectionStatus ?? "PASSED",
+        returnDeadline: request.returnDeadline ?? plan.returnDeadline,
+        notes: normalizeOptional(request.notes),
+      },
+    });
+    createdLines.push({
+      product: orderLine.product,
+      purchaseLine: orderLine,
+      inventoryPosition: inventoryReceipt.position,
+      inventoryNumber,
+    });
+  }
+
+  const complete = purchase.lines.every((line) => {
+    const before = effectiveReceivedQuantity({
+      receiptQuantities: line.receiptLines.map((item) => item.quantity),
+      legacyLotQuantities: line.ownedLots.map((item) => item.inventoryPosition.quantityReceived),
+    });
+    return before + (requestedByLine.get(line.id)?.quantity ?? 0) === line.quantity;
+  });
+  const updatedPurchase = await tx.purchase.update({
+    where: { id: purchase.id },
+    data: {
+      purchaseStatus: complete ? "RECEIVED" : "PARTIALLY_RECEIVED",
+      shippingStatus: complete ? "DELIVERED" : "PARTIALLY_RECEIVED",
+      receivedAt: complete ? input.receivedAt : purchase.receivedAt,
+      shippingCarrier: normalizeOptional(input.shippingCarrier) ?? purchase.shippingCarrier,
+      trackingNumber: normalizeOptional(input.trackingNumber) ?? purchase.trackingNumber,
+      documentReference: normalizeOptional(input.documentReference) ?? purchase.documentReference,
+      returnDeadline: plan.returnDeadline ?? purchase.returnDeadline,
+    },
+  });
+  await tx.auditLog.create({
+    data: {
+      organizationId: input.organizationId,
+      userId: input.createdById,
+      action: "purchase.receipt.create",
+      entityType: "PurchaseReceipt",
+      entityId: receipt.id,
+      after: {
+        purchaseId: purchase.id,
+        quantity: plan.totalQuantity,
+        complete,
+        inventoryNumbers: createdLines.map((line) => line.inventoryNumber),
+      },
+    },
+  });
+  return { purchase: updatedPurchase, receipt, lines: createdLines, complete };
+}
+
 export async function createOwnedPurchase(
   input: CreateOwnedPurchaseInput
 ): Promise<CreateOwnedPurchaseResult> {
   const plans = prepareOwnedPurchaseLines(input.lines);
-
-  if (input.tx) {
-    return createOwnedPurchaseInTransaction(input.tx, input, plans);
-  }
-
-  const client = input.prisma ?? defaultPrisma;
-  return client.$transaction(async (tx: Prisma.TransactionClient) => {
-    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${input.organizationId}, TRUE)`;
-    return createOwnedPurchaseInTransaction(tx, input, plans);
-  });
+  return withPurchaseTransaction(input.organizationId, input, (tx) =>
+    createOwnedPurchaseInTransaction(tx, input, plans)
+  );
 }
 
 async function createOwnedPurchaseInTransaction(
@@ -154,6 +579,10 @@ async function createOwnedPurchaseInTransaction(
   input: CreateOwnedPurchaseInput,
   plans: OwnedPurchaseLinePlan[]
 ): Promise<CreateOwnedPurchaseResult> {
+  const debtCreditorName = await validateCommercialReferences(tx, input.organizationId, {
+    businessPartnerId: input.businessPartnerId,
+    paymentAccountId: input.paymentAccountId,
+  });
   const purchaseNumber = (
     await reserveDocumentNumber(input.organizationId, "PURCHASE", {
       tx,
@@ -168,8 +597,31 @@ async function createOwnedPurchaseInTransaction(
       purchaseDate: input.purchaseDate,
       vendor: input.vendor,
       paymentMethod: input.paymentMethod,
-      purchaseStatus: "CONFIRMED",
+      businessPartnerId: input.businessPartnerId,
+      paymentAccountId: input.paymentAccountId,
+      supplierOrderNumber: normalizeOptional(input.supplierOrderNumber),
+      expectedDeliveryAt: input.expectedDeliveryAt,
+      receivedAt: input.purchaseDate,
+      shippingCarrier: normalizeOptional(input.shippingCarrier),
+      trackingNumber: normalizeOptional(input.trackingNumber),
+      shippingStatus: "DELIVERED",
+      returnDeadline: input.returnDeadline,
+      documentReference: normalizeOptional(input.documentReference),
+      purchaseStatus: "RECEIVED",
       comment: normalizeOptional(input.comment),
+      createdById: input.createdById,
+    },
+  });
+
+  const purchaseReceipt = await tx.purchaseReceipt.create({
+    data: {
+      organizationId: input.organizationId,
+      purchaseId: purchase.id,
+      receivedAt: input.purchaseDate,
+      shippingCarrier: normalizeOptional(input.shippingCarrier),
+      trackingNumber: normalizeOptional(input.trackingNumber),
+      documentReference: normalizeOptional(input.documentReference),
+      notes: normalizeOptional(input.comment),
       createdById: input.createdById,
     },
   });
@@ -212,6 +664,7 @@ async function createOwnedPurchaseInTransaction(
         quantityInspection: 0,
         quantityDefective: 0,
         quantitySold: 0,
+        itemCondition: line.itemCondition,
         receivedAt: input.purchaseDate,
       },
     });
@@ -245,7 +698,7 @@ async function createOwnedPurchaseInTransaction(
       });
     }
 
-    const receipt = await receiveOwnedStock({
+    const inventoryReceipt = await receiveOwnedStock({
       organizationId: input.organizationId,
       inventoryPositionId: inventoryPosition.id,
       quantity: line.quantity,
@@ -255,13 +708,30 @@ async function createOwnedPurchaseInTransaction(
       idempotencyKey: `purchase:${purchase.id}:line:${purchaseLine.id}:receipt`,
       comment: normalizeOptional(line.comment) ?? `Wareneingang ${purchaseNumber}`,
       createdById: input.createdById,
+      bucket: receiptBucket(line.inspectionStatus),
       tx,
+    });
+
+    await tx.purchaseReceiptLine.create({
+      data: {
+        organizationId: input.organizationId,
+        purchaseReceiptId: purchaseReceipt.id,
+        purchaseLineId: purchaseLine.id,
+        inventoryPositionId: inventoryPosition.id,
+        inboundMovementId: inventoryReceipt.movement.id,
+        quantity: line.quantity,
+        itemCondition: line.itemCondition,
+        legacyCondition: normalizeOptional(line.legacyCondition),
+        inspectionStatus: line.inspectionStatus ?? "PASSED",
+        returnDeadline: line.returnDeadline ?? input.returnDeadline,
+        notes: normalizeOptional(line.comment),
+      },
     });
 
     createdLines.push({
       product,
       purchaseLine,
-      inventoryPosition: receipt.position,
+      inventoryPosition: inventoryReceipt.position,
       inventoryNumber,
     });
 
@@ -308,11 +778,12 @@ async function createOwnedPurchaseInTransaction(
     purchaseDate: input.purchaseDate,
     vendor: input.vendor,
     paymentMethod: input.paymentMethod,
+    creditorName: debtCreditorName,
     totalGrossCents: plans.reduce((sum, line) => sum + line.totalGrossCents, 0),
     tx,
   });
 
-  return { purchase, purchaseNumber, lines: createdLines, debt };
+  return { purchase, purchaseNumber, lines: createdLines, debt, receipt: purchaseReceipt };
 }
 
 async function resolveProduct(
@@ -348,6 +819,62 @@ async function resolveProduct(
       defaultPriceCents: line.unitPriceGrossCents,
     },
   });
+}
+
+async function withPurchaseTransaction<T>(
+  organizationId: string,
+  options: { tx?: PurchaseTransaction; prisma?: PurchasePrismaClient },
+  operation: (tx: PurchaseTransaction) => Promise<T>
+): Promise<T> {
+  if (options.tx) return operation(options.tx);
+  const client = options.prisma ?? defaultPrisma;
+  return client.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organizationId}, TRUE)`;
+    return operation(tx);
+  });
+}
+
+async function validateCommercialReferences(
+  tx: PurchaseTransaction,
+  organizationId: string,
+  input: { businessPartnerId?: string; paymentAccountId?: string }
+): Promise<string | null> {
+  if (input.businessPartnerId) {
+    const supplier = await tx.businessPartner.findFirst({
+      where: {
+        id: input.businessPartnerId,
+        organizationId,
+        active: true,
+        roles: { some: { role: "SUPPLIER" } },
+      },
+      select: { id: true },
+    });
+    if (!supplier) throw new Error("Lieferant wurde im Mandanten nicht gefunden.");
+  }
+  if (input.paymentAccountId) {
+    const account = await tx.payoutAccount.findFirst({
+      where: { id: input.paymentAccountId, organizationId, active: true },
+      select: {
+        id: true,
+        displayName: true,
+        accountType: true,
+        businessPartner: { select: { displayName: true } },
+      },
+    });
+    if (!account) throw new Error("Zahlungskonto wurde im Mandanten nicht gefunden.");
+    return account.accountType === "SHAREHOLDER_PRIVATE"
+      ? account.businessPartner?.displayName ?? account.displayName
+      : null;
+  }
+  return null;
+}
+
+function receiptBucket(
+  inspectionStatus: ReceiptInspectionStatus | undefined
+): "AVAILABLE" | "INSPECTION" | "DEFECTIVE" {
+  if (inspectionStatus === "PENDING") return "INSPECTION";
+  if (inspectionStatus === "DEFECTIVE") return "DEFECTIVE";
+  return "AVAILABLE";
 }
 
 function normalizeOptional(value: string | undefined): string | null {

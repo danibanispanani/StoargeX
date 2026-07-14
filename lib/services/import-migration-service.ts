@@ -2,7 +2,9 @@ import { createHash } from "crypto";
 import type {
   ImportRowStatus,
   ImportTargetEntity,
+  ItemCondition,
   Prisma,
+  ReceiptInspectionStatus,
   ReturnStatus,
   SaleStatus,
 } from "@prisma/client";
@@ -17,6 +19,9 @@ import {
 import {
   centsToDecimalString,
   createOwnedPurchase,
+  createPurchaseOrder,
+  effectiveReceivedQuantity,
+  receivePurchase,
 } from "@/lib/services/owned-purchase-service";
 import { createConsignmentStock } from "@/lib/services/consignment-service";
 import { reserveDocumentNumber } from "@/lib/services/document-number-service";
@@ -147,6 +152,12 @@ export async function runMigrationImport(input: {
   switch (input.table) {
     case "produkte":
       importedCount = await commitProductImport(input, batch.id, validRows);
+      break;
+    case "einkauf":
+      importedCount = await commitPurchaseImport(input, batch.id, validRows);
+      break;
+    case "wareneingang":
+      importedCount = await commitInboundImport(input, batch.id, validRows);
       break;
     case "lager":
       importedCount = await commitStockImport(input, batch.id, validRows);
@@ -379,6 +390,152 @@ async function commitStockImport(
       });
       imported++;
     }
+  }
+  return imported;
+}
+
+async function commitPurchaseImport(
+  input: ImportRunInput,
+  batchId: string,
+  plannedRows: PlannedRow[]
+): Promise<number> {
+  const groups = new Map<string, PlannedRow[]>();
+  for (const planned of plannedRows) {
+    const key = normalize(planned.row.bestellnummer) || `row:${planned.rowNumber}`;
+    groups.set(key, [...(groups.get(key) ?? []), planned]);
+  }
+  let imported = 0;
+  for (const group of groups.values()) {
+    const first = group[0].row;
+    const created = await createPurchaseOrder({
+      organizationId: input.organizationId,
+      createdById: input.createdById,
+      purchaseDate: parseDateFlexible(first.datum) ?? new Date(),
+      vendor: first.lieferant.trim(),
+      paymentMethod: first.zahlungsmethode?.trim() || "Firma",
+      supplierOrderNumber: optionalUndefined(first.bestellnummer),
+      expectedDeliveryAt: parseDateFlexible(first.erwartet) ?? undefined,
+      trackingNumber: optionalUndefined(first.tracking),
+      comment: importComment(group),
+      lines: group.map(({ row }) => ({
+        productName: row.artikel.trim(),
+        variant: optionalUndefined(row.variante),
+        quantity: parseIntSafe(row.menge) ?? 1,
+        unitPriceGrossCents: requiredCents(row.preis),
+        inputTaxDeductible: parseBoolTolerant(row.vst),
+        inputTaxRatePercent: 19,
+        purchaseEntryStatus: "O",
+        returnEntryStatus: "NN",
+        comment: optionalUndefined(row.notiz),
+      })),
+      tx: input.tx,
+    });
+    for (const planned of group) {
+      await createSourceReference(input.tx, {
+        organizationId: input.organizationId,
+        batchId,
+        sheetName: input.metadata?.sheetName,
+        planned,
+        targetEntity: "PURCHASE",
+        targetEntityId: created.purchase.id,
+        status: "LINKED",
+      });
+      imported++;
+    }
+  }
+  return imported;
+}
+
+async function commitInboundImport(
+  input: ImportRunInput,
+  batchId: string,
+  plannedRows: PlannedRow[]
+): Promise<number> {
+  let imported = 0;
+  for (const planned of plannedRows) {
+    const row = planned.row;
+    let receiptId: string;
+    if (row.einkaufsnummer?.trim()) {
+      const purchase = await input.tx.purchase.findFirst({
+        where: { organizationId: input.organizationId, purchaseNumber: row.einkaufsnummer.trim() },
+        include: {
+          lines: {
+            include: {
+              product: { select: { name: true } },
+              receiptLines: { select: { quantity: true } },
+              ownedLots: { select: { inventoryPosition: { select: { quantityReceived: true } } } },
+            },
+          },
+        },
+      });
+      if (!purchase) throw new Error(`Einkauf ${row.einkaufsnummer} wurde im Mandanten nicht gefunden.`);
+      const matches = purchase.lines.filter((line) =>
+        normalize(line.product.name) === normalize(row.artikel) &&
+        effectiveReceivedQuantity({
+          receiptQuantities: line.receiptLines.map((item) => item.quantity),
+          legacyLotQuantities: line.ownedLots.map((item) => item.inventoryPosition.quantityReceived),
+        }) < line.quantity
+      );
+      if (matches.length !== 1) {
+        throw new Error(`Artikel ${row.artikel} ist in ${row.einkaufsnummer} nicht eindeutig offen.`);
+      }
+      const received = await receivePurchase({
+        organizationId: input.organizationId,
+        createdById: input.createdById,
+        purchaseId: purchase.id,
+        receivedAt: parseDateFlexible(row.datum) ?? new Date(),
+        returnDeadline: parseDateFlexible(row.rueckgabefrist) ?? undefined,
+        trackingNumber: optionalUndefined(row.tracking),
+        notes: optionalUndefined(row.notiz),
+        lines: [{
+          purchaseLineId: matches[0].id,
+          quantity: parseIntSafe(row.menge) ?? 1,
+          itemCondition: itemCondition(row.zustand),
+          legacyCondition: optionalUndefined(row.zustand),
+          inspectionStatus: inspectionStatus(row.pruefung),
+          notes: optionalUndefined(row.notiz),
+        }],
+        tx: input.tx,
+      });
+      receiptId = received.receipt.id;
+    } else {
+      const created = await createOwnedPurchase({
+        organizationId: input.organizationId,
+        createdById: input.createdById,
+        purchaseDate: parseDateFlexible(row.datum) ?? new Date(),
+        vendor: row.lieferant.trim(),
+        paymentMethod: row.zahlungsmethode?.trim() || "Firma",
+        trackingNumber: optionalUndefined(row.tracking),
+        returnDeadline: parseDateFlexible(row.rueckgabefrist) ?? undefined,
+        comment: optionalUndefined(row.notiz),
+        lines: [{
+          productName: row.artikel.trim(),
+          variant: optionalUndefined(row.variante),
+          quantity: parseIntSafe(row.menge) ?? 1,
+          unitPriceGrossCents: requiredCents(row.preis),
+          inputTaxDeductible: parseBoolTolerant(row.vst),
+          inputTaxRatePercent: 19,
+          purchaseEntryStatus: "O",
+          returnEntryStatus: "NN",
+          itemCondition: itemCondition(row.zustand),
+          legacyCondition: optionalUndefined(row.zustand),
+          inspectionStatus: inspectionStatus(row.pruefung),
+          comment: optionalUndefined(row.notiz),
+        }],
+        tx: input.tx,
+      });
+      receiptId = created.receipt.id;
+    }
+    await createSourceReference(input.tx, {
+      organizationId: input.organizationId,
+      batchId,
+      sheetName: input.metadata?.sheetName,
+      planned,
+      targetEntity: "PURCHASE_RECEIPT",
+      targetEntityId: receiptId,
+      status: "LINKED",
+    });
+    imported++;
   }
   return imported;
 }
@@ -775,6 +932,9 @@ interface ImportContext {
   inventoryByLegacy: Map<string, ImportInventoryMapping>;
   saleByLegacy: Map<string, { saleId: string }>;
   productKeys: Set<string>;
+  purchaseByNumber: Map<string, {
+    lines: Array<{ productName: string; quantity: number; receivedQuantity: number }>;
+  }>;
 }
 
 interface ImportInventoryMapping {
@@ -893,6 +1053,39 @@ function validateRow(
     needMoney("brutto", "Brutto");
     return { status: "NEW", message: "Neue Lagerzeile wird importiert.", warnings, errors, targetEntity: "INVENTORY_POSITION" };
   }
+  if (table === "einkauf" || table === "wareneingang") {
+    if (!row.datum?.trim() || !parseDateFlexible(row.datum)) errors.push("Datum ist ungültig.");
+    if (!row.lieferant?.trim()) errors.push("Lieferant fehlt.");
+    if (!row.artikel?.trim()) errors.push("Artikel fehlt.");
+    if ((parseIntSafe(row.menge) ?? 0) < 1) errors.push("Menge muss mindestens 1 sein.");
+    needMoney("preis", "Preis");
+    if (row.zustand?.trim() && !itemCondition(row.zustand)) errors.push("Zustand ist ungültig.");
+    if (row.pruefung?.trim() && !["PASSED", "PENDING", "DEFECTIVE"].includes(row.pruefung.trim().toUpperCase())) errors.push("Prüfstatus ist ungültig.");
+    if (row.rueckgabefrist?.trim() && !parseDateFlexible(row.rueckgabefrist)) errors.push("Rückgabefrist ist ungültig.");
+    if (table === "wareneingang" && row.einkaufsnummer?.trim()) {
+      const purchase = context.purchaseByNumber.get(normalize(row.einkaufsnummer));
+      if (!purchase) {
+        errors.push(`Einkauf ${row.einkaufsnummer} wurde im Mandanten nicht gefunden.`);
+      } else {
+        const matches = purchase.lines.filter((line) =>
+          normalize(line.productName) === normalize(row.artikel) &&
+          line.receivedQuantity < line.quantity
+        );
+        if (matches.length !== 1) {
+          errors.push(`Artikel ${row.artikel} ist in ${row.einkaufsnummer} nicht eindeutig offen.`);
+        } else if ((parseIntSafe(row.menge) ?? 0) > matches[0].quantity - matches[0].receivedQuantity) {
+          errors.push("Eingangsmenge überschreitet die offene Bestellmenge.");
+        }
+      }
+    }
+    return {
+      status: errors.length ? "ERROR" : "NEW",
+      message: table === "einkauf" ? "Neue Bestellung wird importiert." : row.einkaufsnummer?.trim() ? "Wareneingang wird mit Einkauf verknüpft." : "Direkter Wareneingang wird importiert.",
+      warnings,
+      errors,
+      targetEntity: table === "einkauf" ? "PURCHASE" : "PURCHASE_RECEIPT",
+    };
+  }
   if (table === "verkauf") {
     needMoney("vk_brutto", "VK brutto");
     const refs = saleStockReferences(row);
@@ -975,8 +1168,11 @@ async function loadImportContext(
   const needsInventory = table === "verkauf";
   const needsSales = table === "retouren";
   const needsProducts = table === "produkte";
+  const purchaseNumbers = table === "wareneingang"
+    ? [...new Set(rows.map((row) => row.einkaufsnummer?.trim()).filter(Boolean))] as string[]
+    : [];
   const productNames = [...new Set(rows.map((row) => row.name?.trim()).filter(Boolean))] as string[];
-  const [inventoryRefs, products, saleRefs] = await Promise.all([
+  const [inventoryRefs, products, saleRefs, purchases] = await Promise.all([
     needsInventory
       ? tx.sourceReference.findMany({
           where: { organizationId, targetEntity: "INVENTORY_POSITION" },
@@ -996,6 +1192,22 @@ async function loadImportContext(
       ? tx.sourceReference.findMany({
           where: { organizationId, targetEntity: "SALE" },
           select: { legacyReference: true, targetEntityId: true },
+        })
+      : Promise.resolve([]),
+    purchaseNumbers.length > 0
+      ? tx.purchase.findMany({
+          where: { organizationId, purchaseNumber: { in: purchaseNumbers } },
+          select: {
+            purchaseNumber: true,
+            lines: {
+              select: {
+                quantity: true,
+                product: { select: { name: true } },
+                receiptLines: { select: { quantity: true } },
+                ownedLots: { select: { inventoryPosition: { select: { quantityReceived: true } } } },
+              },
+            },
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -1030,6 +1242,19 @@ async function loadImportContext(
     productKeys: new Set(
       products.map((product) => productImportKey(product.name, product.variant ?? undefined))
     ),
+    purchaseByNumber: new Map(purchases.map((purchase) => [
+      normalize(purchase.purchaseNumber),
+      {
+        lines: purchase.lines.map((line) => ({
+          productName: line.product.name,
+          quantity: line.quantity,
+          receivedQuantity: effectiveReceivedQuantity({
+            receiptQuantities: line.receiptLines.map((item) => item.quantity),
+            legacyLotQuantities: line.ownedLots.map((item) => item.inventoryPosition.quantityReceived),
+          }),
+        })),
+      },
+    ])),
   };
 }
 
@@ -1168,6 +1393,8 @@ function primaryLegacyReference(table: TableKey, row: ImportRow, rowNumber: numb
   let value: string | undefined;
   switch (table) {
     case "produkte": value = productImportKey(row.name, row.variant); break;
+    case "einkauf": value = row.bestellnummer; break;
+    case "wareneingang": value = row.einkaufsnummer || `${row.datum}:${row.lieferant}:${row.artikel}`; break;
     case "lager": value = row.lagerid; break;
     case "verkauf":
     case "retouren": value = row.orderid; break;
@@ -1305,6 +1532,20 @@ function productImportKey(name: string | undefined, variant: string | undefined)
 
 function parseImageUrls(value: string | undefined): string[] {
   return splitImageUrls(value).filter(isValidHttpsUrl);
+}
+
+function itemCondition(value: string | undefined): ItemCondition | undefined {
+  const normalized = value?.trim().toUpperCase();
+  return normalized && ["NEW", "OPEN_BOX", "REFURBISHED", "USED", "DEFECTIVE"].includes(normalized)
+    ? normalized as ItemCondition
+    : undefined;
+}
+
+function inspectionStatus(value: string | undefined): ReceiptInspectionStatus {
+  const normalized = value?.trim().toUpperCase();
+  return normalized && ["PASSED", "PENDING", "DEFECTIVE"].includes(normalized)
+    ? normalized as ReceiptInspectionStatus
+    : "PASSED";
 }
 
 function splitImageUrls(value: string | undefined): string[] {

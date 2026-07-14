@@ -13,6 +13,7 @@ describe("app navigation metadata", () => {
     ]);
     expect(APP_NAVIGATION.flatMap((section) => section.items).map((item) => item.href)).toEqual([
       "/dashboard",
+      "/einkauf",
       "/lager",
       "/produkte",
       "/verkauf",

@@ -18,6 +18,10 @@ function dryRunTx(options: {
   }>;
   saleRefs?: Array<{ legacyReference: string; targetEntityId: string }>;
   products?: Array<{ id: string; name: string; variant: string | null }>;
+  purchases?: Array<{
+    purchaseNumber: string;
+    lines: Array<{ quantity: number; product: { name: string }; receiptLines: Array<{ quantity: number }> }>;
+  }>;
 } = {}) {
   const existing = new Set(options.existingHashes ?? []);
   const sourceReferences = [
@@ -63,6 +67,12 @@ function dryRunTx(options: {
     },
     product: {
       findMany: async () => options.products ?? [],
+    },
+    purchase: {
+      findMany: async () => (options.purchases ?? []).map((purchase) => ({
+        ...purchase,
+        lines: purchase.lines.map((line) => ({ ...line, ownedLots: [] })),
+      })),
     },
   };
   return tx as unknown as Prisma.TransactionClient;
@@ -142,6 +152,58 @@ describe("import migration pipeline", () => {
     }]);
     expect(result.summary.newRows).toBe(1);
     expect(result.errors).toEqual([]);
+  });
+
+  it.each(["einkauf", "wareneingang"] as const)(
+    "Dry Run: %s akzeptiert den einfachen Fünf-Spalten-Datensatz",
+    async (table) => {
+      const result = await dryRun(table, [{
+        datum: "14.07.2026",
+        lieferant: "Beispiellieferant",
+        artikel: "Fire TV Stick",
+        menge: "2",
+        preis: "34,99",
+      }]);
+      expect(result.validCount).toBe(1);
+      expect(result.summary.newRows).toBe(1);
+      expect(result.errors).toEqual([]);
+    }
+  );
+
+  it("Dry Run: Wareneingang meldet ungültige Menge, Preis, Zustand und Frist zeilenbezogen", async () => {
+    const result = await dryRun("wareneingang", [{
+      datum: "14.07.2026",
+      lieferant: "Beispiellieferant",
+      artikel: "Fire TV Stick",
+      menge: "0",
+      preis: "teuer",
+      zustand: "wie neu",
+      rueckgabefrist: "irgendwann",
+    }]);
+    expect(result.validCount).toBe(0);
+    expect(result.errors.map((item) => item.message).join(" ")).toMatch(/Menge|Preis|Zustand|Rückgabefrist/);
+  });
+
+  it("Dry Run: Eingang gegen Bestellung prüft Einkauf, Artikel und offene Menge", async () => {
+    const row = {
+      einkaufsnummer: "E-26-0042",
+      datum: "14.07.2026",
+      lieferant: "Lieferant",
+      artikel: "Fire TV Stick",
+      menge: "3",
+      preis: "34,99",
+    };
+    const missing = await dryRun("wareneingang", [row]);
+    expect(missing.errors[0]?.message).toMatch(/nicht gefunden/);
+
+    const valid = await dryRun("wareneingang", [row], dryRunTx({
+      purchases: [{
+        purchaseNumber: "E-26-0042",
+        lines: [{ quantity: 5, product: { name: "Fire TV Stick" }, receiptLines: [{ quantity: 2 }] }],
+      }],
+    }));
+    expect(valid.validCount).toBe(1);
+    expect(valid.errors).toEqual([]);
   });
 
   it("Dry Run: neues Katalogprodukt wird über die bestehende Pipeline geplant", async () => {

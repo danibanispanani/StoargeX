@@ -433,6 +433,21 @@ describe("inventory service", () => {
     expect(client.movementCount()).toBe(1);
   });
 
+  it("bucht den Wareneingang je Prüfergebnis direkt in den fachlichen Bucket", async () => {
+    await receiveOwnedStock({
+      organizationId: "org-a",
+      inventoryPositionId: "pos-a",
+      quantity: 2,
+      bucket: "INSPECTION",
+      idempotencyKey: "receipt-inspection",
+      prisma: prisma(client),
+    });
+    const position = client.position("pos-a");
+    expect(position.quantityReceived).toBe(2);
+    expect(position.quantityAvailable).toBe(0);
+    expect(position.quantityInspection).toBe(2);
+  });
+
   it("Test C: gleicher idempotencyKey wird nicht doppelt angewendet", async () => {
     await receiveOwnedStock({
       organizationId: "org-a",

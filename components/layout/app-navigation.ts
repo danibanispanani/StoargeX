@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Package,
   RotateCcw,
+  ShoppingCart,
   Settings2,
   Tags,
   Truck,
@@ -36,7 +37,8 @@ export const APP_NAVIGATION: readonly AppNavigationSection[] = [
   {
     label: "Handel",
     items: [
-      { href: "/lager", label: "Lager & Wareneingang", shortLabel: "Lager", Icon: Boxes },
+      { href: "/einkauf", label: "Einkauf & Wareneingang", shortLabel: "Einkauf", Icon: ShoppingCart },
+      { href: "/lager", label: "Lager", Icon: Boxes },
       { href: "/produkte", label: "Produkte", Icon: Package },
       { href: "/verkauf", label: "Verkauf", Icon: Tags },
       { href: "/retouren", label: "Kundenretouren", shortLabel: "Retouren", Icon: RotateCcw },

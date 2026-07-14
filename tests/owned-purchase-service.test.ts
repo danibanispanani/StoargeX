@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   centsToDecimalString,
+  classifyReturnDeadline,
   deriveOwnedStockStatus,
+  effectiveReceivedQuantity,
+  planPurchaseReceipt,
   prepareOwnedPurchaseLines,
 } from "@/lib/services/owned-purchase-service";
 
@@ -23,6 +26,83 @@ describe("owned purchase planning", () => {
     expect(line.totalGrossCents).toBe(2999);
     expect(line.unitPriceNetCents).toBe(2520);
     expect(line.totalNetCents).toBe(2520);
+  });
+
+  it("plant einen Teilwareneingang ohne die Bestellmenge zu überschreiten", () => {
+    const plan = planPurchaseReceipt({
+      receivedAt: new Date("2026-07-14T10:00:00.000Z"),
+      returnWindowDays: 30,
+      lines: [
+        {
+          purchaseLineId: "line-1",
+          orderedQuantity: 10,
+          receivedQuantity: 3,
+          quantity: 4,
+        },
+      ],
+    });
+
+    expect(plan.complete).toBe(false);
+    expect(plan.lines[0]).toEqual(
+      expect.objectContaining({ quantity: 4, remainingAfter: 3 })
+    );
+    expect(plan.returnDeadline?.toISOString()).toBe("2026-08-13T10:00:00.000Z");
+  });
+
+  it("erkennt einen vollständigen Wareneingang über mehrere Positionen", () => {
+    const plan = planPurchaseReceipt({
+      receivedAt: new Date("2026-07-14T10:00:00.000Z"),
+      explicitReturnDeadline: new Date("2026-08-20T23:59:59.000Z"),
+      lines: [
+        { purchaseLineId: "line-1", orderedQuantity: 5, receivedQuantity: 2, quantity: 3 },
+        { purchaseLineId: "line-2", orderedQuantity: 2, receivedQuantity: 0, quantity: 2 },
+      ],
+    });
+
+    expect(plan.complete).toBe(true);
+    expect(plan.totalQuantity).toBe(5);
+    expect(plan.returnDeadline?.toISOString()).toBe("2026-08-20T23:59:59.000Z");
+  });
+
+  it("plant wiederholte Teilwareneingänge als getrennte Lot-Slices", () => {
+    const first = planPurchaseReceipt({
+      receivedAt: new Date("2026-07-14T10:00:00.000Z"),
+      lines: [{ purchaseLineId: "line-1", orderedQuantity: 5, receivedQuantity: 0, quantity: 2 }],
+    });
+    const second = planPurchaseReceipt({
+      receivedAt: new Date("2026-07-16T10:00:00.000Z"),
+      lines: [{ purchaseLineId: "line-1", orderedQuantity: 5, receivedQuantity: 2, quantity: 3 }],
+    });
+    expect(first.lines[0].remainingAfter).toBe(3);
+    expect(first.complete).toBe(false);
+    expect(second.lines[0].remainingAfter).toBe(0);
+    expect(second.complete).toBe(true);
+    expect(first.receivedAt).not.toEqual(second.receivedAt);
+  });
+
+  it("behandelt Legacy-Lots ohne Receipt-Lines als bereits eingegangenen Bestand", () => {
+    expect(effectiveReceivedQuantity({ receiptQuantities: [], legacyLotQuantities: [5] })).toBe(5);
+    expect(effectiveReceivedQuantity({ receiptQuantities: [2, 3], legacyLotQuantities: [2, 3] })).toBe(5);
+    expect(effectiveReceivedQuantity({ receiptQuantities: [], legacyLotQuantities: [] })).toBe(0);
+  });
+
+  it("weist Überlieferung und mandantenfremde Bestellpositionen zurück", () => {
+    expect(() =>
+      planPurchaseReceipt({
+        receivedAt: new Date("2026-07-14T10:00:00.000Z"),
+        lines: [
+          { purchaseLineId: "line-1", orderedQuantity: 5, receivedQuantity: 4, quantity: 2 },
+        ],
+      })
+    ).toThrow("überschreitet die offene Menge");
+  });
+
+  it("klassifiziert Rückgabefristen als verständliche Aufmerksamkeitssignale", () => {
+    const now = new Date("2026-07-14T12:00:00.000Z");
+    expect(classifyReturnDeadline(null, now)).toBe("NONE");
+    expect(classifyReturnDeadline(new Date("2026-07-13T12:00:00.000Z"), now)).toBe("OVERDUE");
+    expect(classifyReturnDeadline(new Date("2026-07-17T12:00:00.000Z"), now)).toBe("DUE_SOON");
+    expect(classifyReturnDeadline(new Date("2026-08-14T12:00:00.000Z"), now)).toBe("ACTIVE");
   });
 
   it("unterstützt Menge 10 als eine fachliche PurchaseLine", () => {
