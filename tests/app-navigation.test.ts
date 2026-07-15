@@ -7,6 +7,7 @@ describe("app navigation metadata", () => {
     expect(APP_NAVIGATION.map((section) => section.label)).toEqual([
       "Übersicht",
       "Handel",
+      "Retouren",
       "Finanzen",
       "Betrieb",
       "Verwaltung",
@@ -17,7 +18,8 @@ describe("app navigation metadata", () => {
       "/lager",
       "/produkte",
       "/verkauf",
-      "/retouren",
+      "/retouren/kunden",
+      "/retouren/lieferanten",
       "/finanzen/preisrechner/ebay",
       "/finanzen/preisrechner/kaufland",
       "/finanzen/gebuehren",
@@ -37,6 +39,7 @@ describe("app navigation metadata", () => {
     expect(isNavigationItemActive("/einstellungen/sicherheit", "/einstellungen")).toBe(true);
     expect(findNavigationItem("/einstellungen/sicherheit")?.label).toBe("Einstellungen");
     expect(isNavigationItemActive("/lagerbestand", "/lager")).toBe(false);
+    expect(findNavigationItem("/retouren/lieferanten")?.label).toBe("Lieferantenretouren");
   });
 
   it("declares consignment as the add-on-backed navigation item", () => {

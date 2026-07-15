@@ -22,6 +22,14 @@ function dryRunTx(options: {
     purchaseNumber: string;
     lines: Array<{ quantity: number; product: { name: string }; receiptLines: Array<{ quantity: number }> }>;
   }>;
+  supplierPositions?: Array<{
+    id: string;
+    inventoryNumber: string;
+    purchaseId: string;
+    purchaseLineId: string;
+    purchaseNumber: string;
+    quantityAvailable: number;
+  }>;
 } = {}) {
   const existing = new Set(options.existingHashes ?? []);
   const sourceReferences = [
@@ -55,8 +63,26 @@ function dryRunTx(options: {
       },
     },
     inventoryPosition: {
-      findMany: async () =>
-        (options.inventoryRefs ?? []).map((ref) => ({
+      findMany: async () => options.supplierPositions?.length
+        ? options.supplierPositions.map((position) => ({
+          id: position.id,
+          organizationId: "org-a",
+          inventoryNumber: position.inventoryNumber,
+          inventoryType: "OWNED",
+          itemCondition: "NEW",
+          quantityAvailable: position.quantityAvailable,
+          quantityReserved: 0,
+          quantityInspection: 0,
+          quantityDefective: 0,
+          ownedLot: {
+            purchaseLine: {
+              id: position.purchaseLineId,
+              purchaseId: position.purchaseId,
+              purchase: { id: position.purchaseId, purchaseNumber: position.purchaseNumber },
+            },
+          },
+        }))
+        : (options.inventoryRefs ?? []).map((ref) => ({
           id: ref.targetEntityId,
           inventoryNumber: ref.legacyReference,
           inventoryType: ref.inventoryType ?? "OWNED",
@@ -498,5 +524,62 @@ describe("import migration pipeline", () => {
     }]);
     expect(result.summary.reviewRequired).toBe(1);
     expect(result.summary.review[0].warnings?.[0]).toMatch(/Gesamtbetrag/);
+  });
+
+  it("Dry Run: Lieferantenretoure löst Einkauf und Lot mandantensicher auf", async () => {
+    const tx = dryRunTx({
+      supplierPositions: [{
+        id: "position-a",
+        inventoryNumber: "L-26-0091",
+        purchaseId: "purchase-a",
+        purchaseLineId: "purchase-line-a",
+        purchaseNumber: "E-26-0042",
+        quantityAvailable: 2,
+      }],
+    });
+    const valid = await dryRun("lieferantenretouren", [{
+      einkaufsnummer: "E-26-0042",
+      lagerid: "L-26-0091",
+      menge: "1",
+      bucket: "AVAILABLE",
+      grund: "Falschlieferung",
+      frist: "31.07.2026",
+      erwartete_erstattung: "34,99",
+    }], tx);
+    const invalid = await dryRun("lieferantenretouren", [{
+      einkaufsnummer: "E-26-0042",
+      lagerid: "L-26-0091",
+      menge: "3",
+      bucket: "AVAILABLE",
+      grund: "Falschlieferung",
+    }], tx);
+
+    expect(valid.validCount).toBe(1);
+    expect(valid.summary.linked).toBe(1);
+    expect(invalid.validCount).toBe(0);
+    expect(invalid.errors[0]?.message).toMatch(/nur 2/);
+  });
+
+  it("Dry Run: Lieferantenretoure weist Dezimalmengen, unmögliche Daten und negative Beträge ab", async () => {
+    const result = await dryRun("lieferantenretouren", [{
+      einkaufsnummer: "E-26-0042",
+      lagerid: "L-26-0091",
+      menge: "1,5",
+      grund: "Falschlieferung",
+      frist: "31.02.2026",
+      erwartete_erstattung: "-1,00",
+    }], dryRunTx({
+      supplierPositions: [{
+        id: "position-a",
+        inventoryNumber: "L-26-0091",
+        purchaseId: "purchase-a",
+        purchaseLineId: "purchase-line-a",
+        purchaseNumber: "E-26-0042",
+        quantityAvailable: 2,
+      }],
+    }));
+
+    expect(result.validCount).toBe(0);
+    expect(result.errors[0]?.message).toMatch(/Menge|Rückgabefrist|Erwartete Erstattung/);
   });
 });

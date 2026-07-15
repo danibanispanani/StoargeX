@@ -184,6 +184,18 @@ export async function markReturnDefective(
   });
 }
 
+export async function returnOwnedStockToSupplier(
+  input: ServiceInput & { sourceBucket: InventoryBucket }
+): Promise<InventoryMutationResult> {
+  return applyInventoryMovement({
+    ...input,
+    movementType: "SUPPLIER_RETURN_OUT",
+    fromBucket: input.sourceBucket,
+    toBucket: null,
+    requiredInventoryType: "OWNED",
+  });
+}
+
 export async function adjust(
   input: ServiceInput & {
     direction: AdjustmentDirection;

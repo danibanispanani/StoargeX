@@ -1,4 +1,65 @@
-# Task Plan: Prompt 5 Marketplace Price Calculators, Fee Catalogs and Expenses
+# Task Plan: Prompt 6 Customer and Supplier Return Center
+
+## Goal
+Split the operational return center into independent customer-return and supplier-return routes and tables, preserve the established relational customer-return allocation/movement workflow, deepen the additive supplier-return module around transactional inventory movements and document numbering, add separate dashboard/import/export surfaces, verify tenant and idempotency invariants, and commit the complete Prompt 6 result.
+
+## Current Phase
+Complete
+
+## Phases
+
+### Phase 1: Evidence and seam design
+- [x] Read Prompt 0–5 governance/domain/table/import documents and the complete existing return, purchase, inventory-movement, dashboard, import/export, schema, migration, and test implementations
+- [x] Map customer-return compatibility invariants, supplier-return foundation gaps, document-number conventions, route/navigation behavior, and tenant/RLS seams
+- [x] Record the selected deep module interfaces and proof strategy before production edits
+- **Status:** completed
+
+### Phase 2: Proof-first domain and additive migration
+- [x] Add focused failing/characterization tests for customer returns, supplier-return transitions, partial quantities, deadlines, shipment movements, refunds, rejection, idempotency, and tenant isolation
+- [x] Extend only additive supplier-return/customer-return fields and migration structures; preserve existing R-numbers and introduce LR document sequencing
+- [x] Implement transactional supplier-return planning, shipment, refund, rejection, and completion through InventoryMovement without direct quantity mutation
+- **Status:** completed
+
+### Phase 3: Separate operational return surfaces
+- [x] Build `/retouren/kunden` with customer-specific presets, sale/return selection, inspection, financial, tracking, and evidence fields using the existing relational workflow
+- [x] Build `/retouren/lieferanten` with supplier-specific presets, deadlines, shipment/refund/conflict handling, and guarded workflow actions
+- [x] Add parent navigation, separate import templates/exports, and separate dashboard insights without merging the two domain tables
+- **Status:** completed
+
+### Phase 4: Documentation and integrated verification
+- [x] Document architecture, workflows, movement/refund semantics, permissions, import/export, and compatibility in `docs/return-center.md`
+- [x] Run focused and full tests, Prisma validate/generate, typecheck, lint, integrity check, migration status/deploy on the approved QA environment, and production build
+- [x] Attempt browser verification and record the unavailable browser runtime without bypassing the security decision; Prompt 6 does not require browser QA as a gate
+- **Status:** completed
+
+### Phase 5: Review and commit
+- [x] Simplify the completed diff while preserving the deliberate customer/supplier separation
+- [x] Run the required code-review/fix/residual workflow, confirm no secrets/temp artifacts, and ensure a clean validated diff
+- [x] Commit exactly `feat: split customer and supplier return workflows`
+- **Status:** completed
+
+## Constraints
+- Customer and supplier returns remain separate operational modules, routes, configurations, imports, exports, statuses, responsibilities, and tables.
+- Customer returns continue through `Return -> ReturnLine -> ReturnAllocation -> SaleLineAllocation -> InventoryMovement`; existing visible R document numbers remain unchanged.
+- Supplier shipment is a transaction over selected inventory buckets/lots plus an InventoryMovement; no direct stock-counter mutation and no duplicate shipment booking.
+- Supplier-return document numbers use the existing `DocumentSequence` seam with an LR-visible prefix; technical IDs remain internal.
+- Existing purchases, purchase lines, inventory positions, lots, suppliers, RLS, AuditLog, ImportBatch, SourceReference, and calculation modules are extended rather than forked.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Prompt 6 proof tests fail because the new service, migration, and customer transition helper do not yet exist | 1 | Expected red phase; implement the contracts additively, generate Prisma, and rerun the same focused suite |
+| Typecheck required labels for the three additive customer-return statuses | 1 | Added operational labels/options for inspection, defective, and completed; rerun typecheck after transactional tests |
+| PowerShell `Get-Content` treated the `[table]` route segment as a wildcard | 1 | Re-read the route with `-LiteralPath`; no code impact |
+| First Phase-3 typecheck found an over-wide inferred detail type and nullable `ActionState` mismatch | 1 | Load the same complete purchase/supplier relation used by the detail payload and type client workflow callbacks with the existing nullable `ActionState` |
+| Default integrity check cannot reach the repository `.env` database from this environment | 1 | Run the approved isolated QA connection through ignored `.env.qa.local` after deploying the additive migration |
+| Sandboxed production build cannot fetch the three configured Google fonts | 1 | Re-run the unchanged build with network escalation; no source workaround or font substitution needed |
+| Repo-local `agent-browser` skill is installed but its CLI binary is unavailable | 1 | Use the available in-app Browser control skill for local visible QA instead of installing another browser runtime |
+| In-app Browser reports no available browser; temporary third-party npx runner was blocked by the security reviewer | 1 | Do not bypass the security decision; retain the successful route-aware production build and automated UI/config tests, and record visible browser QA as unavailable in this session (Prompt 6 does not mandate browser QA) |
+
+---
+
+# Historical Task Plan: Prompt 5 Marketplace Price Calculators, Fee Catalogs and Expenses
 
 ## Goal
 Extend the existing Prompt-1 fee/account/expense foundations into two marketplace-specific, deterministic pricing workflows for eBay.de and Kaufland.de, versioned reviewed catalogs, explicit product/snapshot integration, separate operating expenses, imports/exports, browser validation, documentation, and the requested commit without parallel models or unsupported official claims.

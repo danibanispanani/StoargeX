@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertCustomerReturnTransition,
   planReturnAllocationsFromSnapshots,
   type ReturnAllocationSnapshot,
 } from "@/lib/services/returns-service";
@@ -88,5 +89,19 @@ describe("return allocation planning", () => {
     expect(() =>
       plan(1, [allocation({ organizationId: "org-b" })])
     ).toThrow(/Organisation/);
+  });
+});
+
+describe("customer return workflow", () => {
+  it("keeps inspection and disposition explicit", () => {
+    expect(() => assertCustomerReturnTransition("REQUESTED", "INSPECTION")).not.toThrow();
+    expect(() => assertCustomerReturnTransition("INSPECTION", "RESTOCKED")).not.toThrow();
+    expect(() => assertCustomerReturnTransition("INSPECTION", "DEFECTIVE")).not.toThrow();
+  });
+
+  it("blocks a completed return from being booked again", () => {
+    expect(() => assertCustomerReturnTransition("COMPLETED", "RESTOCKED")).toThrow(
+      /Statuswechsel/
+    );
   });
 });

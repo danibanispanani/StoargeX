@@ -89,6 +89,7 @@ export default async function DashboardPage({
     openDebts,
     lowStock,
     purchaseDeadlines,
+    supplierReturnDeadlines,
     auditLogs,
     members,
   ] = await Promise.all([
@@ -107,6 +108,15 @@ export default async function DashboardPage({
         purchaseStatus: { not: "CANCELLED" },
       },
       select: { id: true, purchaseNumber: true, vendor: true, returnDeadline: true },
+      orderBy: { returnDeadline: "asc" },
+      take: 5,
+    }),
+    db.supplierReturn.findMany({
+      where: {
+        returnDeadline: { not: null, lte: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) },
+        status: { notIn: ["COMPLETED", "CANCELLED", "REJECTED"] },
+      },
+      select: { id: true, returnNumber: true, supplierSnapshot: true, returnDeadline: true },
       orderBy: { returnDeadline: "asc" },
       take: 5,
     }),
@@ -158,10 +168,10 @@ export default async function DashboardPage({
       href: "/verkauf",
     },
     {
-      label: "Offene Retouren",
+      label: "Offene Kundenretouren",
       value: String(kpis.openReturnsCount),
       hint: "in Klärung",
-      href: "/retouren",
+      href: "/retouren/kunden?preset=standard",
       warn: kpis.openReturnsCount > 0,
     },
     {
@@ -207,6 +217,34 @@ export default async function DashboardPage({
           : ("neutral" as const),
     })),
     {
+      label: "Kundenretourenverlust",
+      value: formatEuro(kpis.customerReturnLossCents),
+      detail: `Summe serverseitig berechneter Retourenverluste · ${range.label}`,
+      href: "/retouren/kunden?preset=finanzen",
+      tone: kpis.customerReturnLossCents > 0 ? "critical" : "positive",
+    },
+    {
+      label: "Lieferantenfristen",
+      value: kpis.supplierReturnDeadlinesCount ? `${kpis.supplierReturnDeadlinesCount} prüfen` : "Keine akut",
+      detail: "Offene LR mit Frist bis in 14 Tagen oder überfällig · keine automatische Rückgabe",
+      href: "/retouren/lieferanten?preset=deadlines",
+      tone: kpis.supplierReturnDeadlinesCount ? "warning" : "positive",
+    },
+    {
+      label: "Offene Lieferantenerstattungen",
+      value: String(kpis.openSupplierRefundsCount),
+      detail: "Versendet, angekommen, Gutschrift offen oder teilweise erstattet",
+      href: "/retouren/lieferanten?preset=refund",
+      tone: kpis.openSupplierRefundsCount ? "warning" : "positive",
+    },
+    {
+      label: "Kapital in Lieferantenretouren",
+      value: formatEuro(kpis.supplierReturnBoundCapitalCents),
+      detail: "Summe Menge × ursprünglicher EK netto aller nicht terminalen LR-Positionen",
+      href: "/retouren/lieferanten?preset=standard",
+      tone: kpis.supplierReturnBoundCapitalCents ? "warning" : "positive",
+    },
+    {
       label: "Schulden-Saldo",
       value: debtBalances.length ? `${debtBalances.length} offen` : "Ausgeglichen",
       detail: debtDetail,
@@ -247,6 +285,13 @@ export default async function DashboardPage({
         <div className="space-y-1 border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-950">
           <p className="font-medium">Rückgabefristen brauchen Aufmerksamkeit</p>
           {purchaseDeadlines.map((purchase) => <p key={purchase.id}><Link className="underline underline-offset-2" href={`/einkauf?preset=deadlines&q=${encodeURIComponent(purchase.purchaseNumber)}`}>{purchase.purchaseNumber}</Link> · {purchase.vendor} · {purchase.returnDeadline!.toLocaleDateString("de-DE")} · Einkauf prüfen, keine automatische Rückgabe</p>)}
+        </div>
+      )}
+
+      {supplierReturnDeadlines.length > 0 && (
+        <div className="space-y-1 border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="font-medium">Lieferantenretouren vor Fristablauf</p>
+          {supplierReturnDeadlines.map((ret) => <p key={ret.id}><Link className="underline underline-offset-2" href="/retouren/lieferanten?preset=deadlines">{ret.returnNumber ?? ret.id.slice(0, 8)}</Link> · {ret.supplierSnapshot} · {ret.returnDeadline!.toLocaleDateString("de-DE")} · Rückgabe prüfen und bestätigen</p>)}
         </div>
       )}
 

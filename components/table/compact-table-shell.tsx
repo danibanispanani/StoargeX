@@ -20,34 +20,45 @@ export function CompactTableShell({
   storageKey,
   views,
   defaultView = views[0]?.value ?? "standard",
+  requestedView,
   children,
   className,
 }: {
   storageKey: string;
   views: TableView[];
   defaultView?: string;
+  requestedView?: string;
   children: React.ReactNode;
   className?: string;
 }) {
-  const [view, setView] = useState(defaultView);
+  const [view, setView] = useState(
+    requestedView && views.some((option) => option.value === requestedView)
+      ? requestedView
+      : defaultView
+  );
   const storageName = `storagex:${storageKey}:table-view`;
   const css = useMemo(
     () =>
       views
         .map(
           (option) =>
-            `[data-table-view-root][data-view="${option.value}"] [data-column]:not([data-view-${option.value}]){display:none}`
+            `[data-table-view-root][data-view="${option.value}"] [data-column]:not([data-view-${option.value}]),` +
+            `[data-table-view-root][data-view="${option.value}"] [data-table-view-row]:not([data-row-view-${option.value}]){display:none}`
         )
         .join("\n"),
     [views]
   );
 
   useEffect(() => {
+    if (requestedView && views.some((option) => option.value === requestedView)) {
+      setView(requestedView);
+      return;
+    }
     const saved = window.localStorage.getItem(storageName);
     if (saved && views.some((option) => option.value === saved)) {
       setView(saved);
     }
-  }, [storageName, views]);
+  }, [requestedView, storageName, views]);
 
   function changeView(nextView: string) {
     setView(nextView);

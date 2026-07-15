@@ -73,4 +73,14 @@ describe("import template standard", () => {
     expect(template.rows[0]).toMatchObject({ art: "Wiederkehrend", intervall: "MONTH", status: "POSTED" });
     expect(autoMapColumns(IMPORT_TABLES.ausgaben.fields, template.headers)).toMatchObject({ bezeichnung: "Bezeichnung *", brutto: "Betrag brutto *", marktplatzkonto: "Marktplatzkonto" });
   });
+
+  it("hält Kunden- und Lieferantenretouren als getrennte Importverträge", () => {
+    const customer = buildImportTemplate("kundenretouren", "example");
+    const supplier = buildImportTemplate("lieferantenretouren", "example");
+
+    expect(customer.headers).toEqual(expect.arrayContaining(["OrderID des Verkaufs *", "Rücksendekosten"]));
+    expect(supplier.headers).toEqual(expect.arrayContaining(["Einkaufsnummer *", "LagerID *", "Rückgabegrund *", "Bestands-Bucket"]));
+    expect(customer.fields.some((field) => field.key === "einkaufsnummer")).toBe(false);
+    expect(supplier.fields.some((field) => field.key === "orderid")).toBe(false);
+  });
 });

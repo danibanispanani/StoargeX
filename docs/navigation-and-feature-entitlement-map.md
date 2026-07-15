@@ -12,7 +12,7 @@ Navigation follows operational flow, not database tables: observe -> acquire -> 
 | `/einkauf` (planned) | Purchases, supplier reference, owned-lot intake | READONLY / MEMBER to change | Core | Core. |
 | `/verkauf` | Sale documents and allocation-aware posting/cancellation | READONLY / MEMBER to change | Core | Consignment inventory may be allocated only when the consignment entitlement permits the action. |
 | `/retouren/kunden` | Customer-return intake, inspection, restock/defect decision | READONLY / MEMBER to change | Core | Core. |
-| `/retouren/lieferanten` (planned) | Supplier-return dispatch, credit/replacement and stock consequence | READONLY / MEMBER to change | Core | Core. |
+| `/retouren/lieferanten` | Supplier-return planning, dispatch, credit/refund and stock consequence | READONLY / MEMBER to change | Core | Core; dispatch is server-side movement-gated. |
 | `/konsignation` | Consignment positions, partner settlement, operational review | READONLY / MEMBER to change | `consignment` add-on | Navigation and mutation unavailable; data retained, linked documents/history readable. |
 | `/schulden` | Receivables/payables and source-linked settlement | READONLY / MEMBER to change | Core | Core. |
 | `/aufgaben` | Team work queue | READONLY / MEMBER to change | Core | Core. |

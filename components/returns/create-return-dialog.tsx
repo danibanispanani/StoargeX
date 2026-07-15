@@ -182,12 +182,32 @@ export function CreateReturnDialog({
             <h3 className="text-sm font-medium">4. Problem und Finanzen</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field id="ret-date" name="requestedAt" label="Meldedatum" type="date" defaultValue={today} />
+              <Field id="ret-received" name="receivedAt" label="Eingangsdatum (optional)" type="date" />
               <Field id="ret-problem" name="problemType" label="Problemart" placeholder="Defekt / Widerruf / Falschlieferung" />
               <Field id="ret-reason" name="reason" label="Ursache" placeholder="kurze Ursache" />
+              <div className="space-y-2">
+                <Label htmlFor="ret-item-condition">Artikelzustand</Label>
+                <select
+                  id="ret-item-condition"
+                  name="itemCondition"
+                  className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  defaultValue="USED"
+                >
+                  <option value="NEW">Neu</option>
+                  <option value="OPEN_BOX">Geöffnet</option>
+                  <option value="REFURBISHED">Refurbished</option>
+                  <option value="USED">Gebraucht</option>
+                  <option value="DEFECTIVE">Defekt</option>
+                </select>
+              </div>
               <Field id="ret-condition" name="condition" label="Disposition" placeholder="Prüfung / verkaufbar / defekt" />
               <Field id="ret-refund" name="refundAmount" label="Erstattungsbetrag (€)" inputMode="decimal" placeholder="119,00" />
               <Field id="ret-extra" name="extraCost" label="Zusatzkosten (€)" inputMode="decimal" placeholder="4,50" />
+              <Field id="ret-shipping" name="returnShipping" label="Rücksendekosten (€)" inputMode="decimal" placeholder="6,99" />
+              <Field id="ret-carrier" name="carrier" label="Versanddienstleister" placeholder="DHL" />
+              <Field id="ret-tracking" name="trackingNumber" label="Trackingnummer" placeholder="optional" />
             </div>
+            <Field id="ret-evidence" name="evidenceUrls" label="Bilder / Prüfnachweise (URLs)" placeholder="eine URL je Zeile oder kommagetrennt" />
             <Field id="ret-notes" name="notes" label="Kommentar" placeholder="optional" />
           </section>
 

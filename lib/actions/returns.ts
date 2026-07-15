@@ -2,14 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ReturnStatus } from "@prisma/client";
+import { ItemCondition, ReturnStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
 import { writeAuditLog } from "@/lib/audit";
 import { calcReturnLoss, euroToCents } from "@/lib/calculations";
 import type { ActionState } from "@/lib/actions/team";
+import { parseHttpUrlList } from "@/lib/url-list";
 import {
   applyReturnWorkflow,
   createRelationalReturn,
+  transitionCustomerReturn,
   type ReturnWorkflowOperation,
 } from "@/lib/services/returns-service";
 
@@ -26,16 +28,27 @@ const optionalEuro = z
   }, "Ungültiger Betrag.")
   .transform((value) => (value.trim() ? euroToCents(value) : 0));
 
+const optionalDate = z.string().refine(
+  (value) => !value || !Number.isNaN(new Date(value).getTime()),
+  "Ungültiges Datum."
+);
+
 const returnSchema = z.object({
   saleId: z.string().min(1, "Bitte einen Verkauf wählen."),
   allocationIds: z.array(z.string().min(1)).min(1, "Bitte mindestens eine Position auswählen."),
   quantities: z.array(z.coerce.number().int().min(1).max(100000)),
-  requestedAt: z.string().optional().or(z.literal("")),
+  requestedAt: optionalDate,
   reason: z.string().max(500).optional().or(z.literal("")),
   problemType: z.string().max(200).optional().or(z.literal("")),
   condition: z.string().max(100).optional().or(z.literal("")),
+  itemCondition: z.nativeEnum(ItemCondition).optional(),
   refundAmount: optionalEuro,
   extraCost: optionalEuro,
+  returnShipping: optionalEuro,
+  receivedAt: optionalDate,
+  carrier: z.string().max(100).optional().or(z.literal("")),
+  trackingNumber: z.string().max(200).optional().or(z.literal("")),
+  evidenceUrls: z.string().max(5000).optional().or(z.literal("")),
   notes: z.string().max(2000).optional().or(z.literal("")),
 });
 
@@ -53,8 +66,14 @@ export async function createReturnAction(
     reason: formData.get("reason"),
     problemType: formData.get("problemType"),
     condition: formData.get("condition"),
+    itemCondition: formData.get("itemCondition") || undefined,
     refundAmount: formData.get("refundAmount") ?? "",
     extraCost: formData.get("extraCost") ?? "",
+    returnShipping: formData.get("returnShipping") ?? "",
+    receivedAt: formData.get("receivedAt"),
+    carrier: formData.get("carrier"),
+    trackingNumber: formData.get("trackingNumber"),
+    evidenceUrls: formData.get("evidenceUrls"),
     notes: formData.get("notes"),
   });
   if (!parsed.success) {
@@ -71,11 +90,17 @@ export async function createReturnAction(
       createdById: userId,
       saleId: data.saleId,
       requestedAt: data.requestedAt ? new Date(data.requestedAt) : new Date(),
+      receivedAt: data.receivedAt ? new Date(data.receivedAt) : null,
       reason: data.reason || null,
       refundAmountCents: data.refundAmount,
       extraCostCents: data.extraCost,
+      returnShippingCents: data.returnShipping,
       problemType: data.problemType || data.reason || null,
       condition: data.condition || null,
+      itemCondition: data.itemCondition ?? null,
+      carrier: data.carrier || null,
+      trackingNumber: data.trackingNumber || null,
+      evidenceUrls: parseHttpUrlList(data.evidenceUrls),
       notes: data.notes || null,
       selections: data.allocationIds.map((allocationId, index) => ({
         saleLineAllocationId: allocationId,
@@ -132,7 +157,7 @@ export async function updateReturnStatusAction(
   returnId: string,
   status: ReturnStatus
 ): Promise<ActionState> {
-  const { db } = await requireOrg("MEMBER");
+  const { db, organization, userId } = await requireOrg("MEMBER");
 
   const parsed = z.nativeEnum(ReturnStatus).safeParse(status);
   if (!parsed.success) return { error: "Ungültiger Status." };
@@ -147,12 +172,19 @@ export async function updateReturnStatusAction(
     return applyReturnWorkflowAction(returnId, "RESTOCK");
   }
 
-  await db.return.update({
-    where: { id: returnId },
-    data: {
-      status: parsed.data,
-      restocked: parsed.data === "RESTOCKED" ? true : existing.restocked,
-    },
+  if (parsed.data === "DEFECTIVE" && existing.returnLines.length > 0) {
+    return applyReturnWorkflowAction(returnId, "DEFECTIVE");
+  }
+
+  if (parsed.data === "INSPECTION" && existing.returnLines.length > 0) {
+    return applyReturnWorkflowAction(returnId, "RECEIVE");
+  }
+
+  await transitionCustomerReturn({
+    organizationId: organization.id,
+    returnId,
+    nextStatus: parsed.data,
+    createdById: userId,
   });
 
   revalidateReturnViews();
@@ -164,6 +196,7 @@ const editReturnSchema = z.object({
   reason: z.string().max(500).optional().or(z.literal("")),
   refundAmount: optionalEuro,
   extraCost: optionalEuro,
+  returnShipping: optionalEuro,
   notes: z.string().max(2000).optional().or(z.literal("")),
 });
 
@@ -185,6 +218,7 @@ export async function updateReturnAction(
     reason: formData.get("reason"),
     refundAmount: formData.get("refundAmount") ?? "",
     extraCost: formData.get("extraCost") ?? "",
+    returnShipping: formData.get("returnShipping") ?? "",
     notes: formData.get("notes"),
   });
   if (!parsed.success) {
@@ -199,7 +233,7 @@ export async function updateReturnAction(
     platformFeeCents: existing.sale.platformFeeNetCents,
     paymentFeeCents: 0,
     shippingCostCents: existing.sale.shippingCostCents,
-    extraCostCents: data.extraCost,
+    extraCostCents: data.extraCost + data.returnShipping,
   });
 
   await db.return.update({
@@ -208,7 +242,8 @@ export async function updateReturnAction(
       requestedAt: data.requestedAt ? new Date(data.requestedAt) : existing.requestedAt,
       reason: data.reason || null,
       refundAmountCents: data.refundAmount,
-      returnShippingCents: data.extraCost,
+      additionalCostsCents: data.extraCost,
+      returnShippingCents: data.returnShipping,
       lossCents,
       notes: data.notes || null,
     },
@@ -233,6 +268,8 @@ export async function updateReturnAction(
 
 function revalidateReturnViews(): void {
   revalidatePath("/retouren");
+  revalidatePath("/retouren/kunden");
+  revalidatePath("/dashboard");
   revalidatePath("/verkauf");
   revalidatePath("/lager");
   revalidatePath("/konsignation");

@@ -124,6 +124,9 @@ export function paymentMethodCreatesDebt(zm: string): boolean {
 // ---------------------------------------------------------------------------
 
 export const RETURN_STATUS: Record<ReturnStatus, StatusStyle> = {
+  INSPECTION: { label: "In Prüfung", className: TONE.info },
+  DEFECTIVE: { label: "Defekt", className: TONE.negative },
+  COMPLETED: { label: "Abgeschlossen", className: TONE.positive },
   REQUESTED: { label: "Angekündigt", className: TONE.warn },
   REJECTED: { label: "Storniert", className: TONE.neutral },
   RECEIVED: { label: "Angekommen", className: TONE.info },
@@ -134,11 +137,13 @@ export const RETURN_STATUS: Record<ReturnStatus, StatusStyle> = {
 
 export const RETURN_STATUS_OPTIONS: ReturnStatus[] = [
   "REQUESTED",
-  "RECEIVED",
+  "INSPECTION",
   "REJECTED",
   "RESTOCKED",
+  "DEFECTIVE",
   "REFUNDED",
   "CONFLICT",
+  "COMPLETED",
 ];
 
 export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> =

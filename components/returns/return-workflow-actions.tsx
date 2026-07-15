@@ -2,22 +2,28 @@
 
 import { useTransition } from "react";
 import { toast } from "sonner";
+import type { ReturnStatus } from "@prisma/client";
 import { applyReturnWorkflowAction } from "@/lib/actions/returns";
 import type { ReturnWorkflowOperation } from "@/lib/services/returns-service";
 import { Button } from "@/components/ui/button";
 
 export function ReturnWorkflowActions({
   returnId,
+  status,
   disabled,
 }: {
   returnId: string;
+  status: ReturnStatus;
   disabled?: boolean;
 }) {
+  const canInspect = ["REQUESTED", "RECEIVED"].includes(status);
+  const canDecide = ["REQUESTED", "RECEIVED", "INSPECTION"].includes(status);
+
   return (
     <div className="flex flex-wrap gap-1">
-      <WorkflowButton returnId={returnId} operation="RECEIVE" label="Angekommen" disabled={disabled} />
-      <WorkflowButton returnId={returnId} operation="RESTOCK" label="Weiterverkaufbar" disabled={disabled} />
-      <WorkflowButton returnId={returnId} operation="DEFECTIVE" label="Defekt" disabled={disabled} />
+      {canInspect && <WorkflowButton returnId={returnId} operation="RECEIVE" label="Angekommen" disabled={disabled} />}
+      {canDecide && <WorkflowButton returnId={returnId} operation="RESTOCK" label="Weiterverkaufbar" disabled={disabled} />}
+      {canDecide && <WorkflowButton returnId={returnId} operation="DEFECTIVE" label="Defekt" disabled={disabled} />}
     </div>
   );
 }

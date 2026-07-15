@@ -255,7 +255,8 @@ export async function GET(
       }));
       break;
     }
-    case "retouren": {
+    case "retouren":
+    case "kundenretouren": {
       const returns = await db.return.findMany({
         include: { sale: { select: { orderNumber: true } } },
         orderBy: { requestedAt: "desc" },
@@ -265,11 +266,51 @@ export async function GET(
         Meldedatum: date(r.requestedAt),
         Grund: r.reason ?? "",
         Erstattungsbetrag: euro(r.refundAmountCents),
-        Zusatzkosten: euro(r.returnShippingCents),
+        Zusatzkosten: euro(r.additionalCostsCents),
+        Rücksendekosten: euro(r.returnShippingCents),
         Verlust: euro(r.lossCents),
+        Versanddienstleister: r.carrier ?? "",
+        Trackingnummer: r.trackingNumber ?? "",
         Status: RETURN_STATUS[r.status].label,
         Kommentar: r.notes ?? "",
       }));
+      break;
+    }
+    case "lieferantenretouren": {
+      const returns = await db.supplierReturn.findMany({
+        include: {
+          purchase: { select: { purchaseNumber: true } },
+          supplier: { select: { displayName: true } },
+          lines: {
+            include: {
+              purchaseLine: { include: { product: true } },
+              inventoryPosition: true,
+            },
+          },
+        },
+        orderBy: { requestedAt: "desc" },
+      });
+      rows = returns.flatMap((r) => r.lines.map((line) => ({
+        "LR-Nummer": r.returnNumber ?? "",
+        Einkaufsnummer: r.purchase.purchaseNumber,
+        Lieferant: r.supplier?.displayName ?? r.supplierSnapshot,
+        LagerID: line.inventoryPosition.inventoryNumber,
+        Artikel: line.purchaseLine.product.name,
+        Menge: line.quantity,
+        Bucket: line.sourceBucket,
+        Grund: line.reason ?? "",
+        Meldedatum: date(r.requestedAt),
+        Rückgabefrist: date(r.returnDeadline),
+        RMA: r.rmaNumber ?? "",
+        Versanddienstleister: r.carrier ?? "",
+        Trackingnummer: r.trackingNumber ?? "",
+        Versandkosten: euro(r.shippingCostCents),
+        "Erwartete Erstattung": euro(r.expectedRefundCents),
+        "Tatsächliche Erstattung": euro(r.actualRefundCents),
+        Differenz: euro(r.actualRefundCents - r.expectedRefundCents),
+        Status: r.status,
+        Notizen: r.notes ?? "",
+      })));
       break;
     }
     case "konsignation": {

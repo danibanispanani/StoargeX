@@ -62,6 +62,10 @@ export interface DashboardKpis {
   revenueCents: number; // VK brutto
   profitCents: number;
   openReturnsCount: number;
+  customerReturnLossCents: number;
+  supplierReturnDeadlinesCount: number;
+  openSupplierRefundsCount: number;
+  supplierReturnBoundCapitalCents: number;
   stockInStockCount: number; // Artikel auf Lager
   consignmentStockCount: number;
   stockValueCents: number;
@@ -81,6 +85,10 @@ export async function loadDashboardKpis(
   const [
     sales,
     openReturns,
+    customerReturnLoss,
+    supplierReturnDeadlines,
+    openSupplierRefunds,
+    supplierReturnCapitalLines,
     inventoryStock,
     ownedInventory,
     legacyInStock,
@@ -97,8 +105,27 @@ export async function loadDashboardKpis(
       db.return.count({
         where: {
           requestedAt: soldAt,
-          status: { in: ["REQUESTED", "RECEIVED", "CONFLICT"] },
+          status: { in: ["REQUESTED", "RECEIVED", "INSPECTION", "DEFECTIVE", "CONFLICT"] },
         },
+      }),
+      db.return.aggregate({
+        where: { requestedAt: soldAt },
+        _sum: { lossCents: true },
+      }),
+      db.supplierReturn.count({
+        where: {
+          returnDeadline: { not: null, lte: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) },
+          status: { notIn: ["COMPLETED", "CANCELLED", "REJECTED"] },
+        },
+      }),
+      db.supplierReturn.count({
+        where: {
+          status: { in: ["DISPATCHED", "ARRIVED", "REFUND_PENDING", "PARTIALLY_REFUNDED", "CREDIT_PENDING"] },
+        },
+      }),
+      db.supplierReturnLine.findMany({
+        where: { supplierReturn: { status: { notIn: ["COMPLETED", "CANCELLED", "REJECTED"] } } },
+        select: { quantity: true, purchaseLine: { select: { unitPriceNet: true } } },
       }),
       db.inventoryPosition.aggregate({
         where: { active: true },
@@ -128,6 +155,13 @@ export async function loadDashboardKpis(
     revenueCents: sales._sum.salePriceCents ?? 0,
     profitCents: sales._sum.profitCents ?? 0,
     openReturnsCount: openReturns,
+    customerReturnLossCents: customerReturnLoss._sum.lossCents ?? 0,
+    supplierReturnDeadlinesCount: supplierReturnDeadlines,
+    openSupplierRefundsCount: openSupplierRefunds,
+    supplierReturnBoundCapitalCents: supplierReturnCapitalLines.reduce(
+      (sum, line) => sum + line.quantity * Math.round(Number(line.purchaseLine.unitPriceNet) * 100),
+      0
+    ),
     stockInStockCount: (inventoryStock._sum.quantityAvailable ?? 0) + legacyInStock,
     consignmentStockCount:
       (await db.inventoryPosition.aggregate({

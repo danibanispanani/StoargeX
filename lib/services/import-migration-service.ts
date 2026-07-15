@@ -27,6 +27,7 @@ import { createConsignmentStock } from "@/lib/services/consignment-service";
 import { reserveDocumentNumber } from "@/lib/services/document-number-service";
 import { sell } from "@/lib/services/inventory-service";
 import { createManualDebt } from "@/lib/services/debt-service";
+import { createSupplierReturn } from "@/lib/services/supplier-return-service";
 
 export type ImportRow = Record<string, string>;
 
@@ -169,7 +170,11 @@ export async function runMigrationImport(input: {
       importedCount = await commitConsignmentImport(input, batch.id, validRows);
       break;
     case "retouren":
+    case "kundenretouren":
       importedCount = await commitReturnsImport(input, batch.id, validRows, context);
+      break;
+    case "lieferantenretouren":
+      importedCount = await commitSupplierReturnsImport(input, batch.id, validRows, context);
       break;
     case "schulden":
       importedCount = await commitDebtImport(input, batch.id, validRows);
@@ -786,6 +791,9 @@ async function commitReturnsImport(
     const returnNumber = (await reserveDocumentNumber(input.organizationId, "RETURN", { tx: input.tx, reference: requestedAt })).display;
     const refund = parseEuroTolerant(row.erstattung || row.erstattungsbetrag) ?? 0;
     const extra = parseEuroTolerant(row.zusatzkosten) ?? 0;
+    const returnShipping = input.table === "kundenretouren"
+      ? parseEuroTolerant(row.ruecksendekosten) ?? 0
+      : extra;
     const loss = parseEuroTolerant(row.verlust) ?? calcReturnLoss({
       refundGrossCents: refund,
       taxRatePercent: Number(sale.taxRatePercent),
@@ -793,7 +801,7 @@ async function commitReturnsImport(
       platformFeeCents: sale.platformFeeNetCents,
       paymentFeeCents: 0,
       shippingCostCents: sale.shippingCostCents,
-      extraCostCents: extra,
+      extraCostCents: input.table === "kundenretouren" ? extra + returnShipping : extra,
     });
     const ret = await input.tx.return.create({
       data: {
@@ -803,7 +811,9 @@ async function commitReturnsImport(
         requestedAt,
         reason: optional(row.ursache || row.grund || row.problem),
         refundAmountCents: refund,
-        returnShippingCents: extra,
+        returnShippingCents: returnShipping,
+        additionalCostsCents: input.table === "kundenretouren" ? extra : 0,
+        trackingNumber: optional(row.tracking),
         lossCents: loss,
         status: returnStatus(row.status || row.status_ware),
         notes: legacyNote(row.orderid, row.kommentar),
@@ -817,6 +827,54 @@ async function commitReturnsImport(
       targetEntity: "RETURN",
       targetEntityId: ret.id,
       status: "PARTIALLY_LINKED",
+    });
+    imported++;
+  }
+  return imported;
+}
+
+async function commitSupplierReturnsImport(
+  input: ImportRunInput,
+  batchId: string,
+  plannedRows: PlannedRow[],
+  context: ImportContext
+): Promise<number> {
+  let imported = 0;
+  for (const planned of plannedRows) {
+    const row = planned.row;
+    const selection = context.supplierReturnSelections.get(
+      supplierReturnSelectionKey(row.einkaufsnummer, row.lagerid)
+    );
+    if (!selection) continue;
+    const requestedAt = parseDateFlexible(row.meldedatum) ?? new Date();
+    const supplierReturn = await createSupplierReturn({
+      organizationId: input.organizationId,
+      createdById: input.createdById,
+      purchaseId: selection.purchaseId,
+      requestedAt,
+      returnDeadline: parseDateFlexible(row.frist),
+      rmaNumber: optional(row.rma),
+      expectedRefundCents: parseEuroTolerant(row.erwartete_erstattung) ?? 0,
+      shippingCostCents: parseEuroTolerant(row.versandkosten) ?? 0,
+      notes: optional(row.notiz),
+      selections: [{
+        purchaseLineId: selection.purchaseLineId,
+        inventoryPositionId: selection.inventoryPositionId,
+        sourceBucket: supplierReturnBucket(row.bucket),
+        quantity: parseIntegerStrict(row.menge) ?? 0,
+        reason: optional(row.grund),
+        itemCondition: selection.itemCondition,
+      }],
+      tx: input.tx,
+    });
+    await createSourceReference(input.tx, {
+      organizationId: input.organizationId,
+      batchId,
+      sheetName: input.metadata?.sheetName,
+      planned,
+      targetEntity: "SUPPLIER_RETURN",
+      targetEntityId: supplierReturn.id,
+      status: "LINKED",
     });
     imported++;
   }
@@ -1012,6 +1070,15 @@ interface ImportContext {
   purchaseByNumber: Map<string, {
     lines: Array<{ productName: string; quantity: number; receivedQuantity: number }>;
   }>;
+  supplierReturnSelections: Map<string, SupplierReturnImportSelection>;
+}
+
+interface SupplierReturnImportSelection {
+  purchaseId: string;
+  purchaseLineId: string;
+  inventoryPositionId: string;
+  itemCondition: ItemCondition | null;
+  quantities: Record<"AVAILABLE" | "RESERVED" | "INSPECTION" | "DEFECTIVE", number>;
 }
 
 interface ImportInventoryMapping {
@@ -1171,11 +1238,38 @@ function validateRow(
     if (status === "UNRESOLVED") warnings.push("Kein eindeutiger Bestandsbezug; Verkauf wird historisch ohne Allocation importiert.");
     return { status, message: `${linked}/${refs.length} Bestandsreferenzen verknüpft.`, warnings, errors, targetEntity: "SALE" };
   }
-  if (table === "retouren") {
+  if (table === "retouren" || table === "kundenretouren") {
     if (!context.saleByLegacy.has(normalizeLegacy(row.orderid))) {
       errors.push(`Kein importierter Verkauf zu OrderID "${row.orderid ?? ""}" gefunden.`);
     }
     return { status: errors.length ? "ERROR" : "PARTIALLY_LINKED", message: "Retoure wird mit Verkauf verknüpft.", warnings, errors, targetEntity: "RETURN" };
+  }
+  if (table === "lieferantenretouren") {
+    const selection = context.supplierReturnSelections.get(
+      supplierReturnSelectionKey(row.einkaufsnummer, row.lagerid)
+    );
+    if (!selection) errors.push("Einkaufsnummer und LagerID konnten in dieser Organisation nicht gemeinsam aufgelöst werden.");
+    const quantity = parseIntegerStrict(row.menge) ?? 0;
+    if (quantity < 1) errors.push("Menge muss mindestens 1 sein.");
+    const bucket = supplierReturnBucket(row.bucket);
+    if (row.bucket?.trim() && !["AVAILABLE", "RESERVED", "INSPECTION", "DEFECTIVE"].includes(row.bucket.trim().toUpperCase())) {
+      errors.push("Bestands-Bucket ist ungültig.");
+    }
+    if (selection && quantity > selection.quantities[bucket]) {
+      errors.push(`Im Bucket ${bucket} sind nur ${selection.quantities[bucket]} Stück verfügbar.`);
+    }
+    if (!row.grund?.trim()) errors.push("Rückgabegrund fehlt.");
+    if (row.meldedatum?.trim() && !parseDateFlexible(row.meldedatum)) errors.push("Meldedatum ist ungültig.");
+    if (row.frist?.trim() && !parseDateFlexible(row.frist)) errors.push("Rückgabefrist ist ungültig.");
+    if (row.erwartete_erstattung?.trim()) {
+      const amount = parseEuroTolerant(row.erwartete_erstattung);
+      if (amount == null || amount < 0) errors.push("Erwartete Erstattung ist ungültig.");
+    }
+    if (row.versandkosten?.trim()) {
+      const amount = parseEuroTolerant(row.versandkosten);
+      if (amount == null || amount < 0) errors.push("Versandkosten ist ungültig.");
+    }
+    return { status: errors.length ? "ERROR" : "LINKED", message: "Lieferantenretoure wird mit Einkauf und Lot verknüpft.", warnings, errors, targetEntity: "SUPPLIER_RETURN" };
   }
   if (table === "schulden") {
     needMoney("betrag", "Betrag");
@@ -1263,13 +1357,16 @@ async function loadImportContext(
   rows: ImportRow[]
 ): Promise<ImportContext> {
   const needsInventory = table === "verkauf";
-  const needsSales = table === "retouren";
+  const needsSales = table === "retouren" || table === "kundenretouren";
   const needsProducts = table === "produkte";
   const purchaseNumbers = table === "wareneingang"
     ? [...new Set(rows.map((row) => row.einkaufsnummer?.trim()).filter(Boolean))] as string[]
     : [];
+  const supplierInventoryNumbers = table === "lieferantenretouren"
+    ? [...new Set(rows.map((row) => row.lagerid?.trim()).filter(Boolean))] as string[]
+    : [];
   const productNames = [...new Set(rows.map((row) => row.name?.trim()).filter(Boolean))] as string[];
-  const [inventoryRefs, products, saleRefs, purchases] = await Promise.all([
+  const [inventoryRefs, products, saleRefs, purchases, supplierPositions] = await Promise.all([
     needsInventory
       ? tx.sourceReference.findMany({
           where: { organizationId, targetEntity: "INVENTORY_POSITION" },
@@ -1305,6 +1402,12 @@ async function loadImportContext(
               },
             },
           },
+        })
+      : Promise.resolve([]),
+    supplierInventoryNumbers.length > 0
+      ? tx.inventoryPosition.findMany({
+          where: { organizationId, inventoryType: "OWNED", inventoryNumber: { in: supplierInventoryNumbers } },
+          include: { ownedLot: { include: { purchaseLine: { include: { purchase: true } } } } },
         })
       : Promise.resolve([]),
   ]);
@@ -1352,6 +1455,22 @@ async function loadImportContext(
         })),
       },
     ])),
+    supplierReturnSelections: new Map(supplierPositions.flatMap((position) => {
+      const purchaseLine = position.ownedLot?.purchaseLine;
+      if (!purchaseLine) return [];
+      return [[supplierReturnSelectionKey(purchaseLine.purchase.purchaseNumber, position.inventoryNumber), {
+        purchaseId: purchaseLine.purchaseId,
+        purchaseLineId: purchaseLine.id,
+        inventoryPositionId: position.id,
+        itemCondition: position.itemCondition,
+        quantities: {
+          AVAILABLE: position.quantityAvailable,
+          RESERVED: position.quantityReserved,
+          INSPECTION: position.quantityInspection,
+          DEFECTIVE: position.quantityDefective,
+        },
+      }]];
+    })),
   };
 }
 
@@ -1494,13 +1613,25 @@ function primaryLegacyReference(table: TableKey, row: ImportRow, rowNumber: numb
     case "wareneingang": value = row.einkaufsnummer || `${row.datum}:${row.lieferant}:${row.artikel}`; break;
     case "lager": value = row.lagerid; break;
     case "verkauf":
-    case "retouren": value = row.orderid; break;
+    case "retouren":
+    case "kundenretouren": value = row.orderid; break;
+    case "lieferantenretouren": value = `${row.einkaufsnummer}:${row.lagerid}:${row.rma || row.grund}`; break;
     case "konsignation": value = row.nr || row.sku; break;
     case "schulden": value = row.refid; break;
     case "aufgaben": value = undefined; break;
     case "ausgaben": value = `${row.zahlungsdatum}:${row.bezeichnung}:${row.brutto}`; break;
   }
   return normalizeLegacy(value) || `${table}:row:${rowNumber}`;
+}
+
+function supplierReturnSelectionKey(purchaseNumber?: string, inventoryNumber?: string): string {
+  return `${normalize(purchaseNumber)}:${normalize(inventoryNumber)}`;
+}
+
+function supplierReturnBucket(value?: string): "AVAILABLE" | "RESERVED" | "INSPECTION" | "DEFECTIVE" {
+  const normalized = value?.trim().toUpperCase();
+  if (normalized === "RESERVED" || normalized === "INSPECTION" || normalized === "DEFECTIVE") return normalized;
+  return "AVAILABLE";
 }
 
 function hashRow(row: ImportRow): string {
@@ -1523,10 +1654,10 @@ function parseDateFlexible(value: string | undefined): Date | null {
   let match = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
   if (match) {
     const year = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
-    return new Date(year, Number(match[2]) - 1, Number(match[1]));
+    return calendarDate(year, Number(match[2]), Number(match[1]));
   }
   match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (match) return calendarDate(Number(match[1]), Number(match[2]), Number(match[3]));
   const parsed = new Date(text);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
@@ -1579,6 +1710,21 @@ function parseIntSafe(value: string | undefined): number | null {
   if (!value?.trim()) return null;
   const parsed = Number.parseInt(value.trim(), 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseIntegerStrict(value: string | undefined): number | null {
+  if (!value?.trim() || !/^[+-]?\d+$/.test(value.trim())) return null;
+  const parsed = Number(value.trim());
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function calendarDate(year: number, month: number, day: number): Date | null {
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getFullYear() === year &&
+    parsed.getMonth() === month - 1 &&
+    parsed.getDate() === day
+    ? parsed
+    : null;
 }
 
 function pickEntry(value: string | undefined, fallback: "E" | "O" | "NN" | "S"): "E" | "O" | "NN" | "S" {

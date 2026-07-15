@@ -1,5 +1,44 @@
 # Progress Log
 
+## 2026-07-15 — Prompt 6 audit complete
+- Completed the return-domain, route, migration, import/export, dashboard, and tenant seam audit.
+- Selected the existing customer-return service plus one new supplier-return deep module; Phase 2 proof-first implementation is active.
+- Captured the expected red baseline: supplier service and migration are absent, while customer transition assertions are not implemented; the seven existing allocation tests still pass.
+
+## 2026-07-15 — Prompt 6 domain foundation complete
+- Added only additive customer/supplier return statuses and metadata plus safe migration defaults and constraints.
+- Implemented supplier planning, LR creation, guarded transitions, refund classification, deadline state, audited dispatch, and inventory idempotency through `SUPPLIER_RETURN_OUT`.
+- Focused return/inventory/migration suites pass (27 tests) and TypeScript is clean. Phase 3 operational surfaces are active.
+
+## 2026-07-15 — Prompt 6 operational surfaces
+- Split `/retouren` into a redirect plus independent `/retouren/kunden` and `/retouren/lieferanten` tables and navigation entries.
+- Added supplier planning/dispatch/refund controls, customer intake metadata, separate import templates/dry runs/exports, activity links, and five return-specific dashboard insights.
+- Focused Phase-3 suite passes: 69 tests across domain, movement, migration, imports, templates, and navigation.
+
+## 2026-07-15 — Prompt 6 quality gates (in progress)
+- Prisma validate/generate, full Vitest (278 tests), TypeScript, and ESLint pass.
+- Integrity needs the approved isolated QA database because the default project database is unreachable; the sandboxed build needs outbound access only for the configured Google fonts.
+- The additive migration deployed successfully to isolated QA; all 13 integrity queries report zero violations and the network-enabled production build passes with both new routes.
+- Visible browser automation is unavailable in this session (no in-app browser; third-party runner correctly blocked). No unsafe workaround was used; Prompt 6's automated domain/import/navigation gates remain complete.
+
+## 2026-07-15 — Prompt 6 structured review
+- Ran the required simplify and multi-persona review inline because this session explicitly disables subagents.
+- Fixed atomic customer creation/receipt, optimistic concurrency guards for both state machines, strict supplier-import quantity/date/money validation, URL-scheme validation, explicit condition selection, missing refund/rejection actions, and dashboard preset routing.
+- Specialized customer/supplier table views now filter relevant rows as well as columns; drawers expose tracking, evidence, conditions, and movement provenance. Final full gates and commit remain.
+
+## 2026-07-15 — Prompt 6 final gates
+- Prisma schema validation and client generation pass; the isolated QA database reports all 21 migrations applied.
+- TypeScript and full ESLint pass. Full Vitest passes with 41 files and 281 tests.
+- All 13 integrity checks pass with zero violations, including movement replay and tenant links.
+- The Next.js 15.5.20 production build passes and includes `/retouren`, `/retouren/kunden`, and `/retouren/lieferanten`.
+
+## 2026-07-15 — Prompt 6
+- Loaded the planning-with-files, codebase-design/deepening, and ce-work execution rules; subagents remain disabled by the active repository session policy, so execution is inline and serial.
+- Confirmed a clean Prompt-5 commit baseline on `phase-1/inventory-datamodel` and explicit continuity from Prompt 0–5.
+- Created a five-phase implementation plan covering audit, proof-first domain/migration work, strictly separate operational surfaces, integrated verification, review, and the exact requested commit.
+
+---
+
 ## 2026-07-14 — Prompt 5
 - Read the complete attached Prompt 5 and confirmed a clean Prompt-4 commit baseline.
 - Loaded planning, deep-module architecture, architecture-report, diagnosis, TDD, Huashu, Better Icons, and Browser Trace instructions plus required references.

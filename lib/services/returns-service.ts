@@ -1,10 +1,12 @@
 import type {
   InventoryType,
+  ItemCondition,
   Prisma,
   PrismaClient,
   Return as PrismaReturn,
   ReturnAllocation,
   ReturnLine,
+  ReturnStatus,
 } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
 import { calcReturnLoss } from "@/lib/calculations";
@@ -48,11 +50,17 @@ export interface CreateRelationalReturnInput {
   createdById: string;
   saleId: string;
   requestedAt: Date;
+  receivedAt?: Date | null;
   reason?: string | null;
   refundAmountCents: number;
   extraCostCents: number;
+  returnShippingCents?: number;
+  carrier?: string | null;
+  trackingNumber?: string | null;
+  evidenceUrls?: string[];
   problemType?: string | null;
   condition?: string | null;
+  itemCondition?: ItemCondition | null;
   notes?: string | null;
   selections: ReturnAllocationSelectionInput[];
   tx?: ReturnTransaction;
@@ -66,6 +74,18 @@ export interface CreateRelationalReturnResult {
 
 export type ReturnWorkflowOperation = "RECEIVE" | "RESTOCK" | "DEFECTIVE";
 
+const CUSTOMER_RETURN_TRANSITIONS: Record<ReturnStatus, ReturnStatus[]> = {
+  REQUESTED: ["INSPECTION", "RECEIVED", "RESTOCKED", "DEFECTIVE", "REJECTED", "REFUNDED"],
+  RECEIVED: ["INSPECTION", "RESTOCKED", "DEFECTIVE", "REJECTED", "REFUNDED"],
+  INSPECTION: ["RESTOCKED", "DEFECTIVE", "REJECTED", "REFUNDED"],
+  RESTOCKED: ["REFUNDED", "COMPLETED"],
+  DEFECTIVE: ["REFUNDED", "COMPLETED"],
+  REFUNDED: ["COMPLETED"],
+  CONFLICT: ["INSPECTION", "REJECTED", "COMPLETED"],
+  REJECTED: ["COMPLETED"],
+  COMPLETED: [],
+};
+
 export class ReturnsDomainError extends Error {
   constructor(
     public readonly code:
@@ -74,11 +94,25 @@ export class ReturnsDomainError extends Error {
       | "RETURN_NOT_FOUND"
       | "LEGACY_RETURN_NOT_SUPPORTED"
       | "OVER_RETURN"
-      | "TENANT_MISMATCH",
+      | "TENANT_MISMATCH"
+      | "INVALID_TRANSITION",
     message: string
   ) {
     super(message);
     this.name = "ReturnsDomainError";
+  }
+}
+
+export function assertCustomerReturnTransition(
+  current: ReturnStatus,
+  next: ReturnStatus
+): void {
+  if (current === next) return;
+  if (!CUSTOMER_RETURN_TRANSITIONS[current]?.includes(next)) {
+    throw new ReturnsDomainError(
+      "INVALID_TRANSITION",
+      `Statuswechsel von ${current} nach ${next} ist nicht zulässig.`
+    );
   }
 }
 
@@ -147,6 +181,7 @@ export async function applyReturnWorkflow(input: {
   returnId: string;
   operation: ReturnWorkflowOperation;
   createdById: string;
+  occurredAt?: Date;
   tx?: ReturnTransaction;
   prisma?: ReturnPrismaClient;
 }): Promise<PrismaReturn> {
@@ -156,6 +191,74 @@ export async function applyReturnWorkflow(input: {
   return client.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.$executeRaw`SELECT set_config('app.current_org_id', ${input.organizationId}, TRUE)`;
     return applyReturnWorkflowInTransaction(tx, input);
+  });
+}
+
+export async function transitionCustomerReturn(input: {
+  organizationId: string;
+  returnId: string;
+  nextStatus: ReturnStatus;
+  createdById: string;
+  inspectionNotes?: string | null;
+  tx?: ReturnTransaction;
+  prisma?: ReturnPrismaClient;
+}): Promise<PrismaReturn> {
+  const operation = async (tx: ReturnTransaction) => {
+    const current = await tx.return.findFirst({
+      where: { id: input.returnId, organizationId: input.organizationId },
+    });
+    if (!current) {
+      throw new ReturnsDomainError("RETURN_NOT_FOUND", "Retoure wurde nicht gefunden.");
+    }
+    assertCustomerReturnTransition(current.status, input.nextStatus);
+    if (current.status === input.nextStatus) return current;
+
+    const updateResult = await tx.return.updateMany({
+      where: {
+        id: current.id,
+        organizationId: input.organizationId,
+        status: current.status,
+      },
+      data: {
+        status: input.nextStatus,
+        inspectionNotes: input.inspectionNotes ?? current.inspectionNotes,
+        inspectedAt:
+          input.nextStatus === "INSPECTION" ? new Date() : current.inspectedAt,
+        completedAt:
+          input.nextStatus === "COMPLETED" ? new Date() : current.completedAt,
+      },
+    });
+    if (updateResult.count !== 1) {
+      throw new ReturnsDomainError(
+        "INVALID_TRANSITION",
+        "Die Retoure wurde parallel geändert. Bitte Ansicht aktualisieren."
+      );
+    }
+    const updated = await tx.return.findFirst({
+      where: { id: current.id, organizationId: input.organizationId },
+    });
+    if (!updated) {
+      throw new ReturnsDomainError("RETURN_NOT_FOUND", "Retoure wurde nicht gefunden.");
+    }
+    await tx.auditLog.create({
+      data: {
+        organizationId: input.organizationId,
+        userId: input.createdById,
+        action: "return.status",
+        entityType: "Return",
+        entityId: current.id,
+        before: { status: current.status },
+        after: { status: updated.status },
+      },
+    });
+    return updated;
+  };
+
+  if (input.tx) return operation(input.tx);
+  const client = input.prisma ?? defaultPrisma;
+  return client.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${input.organizationId}, TRUE)`;
+    return operation(tx);
   });
 }
 
@@ -227,7 +330,7 @@ async function createRelationalReturnInTransaction(
     platformFeeCents: sale.platformFeeNetCents,
     paymentFeeCents: 0,
     shippingCostCents: sale.shippingCostCents,
-    extraCostCents: input.extraCostCents,
+    extraCostCents: input.extraCostCents + (input.returnShippingCents ?? 0),
   });
 
   const returnRecord = await tx.return.create({
@@ -238,10 +341,14 @@ async function createRelationalReturnInTransaction(
       requestedAt: input.requestedAt,
       reason: input.reason || null,
       refundAmountCents: input.refundAmountCents,
-      returnShippingCents: input.extraCostCents,
+      returnShippingCents: input.returnShippingCents ?? 0,
+      additionalCostsCents: input.extraCostCents,
       lossCents,
       status: "REQUESTED",
       restocked: false,
+      carrier: input.carrier || null,
+      trackingNumber: input.trackingNumber || null,
+      evidenceUrls: input.evidenceUrls ?? [],
       notes: input.notes || null,
     },
   });
@@ -262,6 +369,7 @@ async function createRelationalReturnInTransaction(
         quantity,
         problemType: input.problemType || input.reason || null,
         condition: input.condition || null,
+        itemCondition: input.itemCondition ?? null,
         refundAmountCents: input.refundAmountCents || null,
         extraCostsCents: input.extraCostCents || null,
         comment: input.notes || null,
@@ -309,7 +417,17 @@ async function createRelationalReturnInTransaction(
     },
   });
 
-  return { returnRecord, returnLines: createdLines };
+  const finalReturnRecord = input.receivedAt
+    ? await applyReturnWorkflowInTransaction(tx, {
+        organizationId: input.organizationId,
+        returnId: returnRecord.id,
+        operation: "RECEIVE",
+        createdById: input.createdById,
+        occurredAt: input.receivedAt,
+      })
+    : returnRecord;
+
+  return { returnRecord: finalReturnRecord, returnLines: createdLines };
 }
 
 async function applyReturnWorkflowInTransaction(
@@ -319,6 +437,7 @@ async function applyReturnWorkflowInTransaction(
     returnId: string;
     operation: ReturnWorkflowOperation;
     createdById: string;
+    occurredAt?: Date;
   }
 ): Promise<PrismaReturn> {
   const ret = await tx.return.findFirst({
@@ -418,23 +537,46 @@ async function applyReturnWorkflowInTransaction(
     }
   }
 
-  const nextStatus =
+  const nextStatus: ReturnStatus =
     input.operation === "RECEIVE"
-      ? "RECEIVED"
+      ? "INSPECTION"
       : input.operation === "RESTOCK"
       ? "RESTOCKED"
       : input.operation === "DEFECTIVE"
-        ? "CONFLICT"
+        ? "DEFECTIVE"
         : ret.status;
 
-  return tx.return.update({
-    where: { id: ret.id },
+  assertCustomerReturnTransition(ret.status, nextStatus);
+
+  const updateResult = await tx.return.updateMany({
+    where: {
+      id: ret.id,
+      organizationId: input.organizationId,
+      status: ret.status,
+    },
     data: {
       status: nextStatus,
       restocked: input.operation === "RESTOCK" ? true : ret.restocked,
-      receivedAt: ret.receivedAt ?? new Date(),
+      receivedAt: ret.receivedAt ?? input.occurredAt ?? new Date(),
+      inspectedAt:
+        input.operation === "RECEIVE"
+          ? input.occurredAt ?? new Date()
+          : ret.inspectedAt,
     },
   });
+  if (updateResult.count !== 1) {
+    throw new ReturnsDomainError(
+      "INVALID_TRANSITION",
+      "Die Retoure wurde parallel geändert. Bitte Ansicht aktualisieren."
+    );
+  }
+  const updated = await tx.return.findFirst({
+    where: { id: ret.id, organizationId: input.organizationId },
+  });
+  if (!updated) {
+    throw new ReturnsDomainError("RETURN_NOT_FOUND", "Retoure wurde nicht gefunden.");
+  }
+  return updated;
 }
 
 function normalizeQuantity(value: number): number {

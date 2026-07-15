@@ -13,6 +13,7 @@ import {
   receiveOwnedStock,
   receiveReturn,
   restockReturn,
+  returnOwnedStockToSupplier,
   sell,
 } from "@/lib/services/inventory-service";
 
@@ -476,6 +477,38 @@ describe("inventory service", () => {
     expect(client.position("pos-a").quantityAvailable).toBe(3);
     expect(client.position("pos-a").quantitySold).toBe(2);
     expect(client.movementCount()).toBe(2);
+  });
+
+  it("bucht eine Lieferantenretoure genau einmal aus dem gewählten Bucket", async () => {
+    await receiveOwnedStock({
+      organizationId: "org-a",
+      inventoryPositionId: "pos-a",
+      quantity: 5,
+      prisma: prisma(client),
+    });
+
+    const first = await returnOwnedStockToSupplier({
+      organizationId: "org-a",
+      inventoryPositionId: "pos-a",
+      quantity: 2,
+      sourceBucket: "AVAILABLE",
+      idempotencyKey: "supplier-return-line-a",
+      prisma: prisma(client),
+    });
+    const repeated = await returnOwnedStockToSupplier({
+      organizationId: "org-a",
+      inventoryPositionId: "pos-a",
+      quantity: 2,
+      sourceBucket: "AVAILABLE",
+      idempotencyKey: "supplier-return-line-a",
+      prisma: prisma(client),
+    });
+
+    expect(first.idempotent).toBe(false);
+    expect(repeated.idempotent).toBe(true);
+    expect(client.position("pos-a").quantityAvailable).toBe(3);
+    expect(client.movementCount()).toBe(2);
+    expect(repeated.movement.movementType).toBe("SUPPLIER_RETURN_OUT");
   });
 
   it("Test D: Organisation A kann Position von Organisation B nicht verändern", async () => {

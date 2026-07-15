@@ -44,7 +44,13 @@ export const APP_NAVIGATION: readonly AppNavigationSection[] = [
       { href: "/lager", label: "Lager", Icon: Boxes },
       { href: "/produkte", label: "Produkte", Icon: Package },
       { href: "/verkauf", label: "Verkauf", Icon: Tags },
-      { href: "/retouren", label: "Kundenretouren", shortLabel: "Retouren", Icon: RotateCcw },
+    ],
+  },
+  {
+    label: "Retouren",
+    items: [
+      { href: "/retouren/kunden", label: "Kundenretouren", shortLabel: "Kunden", Icon: RotateCcw },
+      { href: "/retouren/lieferanten", label: "Lieferantenretouren", shortLabel: "Lieferanten", Icon: RotateCcw },
     ],
   },
   {

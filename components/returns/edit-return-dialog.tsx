@@ -24,6 +24,7 @@ export interface EditableReturn {
   reason: string;
   refundAmount: string;
   extraCost: string;
+  returnShipping: string;
   notes: string;
 }
 
@@ -78,6 +79,10 @@ export function EditReturnDialog({ ret }: { ret: EditableReturn }) {
             <div className="space-y-2">
               <Label htmlFor="ret-edit-extra">Zusatzkosten (€)</Label>
               <Input id="ret-edit-extra" name="extraCost" inputMode="decimal" defaultValue={ret.extraCost} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ret-edit-return-shipping">Rücksendekosten (€)</Label>
+              <Input id="ret-edit-return-shipping" name="returnShipping" inputMode="decimal" defaultValue={ret.returnShipping} />
             </div>
           </div>
           <div className="space-y-2">

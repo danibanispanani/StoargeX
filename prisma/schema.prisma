@@ -72,6 +72,9 @@ enum SaleStatus {
 }
 
 enum ReturnStatus {
+  INSPECTION
+  DEFECTIVE
+  COMPLETED
   REQUESTED // "Angekündigt"
   REJECTED // "Storniert"
   RESTOCKED // "Gelagert" (Artikel physisch zurück -> Lagerstatus RETOURE)
@@ -188,8 +191,14 @@ enum ExpenseRecurrenceInterval {
 
 enum SupplierReturnStatus {
   DRAFT
+  REQUESTED
   APPROVED
   DISPATCHED
+  ARRIVED
+  REFUND_PENDING
+  PARTIALLY_REFUNDED
+  REFUNDED
+  REJECTED
   CREDIT_PENDING
   REPLACEMENT_PENDING
   COMPLETED
@@ -866,24 +875,31 @@ model Sale {
 }
 
 model Return {
-  id                  String       @id @default(cuid())
-  organizationId      String       @map("organization_id")
-  returnNumber        String?      @map("return_number")
-  saleId              String       @map("sale_id") // harter FK auf den Verkauf
-  requestedAt         DateTime     @default(now()) @map("requested_at") // Meldedatum
-  receivedAt          DateTime?    @map("received_at")
-  reason              String?
-  refundAmountCents   Int          @default(0) @map("refund_amount_cents") // Erstattung brutto
-  returnShippingCents Int          @default(0) @map("return_shipping_cents") // Zusatzkosten (z.B. Rückversand)
+  id                   String       @id @default(cuid())
+  organizationId       String       @map("organization_id")
+  returnNumber         String?      @map("return_number")
+  saleId               String       @map("sale_id") // harter FK auf den Verkauf
+  requestedAt          DateTime     @default(now()) @map("requested_at") // Meldedatum
+  receivedAt           DateTime?    @map("received_at")
+  reason               String?
+  refundAmountCents    Int          @default(0) @map("refund_amount_cents") // Erstattung brutto
+  returnShippingCents  Int          @default(0) @map("return_shipping_cents") // Zusatzkosten (z.B. Rückversand)
   // Tatsächlicher finanzieller Verlust, server-seitig berechnet
   // (lib/calculations.ts calcReturnLoss): Erstattung abzüglich enthaltener
   // USt und anteiliger Gebühren/Versand, plus Zusatzkosten.
-  lossCents           Int          @default(0) @map("loss_cents")
-  status              ReturnStatus @default(REQUESTED)
-  restocked           Boolean      @default(false) // wieder in den Bestand aufgenommen?
-  notes               String?
-  createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @updatedAt @map("updated_at")
+  lossCents            Int          @default(0) @map("loss_cents")
+  additionalCostsCents Int          @default(0) @map("additional_costs_cents")
+  status               ReturnStatus @default(REQUESTED)
+  restocked            Boolean      @default(false) // wieder in den Bestand aufgenommen?
+  carrier              String?
+  trackingNumber       String?      @map("tracking_number")
+  evidenceUrls         String[]     @default([]) @map("evidence_urls")
+  inspectionNotes      String?      @map("inspection_notes")
+  inspectedAt          DateTime?    @map("inspected_at")
+  completedAt          DateTime?    @map("completed_at")
+  notes                String?
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
@@ -1804,22 +1820,34 @@ model ExpenseRecurrenceRule {
 }
 
 model SupplierReturn {
-  id               String               @id @default(cuid())
-  organizationId   String               @map("organization_id")
-  returnNumber     String?              @map("return_number")
-  purchaseId       String               @map("purchase_id")
-  supplierId       String?              @map("supplier_id")
-  supplierSnapshot String               @map("supplier_snapshot")
-  status           SupplierReturnStatus @default(DRAFT)
-  requestedAt      DateTime             @default(now()) @map("requested_at")
-  dispatchedAt     DateTime?            @map("dispatched_at")
-  completedAt      DateTime?            @map("completed_at")
-  trackingNumber   String?              @map("tracking_number")
-  creditReference  String?              @map("credit_reference")
-  notes            String?
-  createdById      String               @map("created_by_id")
-  createdAt        DateTime             @default(now()) @map("created_at")
-  updatedAt        DateTime             @updatedAt @map("updated_at")
+  id                  String               @id @default(cuid())
+  organizationId      String               @map("organization_id")
+  returnNumber        String?              @map("return_number")
+  purchaseId          String               @map("purchase_id")
+  supplierId          String?              @map("supplier_id")
+  supplierSnapshot    String               @map("supplier_snapshot")
+  status              SupplierReturnStatus @default(DRAFT)
+  requestedAt         DateTime             @default(now()) @map("requested_at")
+  returnDeadline      DateTime?            @map("return_deadline")
+  dispatchedAt        DateTime?            @map("dispatched_at")
+  arrivedAt           DateTime?            @map("arrived_at")
+  refundExpectedAt    DateTime?            @map("refund_expected_at")
+  refundedAt          DateTime?            @map("refunded_at")
+  completedAt         DateTime?            @map("completed_at")
+  rmaNumber           String?              @map("rma_number")
+  carrier             String?
+  trackingNumber      String?              @map("tracking_number")
+  creditReference     String?              @map("credit_reference")
+  shippingCostCents   Int                  @default(0) @map("shipping_cost_cents")
+  expectedRefundCents Int                  @default(0) @map("expected_refund_cents")
+  actualRefundCents   Int                  @default(0) @map("actual_refund_cents")
+  documentUrls        String[]             @default([]) @map("document_urls")
+  evidenceUrls        String[]             @default([]) @map("evidence_urls")
+  rejectionReason     String?              @map("rejection_reason")
+  notes               String?
+  createdById         String               @map("created_by_id")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   purchase     Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
@@ -1831,6 +1859,8 @@ model SupplierReturn {
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, requestedAt])
+  @@index([organizationId, returnDeadline])
+  @@index([organizationId, refundExpectedAt])
   @@index([purchaseId])
   @@index([supplierId])
   @@index([createdById])
@@ -1838,18 +1868,19 @@ model SupplierReturn {
 }
 
 model SupplierReturnLine {
-  id                  String         @id @default(cuid())
-  organizationId      String         @map("organization_id")
-  supplierReturnId    String         @map("supplier_return_id")
-  purchaseLineId      String         @map("purchase_line_id")
-  inventoryPositionId String         @map("inventory_position_id")
-  outboundMovementId  String?        @unique @map("outbound_movement_id")
+  id                  String          @id @default(cuid())
+  organizationId      String          @map("organization_id")
+  supplierReturnId    String          @map("supplier_return_id")
+  purchaseLineId      String          @map("purchase_line_id")
+  inventoryPositionId String          @map("inventory_position_id")
+  outboundMovementId  String?         @unique @map("outbound_movement_id")
+  sourceBucket        InventoryBucket @default(AVAILABLE) @map("source_bucket")
   quantity            Int
   reason              String?
-  legacyCondition     String?        @map("legacy_condition")
-  itemCondition       ItemCondition? @map("item_condition")
-  createdAt           DateTime       @default(now()) @map("created_at")
-  updatedAt           DateTime       @updatedAt @map("updated_at")
+  legacyCondition     String?         @map("legacy_condition")
+  itemCondition       ItemCondition?  @map("item_condition")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
 
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   supplierReturn    SupplierReturn     @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
