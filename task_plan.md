@@ -1,4 +1,63 @@
-# Task Plan: Prompt 8 Operational Module Migration
+# Task Plan: Prompt 9 StorageX Insight Dashboard
+
+## Goal
+Rebuild the existing dashboard into a tenant-safe operational insight cockpit that exposes transparent calculations, period comparisons, attention signals, drill-down links, and responsive performance views without replacing existing domain logic or creating decorative KPI/chart grids.
+
+## Current Phase
+Phase 5: final gates and commit
+
+## Phases
+
+### Phase 1: Evidence and reporting-seam design
+- [x] Audit current dashboard queries, reporting calculations, filters, task/return/expense/inventory models, drill-down routes, and tests
+- [x] Define one deep tenant-scoped insight aggregation interface with transparent metric definitions and bounded query behavior
+- [x] Record period/filter semantics, empty-state behavior, score rules, and proof strategy before production edits
+- **Status:** completed
+
+### Phase 2: Proof-first insight calculations
+- [x] Add failing tests for periods, prior-period comparison, filters, expenses, returns, inventory health, team flow, tenant isolation, empty data, and large inputs
+- [x] Implement pure calculation/filter helpers and server-side aggregation adapters without N+1 queries
+- [x] Keep customer/supplier returns, owned/consignment stock, marketplace/account, and task semantics distinct
+- **Status:** completed
+
+### Phase 3: Dashboard cockpit UI
+- [x] Implement Today/Attention, Trade Pulse, Inventory Health, Margin Quality, Return Pressure, Cash and Cost, and Team Flow
+- [x] Add compact filters, annotated trends/sparklines, status bands, rankings, transparent definitions, and operational drill-down links
+- [x] Preserve StorageX App Shell, accessibility, responsive density, reduced motion, and table-oriented design language
+- **Status:** completed
+
+### Phase 4: Documentation and integrated verification
+- [x] Create `docs/insight-dashboard.md`
+- [x] Run focused/full tests, Prisma validate/generate, TypeScript, ESLint, integrity check, and production build
+- [x] Verify authenticated dashboard at desktop/tablet/mobile, empty/filter states, console/network/hydration, Lighthouse, and performance trace
+- **Status:** completed
+
+### Phase 5: Simplify, review, and commit
+- [x] Run the required simplify/review/fix/residual workflow
+- [x] Confirm a scoped secret-free diff and commit exactly `feat: rebuild dashboard as operational insight cockpit`
+- **Status:** completed
+
+## Constraints
+- No generic KPI-card or decorative chart grid; every metric exposes period, basis, calculation, and next action.
+- Reuse existing reporting/domain services and tenant access; do not fork inventory, return, expense, task, debt, import, or entitlement foundations.
+- Aggregate server-side with bounded queries; avoid per-row database access and tenant-unsafe shared caches.
+- Every relevant insight drills into an existing filtered operational route.
+- No schema migration unless discovery proves an essential metric cannot be represented safely with current data.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| `agent-browser` CLI is not installed and the restricted `npx` fallback stalled | 1 | Used the already connected Chrome DevTools channel for authenticated DOM, responsive, Lighthouse, network, console, and trace verification. |
+| First final desktop Lighthouse found one 3.64:1 PageHeader eyebrow contrast failure | 1 | Raised the shared protected-app eyebrow contrast; rerun passes 53/53 audits with all category scores at 100. |
+| Initial sales attention drill-down showed 301 historical rows instead of the 43 signaled current-period rows | 1 | Added server-side missing-booking/postage filters plus the active date range; browser probe now resolves to exactly 43 non-cancelled sales. |
+| Suspense streaming reduced TTFB but worsened Fast-4G LCP from 4.19s to 5.56s | 1 | Reverted the measured regression; final full-response trace records LCP 3.916s and CLS 0.00. |
+| Sandboxed integrity check could not reach the configured Supabase QA database | 1 | Repeated the same read-only check with approved network access; all 13 invariants passed. |
+| Sandboxed build could not download the three existing Google Fonts | 1 | Repeated the identical production build with approved network access; compilation, type validation, static generation, and tracing passed. |
+| Prisma Client generation was blocked by a stale StorageX Next.js process on port 3000 | 1 | Identified the exact project process tree, stopped only that dev server, and reran generation successfully. |
+
+---
+
+# Historical Task Plan: Prompt 8 Operational Module Migration
 
 ## Goal
 Migrate the ten existing operational module groups onto the established App Shell, operational table mechanics, and StorageX product language without rewriting domain logic. Preserve module-specific actions and inventory/consignment invariants, add the missing table views and detail evidence surfaces from `docs/table-view-matrix.md`, verify realistic responsive behavior, document the migration, and commit the complete result.

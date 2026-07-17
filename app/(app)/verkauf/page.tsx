@@ -42,6 +42,8 @@ export default async function SalesPage({
     q?: string;
     status?: string;
     rechnung?: string;
+    buchung?: string;
+    porto?: string;
     platform?: string;
     versandart?: string;
     von?: string;
@@ -71,6 +73,18 @@ export default async function SalesPage({
       : params.rechnung === "erledigt"
         ? { invoiceCreated: true }
         : {}),
+    ...(params.buchung === "fehlt"
+      ? {
+          status: { not: "CANCELLED" },
+          AND: [{ OR: [{ invoiceCreated: false }, { feesBooked: false }] }],
+        }
+      : {}),
+    ...(params.porto === "offen"
+      ? {
+          status: { in: ["PAID", "SHIPPED"] },
+          postageBooked: false,
+        }
+      : {}),
     ...(params.platform ? { platformId: params.platform } : {}),
     ...(params.versandart ? { shippingMethod: params.versandart } : {}),
     ...(params.von || params.bis

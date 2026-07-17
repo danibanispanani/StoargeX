@@ -56,7 +56,7 @@ export function AppSidebar({
             "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             collapsed ? "mx-auto flex" : "w-full justify-start"
           )}
-          aria-label={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"}
+          aria-label={collapsed ? "Navigation ausklappen" : "Navigation einklappen"}
           aria-pressed={collapsed}
         >
           {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}

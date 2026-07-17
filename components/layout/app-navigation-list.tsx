@@ -31,7 +31,7 @@ export function AppNavigationList({
         <div key={section.label}>
           <p
             className={cn(
-              "mb-1 px-2 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/45",
+              "mb-1 px-2 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/65",
               collapsed && "sr-only"
             )}
           >

@@ -27,6 +27,7 @@ export default async function StockPage({
     von?: string;
     bis?: string;
     view?: string;
+    alter?: string;
   }>;
 }) {
   const { db, organization, userId } = await requireOrg();
@@ -56,6 +57,12 @@ export default async function StockPage({
       where: {
         inventoryType: "OWNED",
         ...(view === "stock" ? { quantityAvailable: { gt: 0 } } : {}),
+        ...(params.alter === "langsam"
+          ? {
+              quantityAvailable: { gt: 0 },
+              receivedAt: { lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
+            }
+          : {}),
         ...(view === "listings" ? { listings: { some: {} } } : {}),
         ...(view === "inspection" ? { OR: [{ quantityInspection: { gt: 0 } }, { quantityDefective: { gt: 0 } }] } : {}),
         ...(params.plattform
@@ -97,6 +104,14 @@ export default async function StockPage({
       where: {
         ...(statusFilter ? { status: statusFilter } : {}),
         ...(view === "stock" ? { quantity: { gt: 0 } } : {}),
+        ...(params.alter === "langsam"
+          ? {
+              quantity: { gt: 0 },
+              purchaseDate: {
+                lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+              },
+            }
+          : {}),
         ...(view === "purchasing" ? { purchaseDate: { not: null } } : {}),
         ...(view === "listings" ? { listings: { some: {} } } : {}),
         ...(view === "inspection" ? { status: { in: ["RETURNED", "OTHER"] as StockItemStatus[] } } : {}),

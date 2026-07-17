@@ -10,7 +10,7 @@ export function AppBrand({ collapsed = false }: { collapsed?: boolean }) {
         "flex min-w-0 items-center gap-2 text-sidebar-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         collapsed && "mx-auto"
       )}
-      aria-label="StorageX Dashboard"
+      aria-label={collapsed ? "StorageX Dashboard" : undefined}
     >
       <span className="grid size-8 shrink-0 place-items-center border border-transit-teal/50 bg-transit-teal/10 text-transit-teal">
         <PackageCheck className="size-4" aria-hidden="true" />
@@ -18,7 +18,7 @@ export function AppBrand({ collapsed = false }: { collapsed?: boolean }) {
       {!collapsed ? (
         <span className="min-w-0 leading-none">
           <span className="block truncate font-display text-sm font-semibold tracking-tight">StorageX</span>
-          <span className="mt-1 block truncate font-mono text-[9px] uppercase tracking-[0.14em] text-sidebar-foreground/45">
+          <span className="mt-1 block truncate font-mono text-[9px] uppercase tracking-[0.14em] text-sidebar-foreground/65">
             Handelskonsole
           </span>
         </span>

@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-07-17 - Prompt 9 insight calculations
+
+- Added a proof-first dashboard suite covering rolling/custom period semantics, immediately preceding comparison windows, filter normalization, trade and margin loads, recurring/one-time expenses, separate customer/supplier returns, inventory buckets, team flow, empty data, and 10,000-sale inputs.
+- Implemented the pure `lib/dashboard/insight-dashboard.ts` calculation module. It deliberately exposes transparent measures rather than a synthetic health score and produces prioritized operational drill-downs.
+- Focused proof: `npx vitest run tests/dashboard-insights.test.ts` passes (6 tests).
+- Added the RLS-only `TenantDb` data adapter with tenant-validated filter options and a fixed set of parallel domain reads. The platform/account/category/ownership/member query contract has focused coverage and never accepts an organization ID.
+- Replaced the generic dashboard card/chart grid with the responsive Attention Queue, Trade Pulse, bucket-based Inventory Health, Margin Quality, split Return Pressure, Cash and Cost, and Team Flow surfaces. Targeted TypeScript, ESLint, navigation/module, and dashboard tests pass.
+- Added a tenant-safe read-only import-conflict review route over `ImportBatch`/`SourceReference`, preserving the existing import engine and linking every review row back to its operational module.
+- Structured inline review corrected mixed-sale attribution, invalid custom dates, deadline boundaries, payout/recovery semantics, zero-balance debt attention, and exact filtered drill-down contracts.
+- Authenticated Chrome QA passes at 1440/1280/768/390 with no document overflow, clean console/network/hydration, working keyboard focus and mobile navigation, and an exact 43-to-43 missing-booking drill-down.
+- Final desktop and mobile Lighthouse audits both score 100 for Accessibility, Best Practices, SEO, and Agentic Browsing with 53/53 checks passing.
+- Final Fast-4G dev trace: LCP 3.916s, CLS 0.00; TTFB 3.131s is the dominant external-QA/server cost. A measured-worse Suspense variant was reverted.
+- Final repository gates: Prisma validate/generate, TypeScript, full ESLint, 48 Vitest files with 316 tests, 13/13 integrity invariants, production build, and diff whitespace check all pass.
+
 ## 2026-07-17 - Prompt 8 started
 
 - Loaded the persistent planning and Compound Engineering work, polish, browser-test, and code-review workflows.
@@ -504,3 +518,9 @@
 - Verified deterministic non-writing calculator results, account defaults, fee provenance, category rule selection, break-even/profit output, sale snapshot account selection, product pricing columns, responsive internal table scrolling, mobile navigation, dialogs, Escape focus restoration, and visible keyboard focus order.
 - Browser console/trace showed no runtime, hydration, or application errors. Network capture contains 380 requests, 380 responses, zero HTTP errors, and zero parse errors.
 - Final database integrity check passes 13/13. Prisma validate/generate, TypeScript, ESLint, all 263 tests, production build, and diff check pass.
+# Prompt 9 StorageX Insight Dashboard (2026-07-17)
+
+### Phase 1: Evidence and reporting-seam design
+- **Status:** in progress
+- Confirmed a clean Prompt-8 baseline at `0338fd3`.
+- Loaded `ce-work`, `planning-with-files`, and `codebase-design`; selected one tenant-scoped insight aggregation module as the intended deep seam.

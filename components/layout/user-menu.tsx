@@ -32,7 +32,12 @@ export function UserMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label="Benutzermenü öffnen">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="rounded-full"
+          aria-label={`${initials(user.name, user.email)}: Benutzermenü öffnen`}
+        >
           <Avatar size="sm">
             {user.image ? <AvatarImage src={user.image} alt="" /> : null}
             <AvatarFallback>{initials(user.name, user.email)}</AvatarFallback>

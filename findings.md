@@ -1,5 +1,28 @@
 # Findings and Decisions
 
+## Prompt 9 - StorageX Insight Dashboard
+
+### Reporting seam audit
+- `app/(app)/dashboard/page.tsx` delegates dashboard reads to `lib/reporting.ts`; this is the established deep-module seam to extend instead of introducing page-local Prisma queries.
+- The current dashboard is composed from independent KPI cards and generic Recharts bar/line/pie charts. Prompt 9 should replace that presentation with one typed cockpit view model while leaving existing reporting exports available to other callers.
+- `loadDashboardKpis` already accepts `TenantDb`, but performs a consignment aggregate after its main `Promise.all`. The new loader must keep all bounded reads parallel and avoid per-row queries.
+- `DashboardFilter` currently only supports year/custom date ranges. Platform, marketplace account, category, ownership, and member filters need a single URL-backed filter contract.
+- Current dashboard chart code includes an unlabeled platform donut, which conflicts with the Prompt 9 visualization rules and should no longer be used by the dashboard page.
+- The additive domain already contains all required dashboard sources: marketplace accounts on sales/expenses, product categories on sale lines and inventory positions, ownership snapshots on sale allocations, expense occurrences and recurrence rules, separate customer/supplier returns, task assignments, and explicit inventory buckets. No Prisma migration is needed.
+- Existing `loadPlatformShare` hardcodes named marketplace buckets (`eBay R`, `eBay D`, etc.). Prompt 9 filters and rankings must instead use configured `Platform` and `MarketplaceAccount` identities so the product constitution's generalization rule is preserved.
+- The sales route currently accepts `platform`, invoice state, shipping method, and date filters; stock accepts view/status/platform/date; tasks accepts view/member. Dashboard drill-down links must use those real contracts, with preset links for return, debt, and shipping routes where those pages do not yet expose dedicated filter keys.
+- `TenantDb` enforces organization isolation through transaction-local `app.current_org_id` and RLS. The new reporting loader should accept only this client, never a raw Prisma client or caller-supplied organization ID.
+- No dashboard tests currently exist. A proof-first service test can cover period normalization, prior-period comparison, filter composition, expenses/returns, empty/large inputs, and calculation transparency without requiring a live database; a structural test can protect the `TenantDb` loader boundary.
+
+### Review and browser findings
+- Mixed category/ownership sales require proportional financial attribution. Matching a single line and counting the whole sale materially overstates filtered revenue, profit, fees, shipping, and return loss.
+- A missing expected supplier-refund basis is not a 100-percent recovery score. The honest display state is unavailable (`–`) with the missing denominator stated.
+- Operational attention links must retain the period that produced the signal. The browser exposed 43 dashboard sales mapping to 301 historical rows until `von`/`bis` and dedicated server filters were added.
+- Supplier and purchase deadlines described as ending soon must exclude already expired dates; overdue handling is a separate attention semantic.
+- The existing tenant query interceptor creates one transaction per Prisma operation. The fixed parallel batch has no N+1 loop, but the external QA database dominates dev-mode TTFB. A shared cache was intentionally not introduced without a complete organization/filter/time cache key contract.
+- The fast-4G trace disproved a seemingly attractive Suspense split: it reduced TTFB but increased LCP because the full cockpit replaced the loading surface late. The full response remained the better measured behavior.
+- No `CONCEPTS.md` or `docs/solutions/` learning corpus exists for this module; review evidence comes from current governance, domain code, tests, and live QA.
+
 ## Prompt 8 - Operational module migration
 
 ### Execution frame
@@ -595,3 +618,9 @@
 - Current customer import intentionally creates historical return heads without allocations when only a legacy OrderID is known. This remains a compatibility path; normal UI-created customer returns continue through sale-line allocations.
 - The navigation data model is flat within labeled sections. A dedicated `Retouren` section containing `/retouren/kunden` and `/retouren/lieferanten` satisfies the required tree without adding a second navigation abstraction; active nested-route semantics already work.
 - Audit/activity routing must split `Return` to `/retouren/kunden` and add `SupplierReturn` to `/retouren/lieferanten`; supplier actions need explicit activity labels and LR references.
+# Prompt 9 initial constraints (2026-07-17)
+
+- Prompt 9 must deepen the existing dashboard/reporting seam rather than reproduce calculations in cards or client components.
+- Every score/metric needs an explicit period, data basis, formula/definition, and operational drill-down.
+- Filters must remain tenant-scoped and distinguish platform from marketplace account, owned from consignment stock, customer from supplier returns, and task member scope.
+- Browser validation can use the now-working Chrome DevTools MCP with the persistent password-only QA `MEMBER`; ADMIN-only settings remain outside dashboard scope.
