@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireOrg } from "@/lib/org";
 import { PageHeader } from "@/components/app/page-header";
+import { PageToolbar } from "@/components/app/page-toolbar";
 import { hasMinRole } from "@/lib/roles";
 import { OrganizationForm } from "@/components/settings/organization-form";
 import { TaxRatesCard } from "@/components/settings/tax-rates-card";
@@ -48,10 +49,22 @@ export default async function SettingsPage() {
       <PageHeader
         eyebrow="Verwaltung"
         title="Einstellungen"
-        description="Firmendaten und Sicherheit"
+        description="Organisation, Konten, operative Auswahlwerte, Abrechnung und Sicherheit."
       />
 
-      <Card>
+      <PageToolbar
+        primary={
+          <>
+            <Button asChild variant="ghost" size="sm"><Link href="/einstellungen">Organisation</Link></Button>
+            <Button asChild variant="ghost" size="sm"><Link href="/einstellungen/marktplatzkonten">Marktplatzkonten</Link></Button>
+            <Button asChild variant="ghost" size="sm"><Link href="/einstellungen/sicherheit">Sicherheit</Link></Button>
+            <Button asChild variant="ghost" size="sm"><Link href="/team">Team</Link></Button>
+            <Button asChild variant="ghost" size="sm"><Link href="/zugangsdaten">Zugangsdaten</Link></Button>
+          </>
+        }
+      />
+
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Firmendaten</CardTitle>
           <CardDescription>
@@ -76,7 +89,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Darstellung</CardTitle>
           <CardDescription>
@@ -89,7 +102,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Abo &amp; Abrechnung</CardTitle>
           <CardDescription>
@@ -106,7 +119,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Plattformen &amp; Accounts</CardTitle>
           <CardDescription>
@@ -129,7 +142,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Zahlungsmethoden (ZM)</CardTitle>
           <CardDescription>
@@ -147,7 +160,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Auszahlungsempfänger</CardTitle>
           <CardDescription>
@@ -164,7 +177,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Aufgaben-Bereiche</CardTitle>
           <CardDescription>
@@ -182,7 +195,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Lager-Warnschwelle</CardTitle>
           <CardDescription>
@@ -195,7 +208,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Umsatzsteuersätze</CardTitle>
           <CardDescription>
@@ -217,7 +230,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Order-IDs</CardTitle>
           <CardDescription>
@@ -232,7 +245,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-none border-x-0 shadow-none">
         <CardHeader>
           <CardTitle>Sicherheit</CardTitle>
           <CardDescription>

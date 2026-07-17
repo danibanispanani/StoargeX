@@ -1,4 +1,58 @@
-# Task Plan: Prompt 7 Team Task Management
+# Task Plan: Prompt 8 Operational Module Migration
+
+## Goal
+Migrate the ten existing operational module groups onto the established App Shell, operational table mechanics, and StorageX product language without rewriting domain logic. Preserve module-specific actions and inventory/consignment invariants, add the missing table views and detail evidence surfaces from `docs/table-view-matrix.md`, verify realistic responsive behavior, document the migration, and commit the complete result.
+
+## Current Phase
+Phase 5: browser validation blocked; reviewed implementation ready for commit decision
+
+## Phases
+
+### Phase 1: Contract and implementation audit
+- [x] Read the complete table matrix, constitution, operational-table/import/shell/entitlement documents and map all ten module routes
+- [x] Inventory existing module configurations, actions, drawers, responsive behavior, tests, and Prompt-8 gaps without changing domain services
+- [x] Record preservation boundaries, proof strategy, and module batches
+- **Status:** completed
+
+### Phase 2: Shared operational presentation seams
+- [x] Deepen only shared presentation/action contracts that are genuinely common
+- [x] Keep module columns, presets, drawers, destructive semantics, and permissions module-specific
+- [x] Add focused characterization/configuration tests before behavior-bearing changes
+- **Status:** completed
+
+### Phase 3: Module migrations
+- [x] Migrate Lager, Einkauf, Verkauf, Kundenretouren, and Lieferantenretouren
+- [x] Migrate Konsignation, Schulden, Versand, and Zugangsdaten
+- [x] Migrate Team and Einstellungen while preserving their non-table workflows
+- **Status:** completed
+
+### Phase 4: Entitlement, documentation, and integrated gates
+- [x] Verify consignment discovery/mutation gates for active, trial, and inactive entitlements
+- [x] Create `docs/operational-module-migration.md`
+- [x] Run focused/full tests, Prisma validation/generation, TypeScript, ESLint, integrity check where safely available, and production build
+- **Status:** completed with documented external integrity-check limitation
+
+### Phase 5: Browser polish, review, and commit
+- [ ] Use `ce-polish` and `ce-test-browser` across every requested module at desktop, tablet, and mobile widths
+- [ ] Verify overflow, sticky columns, drawers, filters, views, bulk actions, console, and network
+- [x] Run `ce-code-review` inline and resolve actionable findings
+- [x] Commit exactly `feat: migrate operational modules to unified product ui`
+- **Status:** browser work blocked by unavailable embedded browser and missing Chrome extension/native-host integration
+
+## Constraints
+- Do not rewrite Purchase, inventory movement, sales, return allocation, consignment, debt, shipping, credential, membership, or settings domain logic.
+- Sales are cancelled rather than deleted; inventory quantities change only through existing movement/correction services.
+- Reuse the operational table workspace and import/export pipeline instead of creating parallel systems.
+- Consignment data and relations remain intact when the add-on is inactive; server-side mutation gates are authoritative.
+- No schema migration is planned for this UI migration unless a discovered requirement cannot be represented safely by existing structures; such a change would require explicit re-evaluation.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+
+---
+
+# Historical Task Plan: Prompt 7 Team Task Management
 
 ## Goal
 Evolve the existing task Kanban into a tenant-safe team workspace while preserving legacy tasks and archive behavior. Put assignment, permission, checklist/progress, activity, snooze, domain-link, notification, and import invariants behind one deep task module; expose the requested operational views and Kanban/list modes; document, verify, and commit the complete result.

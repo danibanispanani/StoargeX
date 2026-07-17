@@ -44,6 +44,8 @@ import {
 } from "@/components/stock/stock-item-dialog";
 import type { PickerProduct } from "@/components/products/product-picker";
 import type { ActionState } from "@/lib/actions/team";
+import { OPERATIONAL_MODULES } from "@/lib/operational-modules";
+import type { TablePreferenceScope } from "@/lib/operational-table";
 
 export interface StockRow {
   source: "owned" | "legacy";
@@ -78,11 +80,17 @@ export function StockTable({
   platforms,
   zmOptions,
   products,
+  scope,
+  requestedView,
+  currentQuery,
 }: {
   rows: StockRow[];
   platforms: Array<{ id: string; name: string }>;
   zmOptions: string[];
   products: PickerProduct[];
+  scope: Omit<TablePreferenceScope, "tableKey">;
+  requestedView: string;
+  currentQuery: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
@@ -128,21 +136,19 @@ export function StockTable({
       )}
 
       <CompactTableShell
-        storageKey="lager"
-        views={[
-          { value: "standard", label: "Standard" },
-          { value: "einkauf", label: "Einkauf" },
-          { value: "listings", label: "Listings" },
-          { value: "bestand", label: "Bestand" },
-          { value: "all", label: "Alle Spalten" },
-        ]}
+        definition={OPERATIONAL_MODULES.stock}
+        scope={scope}
+        requestedView={requestedView}
+        viewParam="view"
+        currentQuery={currentQuery}
+        totalResults={rows.length}
       >
-      <Card>
+      <Card className="rounded-none border-0 shadow-none">
         <CardContent className="overflow-x-auto">
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-0 w-10">
+                <TableHead data-column data-column-key="selection" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-sticky-0 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -151,19 +157,19 @@ export function StockTable({
                     className="size-4"
                   />
                 </TableHead>
-                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-1">Lager-Nr.</TableHead>
-                <TableHead data-column data-view-standard data-view-einkauf data-view-all>Datum</TableHead>
-                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all>Artikel</TableHead>
-                <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Bestand</TableHead>
-                <TableHead data-column data-view-standard data-view-einkauf data-view-all className="text-right">EK netto</TableHead>
-                <TableHead data-column data-view-standard data-view-einkauf data-view-all>ZM</TableHead>
-                <TableHead data-column data-view-einkauf data-view-all>Kauf</TableHead>
-                <TableHead data-column data-view-einkauf data-view-all>Retoure</TableHead>
-                <TableHead data-column data-view-standard data-view-bestand data-view-all>Bestandsstatus</TableHead>
-                <TableHead data-column data-view-standard data-view-listings data-view-all>Listings</TableHead>
-                <TableHead data-column data-view-einkauf data-view-listings data-view-all>EAN</TableHead>
-                <TableHead data-column data-view-listings data-view-all>Bilder</TableHead>
-                <TableHead data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="w-36">Aktionen</TableHead>
+                <TableHead data-column data-column-key="number" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-sticky-1">Lager-Nr.</TableHead>
+                <TableHead data-column data-column-key="date" data-view-standard data-view-purchasing data-view-all>Datum</TableHead>
+                <TableHead data-column data-column-key="product" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all>Artikel</TableHead>
+                <TableHead data-column data-column-key="quantity" data-view-standard data-view-stock data-view-inspection data-view-all className="text-right">Bestand</TableHead>
+                <TableHead data-column data-column-key="cost" data-view-standard data-view-purchasing data-view-all className="text-right">EK netto</TableHead>
+                <TableHead data-column data-column-key="payment" data-view-standard data-view-purchasing data-view-all>ZM</TableHead>
+                <TableHead data-column data-column-key="purchase" data-view-purchasing data-view-all>Kauf</TableHead>
+                <TableHead data-column data-column-key="return" data-view-purchasing data-view-all>Retoure</TableHead>
+                <TableHead data-column data-column-key="status" data-view-standard data-view-stock data-view-inspection data-view-all>Bestandsstatus</TableHead>
+                <TableHead data-column data-column-key="listings" data-view-standard data-view-listings data-view-all>Listings</TableHead>
+                <TableHead data-column data-column-key="ean" data-view-purchasing data-view-listings data-view-all>EAN</TableHead>
+                <TableHead data-column data-column-key="image" data-view-listings data-view-all>Bilder</TableHead>
+                <TableHead data-column data-column-key="actions" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="w-36">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -185,7 +191,7 @@ export function StockTable({
                   data-selected={selected.has(row.id)}
                   data-low={row.low}
                 >
-                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-0">
+                  <TableCell data-column data-column-key="selection" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-sticky-0">
                     {row.source === "legacy" ? (
                       <input
                         type="checkbox"
@@ -198,24 +204,24 @@ export function StockTable({
                       <span className="text-xs text-muted-foreground">Neu</span>
                     )}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-sticky-1 font-mono text-xs">{row.sku}</TableCell>
-                  <TableCell data-column data-view-standard data-view-einkauf data-view-all className="whitespace-nowrap">{row.date}</TableCell>
-                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all className="sx-cell-primary min-w-56">
+                  <TableCell data-column data-column-key="number" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-sticky-1 font-mono text-xs">{row.sku}</TableCell>
+                  <TableCell data-column data-column-key="date" data-view-standard data-view-purchasing data-view-all className="whitespace-nowrap">{row.date}</TableCell>
+                  <TableCell data-column data-column-key="product" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-cell-primary min-w-56">
                     <div className="font-medium">{row.title}</div>
                     <div className="text-xs text-muted-foreground">
                       {[row.variant, row.size].filter(Boolean).join(" · ") || "–"}
                     </div>
                     <div className="text-xs text-muted-foreground">{row.supplier || "–"}</div>
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right font-mono">
+                  <TableCell data-column data-column-key="quantity" data-view-standard data-view-stock data-view-inspection data-view-all className="text-right font-mono">
                     {row.availableQuantity} / {row.originalQuantity}
                     <div className="text-xs text-muted-foreground">verfügbar</div>
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-einkauf data-view-all className="sx-cell-money text-right font-mono">
+                  <TableCell data-column data-column-key="cost" data-view-standard data-view-purchasing data-view-all className="sx-cell-money text-right font-mono">
                     {row.netCents !== null ? formatEuro(row.netCents) : "–"}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-einkauf data-view-all className="whitespace-nowrap">{row.zm || "–"}</TableCell>
-                  <TableCell data-column data-view-einkauf data-view-all>
+                  <TableCell data-column data-column-key="payment" data-view-standard data-view-purchasing data-view-all className="whitespace-nowrap">{row.zm || "–"}</TableCell>
+                  <TableCell data-column data-column-key="purchase" data-view-purchasing data-view-all>
                     <ColoredSelect
                       value={row.kaufStatus}
                       options={KAUF_STATUS_OPTIONS}
@@ -235,7 +241,7 @@ export function StockTable({
                       }
                     />
                   </TableCell>
-                  <TableCell data-column data-view-einkauf data-view-all>
+                  <TableCell data-column data-column-key="return" data-view-purchasing data-view-all>
                     <ColoredSelect
                       value={row.retoureStatus}
                       options={RETOURE_STATUS_OPTIONS}
@@ -255,7 +261,7 @@ export function StockTable({
                       }
                     />
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-bestand data-view-all>
+                  <TableCell data-column data-column-key="status" data-view-standard data-view-stock data-view-inspection data-view-all>
                     {row.source === "owned" ? (
                       <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">
                         {row.derivedStatus}
@@ -285,7 +291,7 @@ export function StockTable({
                       </select>
                     )}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-listings data-view-all>
+                  <TableCell data-column data-column-key="listings" data-view-standard data-view-listings data-view-all>
                     <ListingDetails
                       row={row}
                       platforms={platforms}
@@ -299,8 +305,8 @@ export function StockTable({
                       }
                     />
                   </TableCell>
-                  <TableCell data-column data-view-einkauf data-view-listings data-view-all className="font-mono text-xs">{row.ean || "–"}</TableCell>
-                  <TableCell data-column data-view-listings data-view-all>
+                  <TableCell data-column data-column-key="ean" data-view-purchasing data-view-listings data-view-all className="font-mono text-xs">{row.ean || "–"}</TableCell>
+                  <TableCell data-column data-column-key="image" data-view-listings data-view-all>
                     {row.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -312,7 +318,7 @@ export function StockTable({
                       "–"
                     )}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-einkauf data-view-listings data-view-bestand data-view-all>
+                  <TableCell data-column data-column-key="actions" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all>
                     <div className="flex justify-end gap-1">
                       <StockDetailDrawer row={row} platforms={platforms} />
                       {row.source === "owned" ? (

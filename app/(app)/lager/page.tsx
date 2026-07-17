@@ -8,10 +8,11 @@ import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
 import { StockTable, type StockRow } from "@/components/stock/stock-table";
 import { deriveOwnedStockStatus } from "@/lib/services/owned-purchase-service";
-import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { parseStockView, STOCK_VIEW_DEFINITION } from "@/lib/stock/stock-views";
+import { parseStockView } from "@/lib/stock/stock-views";
+import {
+  operationalSearchParams,
+  parseOperationalSearchQuery,
+} from "@/lib/operational-modules";
 
 export default async function StockPage({
   searchParams,
@@ -28,8 +29,10 @@ export default async function StockPage({
     view?: string;
   }>;
 }) {
-  const { db, organization } = await requireOrg();
-  const params = await searchParams;
+  const { db, organization, userId } = await requireOrg();
+  const rawParams = await searchParams;
+  const normalizedQuery = parseOperationalSearchQuery(rawParams.q);
+  const params = { ...rawParams, q: normalizedQuery || undefined };
   const view = parseStockView(params.view);
 
   const statusFilter =
@@ -234,10 +237,6 @@ export default async function StockPage({
         }
       />
 
-      <div className="flex flex-wrap gap-1 border bg-card p-2" aria-label="Lageransichten">
-        {STOCK_VIEW_DEFINITION.map((item) => <Link key={item.key} href={item.key === "standard" ? "/lager" : `/lager?view=${item.key}`} className={cn(buttonVariants({ variant: view === item.key ? "default" : "outline", size: "sm" }))}>{item.label}</Link>)}
-      </div>
-
       <StockFilterBar
         filters={{
           q: params.q ?? "",
@@ -251,6 +250,7 @@ export default async function StockPage({
         }}
         platforms={platforms}
         zmOptions={zmOptions}
+        activeView={view}
       />
 
       <StockTable
@@ -258,6 +258,12 @@ export default async function StockPage({
         platforms={platforms}
         zmOptions={zmOptions}
         products={products}
+        scope={{ organizationId: organization.id, userId }}
+        requestedView={view}
+        currentQuery={operationalSearchParams({
+          ...params,
+          view: view === "standard" ? undefined : view,
+        })}
       />
     </div>
   );

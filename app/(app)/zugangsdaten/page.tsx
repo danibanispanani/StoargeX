@@ -3,6 +3,8 @@ import { hasMinRole } from "@/lib/roles";
 import { CreateCredentialDialog } from "@/components/credentials/create-credential-dialog";
 import { CredentialRow } from "@/components/credentials/credential-row";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/app/page-header";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
 import {
   Table,
   TableBody,
@@ -11,9 +13,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  OPERATIONAL_MODULES,
+  operationalSearchParams,
+  parseOperationalSearchQuery,
+  parseOperationalModuleView,
+} from "@/lib/operational-modules";
+import { OperationalSearchToolbar } from "@/components/table/operational-search-toolbar";
 
-export default async function CredentialsPage() {
-  const { db, membership } = await requireOrg();
+export default async function CredentialsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preset?: string; q?: string }>;
+}) {
+  const { db, membership, organization, userId } = await requireOrg();
+  const { preset, q: rawQuery } = await searchParams;
+  const q = parseOperationalSearchQuery(rawQuery);
+  const requestedView = parseOperationalModuleView(OPERATIONAL_MODULES.credentials, preset);
   const canAccess = hasMinRole(membership.role, "ADMIN");
 
   if (!canAccess) {
@@ -32,6 +48,15 @@ export default async function CredentialsPage() {
 
   const [credentials, platforms] = await Promise.all([
     db.credential.findMany({
+      where: q
+        ? {
+            OR: [
+              { label: { contains: q, mode: "insensitive" } },
+              { username: { contains: q, mode: "insensitive" } },
+              { platform: { name: { contains: q, mode: "insensitive" } } },
+            ],
+          }
+        : undefined,
       include: { platform: { select: { name: true } } },
       orderBy: { label: "asc" },
     }),
@@ -41,31 +66,46 @@ export default async function CredentialsPage() {
       select: { id: true, name: true },
     }),
   ]);
+  const visibleCredentialCount = requestedView === "platform"
+    ? credentials.filter((credential) => Boolean(credential.platform)).length
+    : credentials.length;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Zugangsdaten-Tresor</h1>
-          <p className="text-sm text-muted-foreground">
-            AES-256 Envelope Encryption · Entschlüsselung nur server-seitig ·
-            jeder Abruf wird protokolliert
-          </p>
-        </div>
-        <CreateCredentialDialog platforms={platforms} />
-      </div>
+      <PageHeader
+        eyebrow="Verwaltung · Sicherheit"
+        title="Zugangsdaten-Tresor"
+        description="AES-256 Envelope Encryption · Entschlüsselung nur serverseitig · jeder Abruf wird protokolliert."
+        actions={<CreateCredentialDialog platforms={platforms} />}
+      />
+      <OperationalSearchToolbar
+        basePath="/zugangsdaten"
+        query={q ?? ""}
+        placeholder="Label, Benutzername oder Plattform"
+        hiddenParams={{ preset: requestedView === "standard" ? undefined : requestedView }}
+      />
 
-      <Card>
+      <CompactTableShell
+        definition={OPERATIONAL_MODULES.credentials}
+        scope={{ organizationId: organization.id, userId }}
+        requestedView={requestedView}
+        currentQuery={operationalSearchParams({
+          preset: requestedView === "standard" ? undefined : requestedView,
+          q,
+        })}
+        totalResults={visibleCredentialCount}
+      >
+      <Card className="rounded-none border-0 shadow-none">
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Label</TableHead>
-                <TableHead>Benutzername</TableHead>
-                <TableHead>Plattform</TableHead>
-                <TableHead>Secret</TableHead>
-                <TableHead>Zuletzt geändert</TableHead>
-                <TableHead className="w-24" />
+                <TableHead data-column data-column-key="label" data-view-standard data-view-platform data-view-rotation data-view-all>Label</TableHead>
+                <TableHead data-column data-column-key="username" data-view-standard data-view-platform data-view-all>Benutzername</TableHead>
+                <TableHead data-column data-column-key="platform" data-view-standard data-view-platform data-view-all>Plattform</TableHead>
+                <TableHead data-column data-column-key="secret" data-view-standard data-view-all>Secret</TableHead>
+                <TableHead data-column data-column-key="rotated" data-view-standard data-view-rotation data-view-all>Zuletzt geändert</TableHead>
+                <TableHead data-column data-column-key="actions" data-view-standard data-view-platform data-view-rotation data-view-all className="w-24">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -95,6 +135,7 @@ export default async function CredentialsPage() {
           </Table>
         </CardContent>
       </Card>
+      </CompactTableShell>
     </div>
   );
 }

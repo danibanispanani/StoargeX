@@ -27,16 +27,19 @@ export function StockFilterBar({
   filters,
   platforms,
   zmOptions,
+  activeView,
 }: {
   filters: StockFilters;
   platforms: Array<{ id: string; name: string }>;
   zmOptions: string[];
+  activeView?: string;
 }) {
   const router = useRouter();
   const hasFilters = Object.values(filters).some(Boolean);
 
   function apply(formData: FormData) {
     const params = new URLSearchParams();
+    if (activeView && activeView !== "standard") params.set("view", activeView);
     for (const key of ["q", "status", "kauf", "retoure", "zm", "plattform", "von", "bis"]) {
       const value = String(formData.get(key) ?? "").trim();
       if (value) params.set(key, value);
@@ -107,7 +110,7 @@ export function StockFilterBar({
         Filtern
       </Button>
       {hasFilters && (
-        <Button type="button" variant="ghost" onClick={() => router.push("/lager")}>
+        <Button type="button" variant="ghost" onClick={() => router.push(activeView && activeView !== "standard" ? `/lager?view=${activeView}` : "/lager")}>
           Zurücksetzen
         </Button>
       )}

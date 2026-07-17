@@ -24,9 +24,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  OPERATIONAL_MODULES,
+  operationalSearchParams,
+  parseOperationalSearchQuery,
+  parseOperationalModuleView,
+} from "@/lib/operational-modules";
+import { OperationalSearchToolbar } from "@/components/table/operational-search-toolbar";
 
-export default async function ConsignmentPage() {
+export default async function ConsignmentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preset?: string; q?: string }>;
+}) {
   const context = await requireOrg();
+  const { preset, q: rawQuery } = await searchParams;
+  const q = parseOperationalSearchQuery(rawQuery);
+  const requestedView = parseOperationalModuleView(
+    OPERATIONAL_MODULES.consignment,
+    preset
+  );
   const access = await getFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT);
   if (!access.enabled) {
     return (
@@ -40,7 +57,23 @@ export default async function ConsignmentPage() {
 
   const [inventoryPositions, legacyItems] = await Promise.all([
     db.inventoryPosition.findMany({
-      where: { inventoryType: "CONSIGNMENT" },
+      where: {
+        inventoryType: "CONSIGNMENT",
+        ...(q
+          ? {
+              OR: [
+                { inventoryNumber: { contains: q, mode: "insensitive" as const } },
+                { product: { name: { contains: q, mode: "insensitive" as const } } },
+                { product: { ean: { contains: q } } },
+                {
+                  consignmentLot: {
+                    is: { partnerCompany: { contains: q, mode: "insensitive" as const } },
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
       include: {
         product: true,
         consignmentLot: true,
@@ -49,6 +82,15 @@ export default async function ConsignmentPage() {
       take: 200,
     }),
     db.consignmentInventory.findMany({
+      where: q
+        ? {
+            OR: [
+              { sku: { contains: q, mode: "insensitive" } },
+              { consignorName: { contains: q, mode: "insensitive" } },
+              { itemTitle: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : undefined,
       orderBy: { createdAt: "desc" },
       take: 200,
     }),
@@ -152,6 +194,14 @@ export default async function ConsignmentPage() {
   });
 
   const rows = [...inventoryRows, ...legacyRows];
+  const visibleRowCount = rows.filter((row) => {
+    if (requestedView === "stock") {
+      return row.quantity > 0 || row.returnedQuantity > 0 || row.defectiveQuantity > 0;
+    }
+    if (requestedView === "sales") return row.soldQuantity > 0;
+    if (requestedView === "payout") return row.soldQuantity > 0 || row.linkedCount > 0;
+    return true;
+  }).length;
 
   function ConsignmentDetailDrawer({ row }: { row: (typeof rows)[number] }) {
     return (
@@ -214,31 +264,39 @@ export default async function ConsignmentPage() {
           </>
         }
       />
+      <OperationalSearchToolbar
+        basePath="/konsignation"
+        query={q ?? ""}
+        placeholder="K-Nummer, Partner, Artikel oder EAN"
+        hiddenParams={{ preset: requestedView === "standard" ? undefined : requestedView }}
+      />
 
       <CompactTableShell
-        storageKey="konsignation"
-        views={[
-          { value: "standard", label: "Standard" },
-          { value: "bestand", label: "Bestand" },
-          { value: "all", label: "Alle Spalten" },
-        ]}
+        definition={OPERATIONAL_MODULES.consignment}
+        scope={{ organizationId: context.organization.id, userId: context.userId }}
+        requestedView={requestedView}
+        currentQuery={operationalSearchParams({
+          preset: requestedView === "standard" ? undefined : requestedView,
+          q,
+        })}
+        totalResults={visibleRowCount}
       >
-        <Card>
+        <Card className="rounded-none border-0 shadow-none">
           <CardContent>
             <div className="overflow-x-auto">
               <Table className="sx-datatable">
                 <TableHeader>
                   <TableRow>
-                    <TableHead data-column data-view-standard data-view-bestand data-view-all>K-Nummer</TableHead>
-                    <TableHead data-column data-view-standard data-view-all>Partner</TableHead>
-                    <TableHead data-column data-view-standard data-view-bestand data-view-all>Artikel</TableHead>
-                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Bestand</TableHead>
-                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Verkauft</TableHead>
-                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Pruefung</TableHead>
-                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="text-right">Defekt</TableHead>
-                    <TableHead data-column data-view-standard data-view-all>EK</TableHead>
-                    <TableHead data-column data-view-bestand data-view-all>Status</TableHead>
-                    <TableHead data-column data-view-standard data-view-bestand data-view-all className="w-48 text-right">Aktionen</TableHead>
+                    <TableHead data-column data-column-key="number" data-view-standard data-view-partner data-view-stock data-view-sales data-view-payout data-view-all>K-Nummer</TableHead>
+                    <TableHead data-column data-column-key="partner" data-view-standard data-view-partner data-view-payout data-view-all>Partner</TableHead>
+                    <TableHead data-column data-column-key="product" data-view-standard data-view-partner data-view-stock data-view-sales data-view-payout data-view-all>Artikel</TableHead>
+                    <TableHead data-column data-column-key="available" data-view-standard data-view-stock data-view-all className="text-right">Bestand</TableHead>
+                    <TableHead data-column data-column-key="sold" data-view-standard data-view-sales data-view-payout data-view-all className="text-right">Verkauft</TableHead>
+                    <TableHead data-column data-column-key="inspection" data-view-stock data-view-all className="text-right">Prüfung</TableHead>
+                    <TableHead data-column data-column-key="defective" data-view-stock data-view-all className="text-right">Defekt</TableHead>
+                    <TableHead data-column data-column-key="cost" data-view-standard data-view-partner data-view-payout data-view-all>EK / Auszahlung</TableHead>
+                    <TableHead data-column data-column-key="status" data-view-standard data-view-stock data-view-sales data-view-payout data-view-all>Status</TableHead>
+                    <TableHead data-column data-column-key="actions" data-view-standard data-view-partner data-view-stock data-view-sales data-view-payout data-view-all className="w-48 text-right">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -251,8 +309,17 @@ export default async function ConsignmentPage() {
                     </TableRow>
                   )}
                   {rows.map((row) => (
-                    <TableRow key={`${row.source}:${row.id}`}>
-                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="font-mono text-xs">
+                    <TableRow
+                      key={`${row.source}:${row.id}`}
+                      data-table-view-row
+                      data-row-view-standard
+                      data-row-view-partner
+                      data-row-view-stock={(row.quantity > 0 || row.returnedQuantity > 0 || row.defectiveQuantity > 0) || undefined}
+                      data-row-view-sales={row.soldQuantity > 0 || undefined}
+                      data-row-view-payout={(row.soldQuantity > 0 || row.linkedCount > 0) || undefined}
+                      data-row-view-all
+                    >
+                      <TableCell data-column data-column-key="number" data-view-standard data-view-partner data-view-stock data-view-sales data-view-payout data-view-all className="font-mono text-xs">
                         <div>{row.sku}</div>
                         {row.source === "legacy" && (
                           <span className="text-[10px] uppercase text-muted-foreground">
@@ -260,8 +327,8 @@ export default async function ConsignmentPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell data-column data-view-standard data-view-all>{row.partner}</TableCell>
-                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="sx-cell-primary max-w-64">
+                      <TableCell data-column data-column-key="partner" data-view-standard data-view-partner data-view-payout data-view-all>{row.partner}</TableCell>
+                      <TableCell data-column data-column-key="product" data-view-standard data-view-partner data-view-stock data-view-sales data-view-payout data-view-all className="sx-cell-primary max-w-64">
                         <div className="truncate font-medium">{row.title}</div>
                         {row.subtitle && (
                           <div className="truncate text-xs text-muted-foreground">
@@ -269,13 +336,13 @@ export default async function ConsignmentPage() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">
+                      <TableCell data-column data-column-key="available" data-view-standard data-view-stock data-view-all className="text-right">
                         {row.quantity} / {row.quantityReceived}
                       </TableCell>
-                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.soldQuantity}</TableCell>
-                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.returnedQuantity}</TableCell>
-                      <TableCell data-column data-view-standard data-view-bestand data-view-all className="text-right">{row.defectiveQuantity}</TableCell>
-                      <TableCell data-column data-view-standard data-view-all className="text-xs">
+                      <TableCell data-column data-column-key="sold" data-view-standard data-view-sales data-view-payout data-view-all className="text-right">{row.soldQuantity}</TableCell>
+                      <TableCell data-column data-column-key="inspection" data-view-stock data-view-all className="text-right">{row.returnedQuantity}</TableCell>
+                      <TableCell data-column data-column-key="defective" data-view-stock data-view-all className="text-right">{row.defectiveQuantity}</TableCell>
+                      <TableCell data-column data-column-key="cost" data-view-standard data-view-partner data-view-payout data-view-all className="text-xs">
                         {row.costNetCents != null || row.costGrossCents != null ? (
                           <>
                             {row.costNetCents != null && (
@@ -291,7 +358,7 @@ export default async function ConsignmentPage() {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell data-column data-view-bestand data-view-all>
+                      <TableCell data-column data-column-key="status" data-view-standard data-view-stock data-view-sales data-view-payout data-view-all>
                         <Badge variant={row.source === "legacy" ? "secondary" : "outline"}>
                           {row.status}
                         </Badge>
@@ -301,7 +368,7 @@ export default async function ConsignmentPage() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell data-column data-view-standard data-view-bestand data-view-all>
+                      <TableCell data-column data-column-key="actions" data-view-standard data-view-partner data-view-stock data-view-sales data-view-payout data-view-all>
                         <div className="flex justify-end gap-1">
                           <ConsignmentDetailDrawer row={row} />
                           <ConsignmentRowActions

@@ -8,6 +8,14 @@ import { ReturnWorkflowActions } from "@/components/returns/return-workflow-acti
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
+import { PageHeader } from "@/components/app/page-header";
+import {
+  OPERATIONAL_MODULES,
+  operationalSearchParams,
+  parseOperationalSearchQuery,
+  parseOperationalModuleView,
+} from "@/lib/operational-modules";
+import { OperationalSearchToolbar } from "@/components/table/operational-search-toolbar";
 import {
   DetailDrawer,
   DetailGrid,
@@ -25,13 +33,41 @@ import {
 export default async function CustomerReturnsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ preset?: string }>;
+  searchParams: Promise<{ preset?: string; q?: string }>;
 }) {
-  const { db } = await requireOrg();
-  const { preset } = await searchParams;
+  const { db, organization, userId } = await requireOrg();
+  const { preset, q: rawQuery } = await searchParams;
+  const q = parseOperationalSearchQuery(rawQuery);
+  const requestedView = parseOperationalModuleView(
+    OPERATIONAL_MODULES.customerReturns,
+    preset
+  );
+  const currentQuery = operationalSearchParams({
+    preset: requestedView === "standard" ? undefined : requestedView,
+    q,
+  });
 
   const [returns, sales] = await Promise.all([
     db.return.findMany({
+      where: q
+        ? {
+            OR: [
+              { returnNumber: { contains: q, mode: "insensitive" } },
+              { reason: { contains: q, mode: "insensitive" } },
+              { trackingNumber: { contains: q, mode: "insensitive" } },
+              { sale: { orderNumber: { contains: q, mode: "insensitive" } } },
+              {
+                returnLines: {
+                  some: {
+                    saleLine: {
+                      descriptionSnapshot: { contains: q, mode: "insensitive" },
+                    },
+                  },
+                },
+              },
+            ],
+          }
+        : undefined,
       include: {
         sale: {
           include: {
@@ -139,6 +175,18 @@ export default async function CustomerReturnsPage({
     .filter((sale) => sale.lines.length > 0);
 
   const totalLoss = returns.reduce((sum, ret) => sum + ret.lossCents, 0);
+  const visibleReturnCount = returns.filter((ret) => {
+    if (requestedView === "inspection") {
+      return ["RECEIVED", "INSPECTION", "DEFECTIVE", "CONFLICT"].includes(ret.status);
+    }
+    if (requestedView === "finances") {
+      return ret.lossCents !== 0 || ret.additionalCostsCents !== 0 || ret.returnShippingCents !== 0;
+    }
+    if (requestedView === "refund") {
+      return ret.refundAmountCents !== 0 || ret.status === "REFUNDED";
+    }
+    return true;
+  }).length;
 
   function returnTitle(ret: (typeof returns)[number]): string {
     if (ret.returnLines.length > 0) {
@@ -233,47 +281,52 @@ export default async function CustomerReturnsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Kundenretouren</h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        eyebrow="Handel · Retouren"
+        title="Kundenretouren"
+        description={
+          <>
             {returns.length} Retoure(n)
             {returns.length > 0 && <> · Gesamtverlust {formatEuro(totalLoss)}</>}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ImportExportBar table="kundenretouren" />
-          <CreateReturnDialog sales={saleOptions} />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <ImportExportBar table="kundenretouren" />
+            <CreateReturnDialog sales={saleOptions} />
+          </>
+        }
+      />
+      <OperationalSearchToolbar
+        basePath="/retouren/kunden"
+        query={q ?? ""}
+        placeholder="R-Nummer, Verkauf, Artikel, Grund oder Tracking"
+        hiddenParams={{ preset: requestedView === "standard" ? undefined : requestedView }}
+      />
 
       <CompactTableShell
-        storageKey="kundenretouren"
-        requestedView={customerReturnView(preset)}
-        views={[
-          { value: "standard", label: "Standard" },
-          { value: "workflow", label: "Prüfung" },
-          { value: "finanzen", label: "Finanzen" },
-          { value: "refund", label: "Erstattung" },
-          { value: "all", label: "Alle Spalten" },
-        ]}
+        definition={OPERATIONAL_MODULES.customerReturns}
+        scope={{ organizationId: organization.id, userId }}
+        requestedView={requestedView}
+        currentQuery={currentQuery}
+        totalResults={visibleReturnCount}
       >
-      <Card>
+      <Card className="rounded-none border-0 shadow-none">
         <CardContent>
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead data-column data-view-standard data-view-finanzen data-view-refund data-view-workflow data-view-all>R-Nummer</TableHead>
-                <TableHead data-column data-view-standard data-view-all>Meldedatum</TableHead>
-                <TableHead data-column data-view-standard data-view-workflow data-view-all>Verkauf</TableHead>
-                <TableHead data-column data-view-standard data-view-workflow data-view-all>Artikel</TableHead>
-                <TableHead data-column data-view-standard data-view-workflow data-view-all className="text-right">Menge</TableHead>
-                <TableHead data-column data-view-standard data-view-all>Problem</TableHead>
-                <TableHead data-column data-view-finanzen data-view-refund data-view-all className="text-right">Erstattung</TableHead>
-                <TableHead data-column data-view-finanzen data-view-refund data-view-all className="text-right">Zusatzkosten</TableHead>
-                <TableHead data-column data-view-standard data-view-finanzen data-view-refund data-view-all className="text-right">Verlust</TableHead>
-                <TableHead data-column data-view-standard data-view-workflow data-view-all>Status</TableHead>
-                <TableHead data-column data-view-standard data-view-finanzen data-view-refund data-view-workflow data-view-all>Aktionen</TableHead>
+                <TableHead data-column data-column-key="number" data-view-standard data-view-finances data-view-refund data-view-inspection data-view-all>R-Nummer</TableHead>
+                <TableHead data-column data-column-key="reported" data-view-standard data-view-all>Meldedatum</TableHead>
+                <TableHead data-column data-column-key="sale" data-view-standard data-view-inspection data-view-all>Verkauf</TableHead>
+                <TableHead data-column data-column-key="items" data-view-standard data-view-inspection data-view-all>Artikel</TableHead>
+                <TableHead data-column data-column-key="quantity" data-view-standard data-view-inspection data-view-all className="text-right">Menge</TableHead>
+                <TableHead data-column data-column-key="reason" data-view-standard data-view-all>Problem</TableHead>
+                <TableHead data-column data-column-key="refund" data-view-finances data-view-refund data-view-all className="text-right">Erstattung</TableHead>
+                <TableHead data-column data-column-key="costs" data-view-finances data-view-refund data-view-all className="text-right">Zusatzkosten</TableHead>
+                <TableHead data-column data-column-key="loss" data-view-standard data-view-finances data-view-refund data-view-all className="text-right">Verlust</TableHead>
+                <TableHead data-column data-column-key="status" data-view-standard data-view-inspection data-view-all>Status</TableHead>
+                <TableHead data-column data-column-key="actions" data-view-standard data-view-finances data-view-refund data-view-inspection data-view-all>Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -289,12 +342,12 @@ export default async function CustomerReturnsPage({
                   key={ret.id}
                   data-table-view-row
                   data-row-view-standard
-                  data-row-view-workflow={["RECEIVED", "INSPECTION", "DEFECTIVE", "CONFLICT"].includes(ret.status) || undefined}
-                  data-row-view-finanzen={(ret.lossCents !== 0 || ret.additionalCostsCents !== 0 || ret.returnShippingCents !== 0) || undefined}
+                  data-row-view-inspection={["RECEIVED", "INSPECTION", "DEFECTIVE", "CONFLICT"].includes(ret.status) || undefined}
+                  data-row-view-finances={(ret.lossCents !== 0 || ret.additionalCostsCents !== 0 || ret.returnShippingCents !== 0) || undefined}
                   data-row-view-refund={(ret.refundAmountCents !== 0 || ret.status === "REFUNDED") || undefined}
                   data-row-view-all
                 >
-                  <TableCell data-column data-view-standard data-view-finanzen data-view-refund data-view-workflow data-view-all className="font-mono text-xs">
+                  <TableCell data-column data-column-key="number" data-view-standard data-view-finances data-view-refund data-view-inspection data-view-all className="font-mono text-xs">
                     {ret.returnNumber ?? ret.id.slice(0, 8)}
                     {ret.returnLines.length === 0 && (
                       <div className="text-[10px] uppercase text-muted-foreground">
@@ -302,14 +355,14 @@ export default async function CustomerReturnsPage({
                       </div>
                     )}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-all>{ret.requestedAt.toLocaleDateString("de-DE")}</TableCell>
-                  <TableCell data-column data-view-standard data-view-workflow data-view-all>
+                  <TableCell data-column data-column-key="reported" data-view-standard data-view-all>{ret.requestedAt.toLocaleDateString("de-DE")}</TableCell>
+                  <TableCell data-column data-column-key="sale" data-view-standard data-view-inspection data-view-all>
                     <div className="font-mono text-xs">{ret.sale.orderNumber ?? "–"}</div>
                     <div className="text-xs text-muted-foreground">
                       {ret.sale.platform.name}
                     </div>
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-workflow data-view-all className="sx-cell-primary max-w-72">
+                  <TableCell data-column data-column-key="items" data-view-standard data-view-inspection data-view-all className="sx-cell-primary max-w-72">
                     <div className="truncate font-medium">{returnTitle(ret)}</div>
                     {allocationLabel(ret) && (
                       <div className="truncate font-mono text-xs text-muted-foreground">
@@ -322,28 +375,28 @@ export default async function CustomerReturnsPage({
                       </div>
                     )}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-workflow data-view-all className="text-right">
+                  <TableCell data-column data-column-key="quantity" data-view-standard data-view-inspection data-view-all className="text-right">
                     {ret.returnLines.reduce((sum, line) => sum + line.quantity, 0) || "–"}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-all className="max-w-44 truncate">
+                  <TableCell data-column data-column-key="reason" data-view-standard data-view-all className="max-w-44 truncate">
                     {ret.reason ?? "–"}
                   </TableCell>
-                  <TableCell data-column data-view-finanzen data-view-refund data-view-all className="sx-cell-money text-right">
+                  <TableCell data-column data-column-key="refund" data-view-finances data-view-refund data-view-all className="sx-cell-money text-right">
                     {formatEuro(ret.refundAmountCents)}
                   </TableCell>
-                  <TableCell data-column data-view-finanzen data-view-refund data-view-all className="sx-cell-money text-right">
+                  <TableCell data-column data-column-key="costs" data-view-finances data-view-refund data-view-all className="sx-cell-money text-right">
                     {formatEuro(ret.additionalCostsCents + ret.returnShippingCents)}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-finanzen data-view-refund data-view-all className="sx-cell-money text-right font-medium text-destructive">
+                  <TableCell data-column data-column-key="loss" data-view-standard data-view-finances data-view-refund data-view-all className="sx-cell-money text-right font-medium text-destructive">
                     {formatEuro(ret.lossCents)}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-workflow data-view-all>
+                  <TableCell data-column data-column-key="status" data-view-standard data-view-inspection data-view-all>
                     <div className="flex items-center gap-2">
                       <ReturnStatusSelect returnId={ret.id} currentStatus={ret.status} />
                       {ret.restocked && <Badge variant="outline">eingelagert</Badge>}
                     </div>
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-finanzen data-view-refund data-view-workflow data-view-all>
+                  <TableCell data-column data-column-key="actions" data-view-standard data-view-finances data-view-refund data-view-inspection data-view-all>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <ReturnDetailDrawer ret={ret} />
@@ -376,10 +429,4 @@ export default async function CustomerReturnsPage({
       </CompactTableShell>
     </div>
   );
-}
-
-function customerReturnView(value?: string): string | undefined {
-  return ["standard", "workflow", "finanzen", "refund", "all"].includes(value ?? "")
-    ? value
-    : undefined;
 }

@@ -60,17 +60,23 @@ export function CredentialRow({
   }
 
   return (
-    <TableRow>
-      <TableCell className="font-medium">{credential.label}</TableCell>
-      <TableCell>{credential.username ?? "–"}</TableCell>
-      <TableCell>
+    <TableRow
+      data-table-view-row
+      data-row-view-standard
+      data-row-view-platform={Boolean(credential.platformName) || undefined}
+      data-row-view-rotation
+      data-row-view-all
+    >
+      <TableCell data-column data-column-key="label" data-view-standard data-view-platform data-view-rotation data-view-all className="font-medium">{credential.label}</TableCell>
+      <TableCell data-column data-column-key="username" data-view-standard data-view-platform data-view-all>{credential.username ?? "–"}</TableCell>
+      <TableCell data-column data-column-key="platform" data-view-standard data-view-platform data-view-all>
         {credential.platformName ? (
           <Badge variant="outline">{credential.platformName}</Badge>
         ) : (
           "–"
         )}
       </TableCell>
-      <TableCell>
+      <TableCell data-column data-column-key="secret" data-view-standard data-view-all>
         {secret ? (
           <span className="flex items-center gap-2">
             <code className="rounded bg-muted px-2 py-0.5 font-mono text-xs">
@@ -94,8 +100,8 @@ export function CredentialRow({
           </Button>
         )}
       </TableCell>
-      <TableCell>{credential.lastRotatedAt}</TableCell>
-      <TableCell>
+      <TableCell data-column data-column-key="rotated" data-view-standard data-view-rotation data-view-all>{credential.lastRotatedAt}</TableCell>
+      <TableCell data-column data-column-key="actions" data-view-standard data-view-platform data-view-rotation data-view-all>
         <Button
           variant="ghost"
           size="sm"

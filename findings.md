@@ -1,5 +1,39 @@
 # Findings and Decisions
 
+## Prompt 8 - Operational module migration
+
+### Execution frame
+- Prompt 7 is preserved in commit `21e8ae9`; Prompt 8 starts from a clean working tree on the established feature branch.
+- The prompt is a large UI/configuration migration with an explicit contract. Execution stays inline and serial because the active session policy prohibits subagents.
+- Shared table mechanics may be deepened, but module presets, columns, drawer evidence, and actions remain owned by each module configuration.
+- No Prisma migration is expected: the requested work is presentation and workflow migration over existing domain services.
+
+### Initial UI audit
+- `/einkauf` and `/produkte` already use the full `OperationalTableWorkspace` with user/organization-scoped preferences, columns, density, saved views, result-set selection, and detail drawers; these are the reference implementations.
+- Lager, Verkauf, both return routes, Konsignation, and Schulden still use the earlier `CompactTableShell`. It persists only a view key and hides columns through CSS, so it is the main migration seam rather than grounds for a second table framework.
+- Existing module services already preserve the crucial semantics: sale cancellation goes through the sale service, return dispatch goes through inventory movements, and consignment creation/use is tenant and entitlement guarded. Prompt 8 should improve presentation/configuration without moving those mutations into UI components.
+- Purchasing already matches its required view vocabulary closely. Sales needs the view name `Finanzen` instead of `Buchhaltung`; other modules need their matrix-specific presets audited rather than one global preset set.
+- The current stock and sales queries are bounded but not paginated (`take: 500` and `take: 300`). The migration must avoid pretending that client selection covers an unbounded result set; result-set bulk semantics should only be exposed where a server-backed contract exists.
+- The working tree contains only the three persistent planning files. All product changes will therefore be attributable to Prompt 8.
+- Customer and supplier returns are already separate routes, queries, workflows, imports, exports, and detail drawers. Their remaining migration work is shared table preference/density support, common page headers, and matrix-aligned evidence presentation—not domain consolidation.
+- Consignment has a correct server-side entitlement gate before all data queries and mutations remain in entitlement-aware actions. Its table currently exposes only Standard/Bestand/Alle, while the matrix requires Partner, Bestand, Verkauf, Auszahlung, and Alle views.
+- Debts currently exposes only Standard/Buchhaltung/Alle. It already has relational sale/purchase/inventory links and service-backed status/edit actions, so Prompt 8 should add Fälligkeiten/Beglichen row presets and presentation without replacing debt links.
+- Shipping is still a stack of per-carrier cards instead of one operational workspace. Credentials and Team are plain tables, while Settings is a long sequence of cards. These administration modules need the shared PageHeader/toolbar/ledger hierarchy and responsive overflow treatment, but their existing role checks must remain authoritative.
+- `OperationalTableWorkspace` can host static legacy tables with empty `pageRowIds`: this yields the same scoped column, density, saved-view, and hit-count mechanics without falsely advertising cross-result selection. The compact shell can therefore become a compatibility adapter over the established workspace.
+
+### Shared migration seam
+- Added one explicit definition registry for the ten Prompt-8 operational tables. It owns only route, module views, columns, and default visibility; filters, rows, drawers, actions, and mutations remain in their domain modules.
+- The compatibility shell now delegates persisted columns, density, saved views, and hit counts to `OperationalTableWorkspace`, scoped by organization and user. It intentionally passes no row IDs, so no unsafe or misleading “select all results” UI appears for bounded legacy queries.
+- Module presets are URL-backed and remain individually named. Lager preserves its existing `view` parameter; migrated routes use `preset`. This keeps external links stable while saved table views can restore query state.
+- Lager is the first migrated legacy table: matrix-aligned Standard/Bestand/Einkauf/Listings/Prüfung-Defekt/Alle views now share the reference preference controls, while its existing legacy-only bulk contract and movement-backed owned-stock corrections remain unchanged.
+- Customer returns now use the common PageHeader and scoped workspace controls. Its `Prüfung` and `Finanzen` vocabulary is normalized without changing the separate customer-return query, allocation workflow, or movement actions.
+- Verkauf now exposes Standard/Finanzen/Versand/Auszahlung/Alle as true row-and-column presets. The standard view concentrates unresolved invoice/status follow-up; finance totals appear only where they match the visible result set. Existing edit and service-backed cancellation remain untouched.
+- Konsignation now has Partner/Bestand/Verkauf/Auszahlung presets and retains the server feature gate before any tenant query. Missing entitlement still prevents operational access while preserving all historical rows and relations.
+- Schulden adds Fälligkeiten and Beglichen presets plus the already-modeled due date to the table. Existing relational DebtLinks, automatic entries, status mutations, and admin-only delete permission remain authoritative.
+- Versand, Zugangsdaten, and Team now use the same operational workspace framing and compact ledger styling. Their existing service actions and role checks were retained; the credentials route still returns before querying secrets for non-admin users.
+- A small shared GET search toolbar now gives the migrated bounded tables case-insensitive server search without introducing a client-side second query engine. It preserves the active module preset in the URL.
+- Settings is intentionally not forced into a data table: it now uses a compact management toolbar and flat ledger sections because its primary artifacts are validated forms, not rows.
+
 ## Prompt 7 — Implementation decisions
 - `TaskActivity` remains the durable event source for assignment, comment, and status notifications; deadline attention is derived so resolved or rescheduled deadlines never leave stale notifications.
 - The current upload helper exposes public image paths and lacks task-scoped download authorization, so task attachments are deliberately omitted until private storage exists.

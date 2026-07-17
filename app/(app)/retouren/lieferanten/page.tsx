@@ -3,6 +3,7 @@ import { CreateSupplierReturnDialog, type SupplierReturnPurchaseOption } from "@
 import { SupplierReturnActions } from "@/components/returns/supplier-return-actions";
 import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
+import { PageHeader } from "@/components/app/page-header";
 import { DetailDrawer, DetailGrid, DetailSection } from "@/components/table/detail-drawer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,6 +12,13 @@ import { formatEuro } from "@/lib/calculations";
 import { requireOrg } from "@/lib/org";
 import { getSupplierReturnDeadlineState } from "@/lib/services/supplier-return-service";
 import { cn } from "@/lib/utils";
+import {
+  OPERATIONAL_MODULES,
+  operationalSearchParams,
+  parseOperationalSearchQuery,
+  parseOperationalModuleView,
+} from "@/lib/operational-modules";
+import { OperationalSearchToolbar } from "@/components/table/operational-search-toolbar";
 
 const STATUS_LABELS: Record<SupplierReturnStatus, string> = {
   DRAFT: "Geplant",
@@ -45,12 +53,37 @@ type SupplierReturnRow = Prisma.SupplierReturnGetPayload<{
 export default async function SupplierReturnsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ preset?: string }>;
+  searchParams: Promise<{ preset?: string; q?: string }>;
 }) {
-  const { db } = await requireOrg();
-  const { preset } = await searchParams;
+  const { db, organization, userId } = await requireOrg();
+  const { preset, q: rawQuery } = await searchParams;
+  const q = parseOperationalSearchQuery(rawQuery);
+  const requestedView = parseOperationalModuleView(
+    OPERATIONAL_MODULES.supplierReturns,
+    preset
+  );
   const [supplierReturns, purchases] = await Promise.all([
     db.supplierReturn.findMany({
+      where: q
+        ? {
+            OR: [
+              { returnNumber: { contains: q, mode: "insensitive" } },
+              { supplierSnapshot: { contains: q, mode: "insensitive" } },
+              { rmaNumber: { contains: q, mode: "insensitive" } },
+              { trackingNumber: { contains: q, mode: "insensitive" } },
+              { purchase: { purchaseNumber: { contains: q, mode: "insensitive" } } },
+              {
+                lines: {
+                  some: {
+                    purchaseLine: {
+                      product: { name: { contains: q, mode: "insensitive" } },
+                    },
+                  },
+                },
+              },
+            ],
+          }
+        : undefined,
       include: {
         purchase: true,
         supplier: true,
@@ -108,46 +141,69 @@ export default async function SupplierReturnsPage({
       (lineSum, line) => lineSum + Math.round(Number(line.purchaseLine.unitPriceNet) * 100) * line.quantity,
       0
     ), 0);
+  const visibleReturnCount = supplierReturns.filter((ret) => {
+    if (requestedView === "deadlines") {
+      return Boolean(ret.returnDeadline) && !["COMPLETED", "CANCELLED", "REJECTED"].includes(ret.status);
+    }
+    if (requestedView === "shipping") {
+      return ["APPROVED", "DISPATCHED", "ARRIVED"].includes(ret.status);
+    }
+    if (requestedView === "refund") {
+      return ["DISPATCHED", "ARRIVED", "REFUND_PENDING", "PARTIALLY_REFUNDED", "REFUNDED", "CREDIT_PENDING"].includes(ret.status);
+    }
+    if (requestedView === "conflicts") {
+      return ret.status === "REJECTED" || ret.status === "CANCELLED"
+        || (ret.actualRefundCents > 0 && ret.actualRefundCents < ret.expectedRefundCents);
+    }
+    return true;
+  }).length;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Lieferantenretouren</h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        eyebrow="Handel · Retouren"
+        title="Lieferantenretouren"
+        description={
+          <>
             {supplierReturns.length} Vorgänge · gebundenes Kapital {formatEuro(boundCapital)}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <ImportExportBar table="lieferantenretouren" />
-          <CreateSupplierReturnDialog purchases={purchaseOptions} />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <ImportExportBar table="lieferantenretouren" />
+            <CreateSupplierReturnDialog purchases={purchaseOptions} />
+          </>
+        }
+      />
+      <OperationalSearchToolbar
+        basePath="/retouren/lieferanten"
+        query={q ?? ""}
+        placeholder="LR-Nummer, Einkauf, Lieferant, Artikel, RMA oder Tracking"
+        hiddenParams={{ preset: requestedView === "standard" ? undefined : requestedView }}
+      />
 
       <CompactTableShell
-        storageKey="lieferantenretouren"
-        requestedView={supplierReturnView(preset)}
-        views={[
-          { value: "standard", label: "Standard" },
-          { value: "deadlines", label: "Rückgabefristen" },
-          { value: "shipping", label: "Versand" },
-          { value: "refund", label: "Erstattung" },
-          { value: "conflicts", label: "Konflikte" },
-          { value: "all", label: "Alle" },
-        ]}
+        definition={OPERATIONAL_MODULES.supplierReturns}
+        scope={{ organizationId: organization.id, userId }}
+        requestedView={requestedView}
+        currentQuery={operationalSearchParams({
+          preset: requestedView === "standard" ? undefined : requestedView,
+          q,
+        })}
+        totalResults={visibleReturnCount}
       >
-        <Card><CardContent><Table className="sx-datatable">
+        <Card className="rounded-none border-0 shadow-none"><CardContent><Table className="sx-datatable">
           <TableHeader><TableRow>
-            <TableHead data-column data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all>LR-Nummer</TableHead>
-            <TableHead data-column data-view-standard data-view-all>Einkauf / Lieferant</TableHead>
-            <TableHead data-column data-view-standard data-view-shipping data-view-all>Positionen</TableHead>
-            <TableHead data-column data-view-standard data-view-all className="text-right">Menge</TableHead>
-            <TableHead data-column data-view-standard data-view-deadlines data-view-all>Frist</TableHead>
-            <TableHead data-column data-view-shipping data-view-all>Versand</TableHead>
-            <TableHead data-column data-view-refund data-view-all className="text-right">Erwartet</TableHead>
-            <TableHead data-column data-view-refund data-view-conflicts data-view-all className="text-right">Tatsächlich / Differenz</TableHead>
-            <TableHead data-column data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all>Status</TableHead>
-            <TableHead data-column data-view-standard data-view-shipping data-view-refund data-view-conflicts data-view-all>Aktionen</TableHead>
+            <TableHead data-column data-column-key="number" data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all>LR-Nummer</TableHead>
+            <TableHead data-column data-column-key="purchase" data-view-standard data-view-all>Einkauf / Lieferant</TableHead>
+            <TableHead data-column data-column-key="items" data-view-standard data-view-shipping data-view-all>Positionen</TableHead>
+            <TableHead data-column data-column-key="quantity" data-view-standard data-view-all className="text-right">Menge</TableHead>
+            <TableHead data-column data-column-key="deadline" data-view-standard data-view-deadlines data-view-all>Frist</TableHead>
+            <TableHead data-column data-column-key="shipping" data-view-shipping data-view-all>Versand</TableHead>
+            <TableHead data-column data-column-key="expected" data-view-refund data-view-all className="text-right">Erwartet</TableHead>
+            <TableHead data-column data-column-key="actual" data-view-refund data-view-conflicts data-view-all className="text-right">Tatsächlich / Differenz</TableHead>
+            <TableHead data-column data-column-key="status" data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all>Status</TableHead>
+            <TableHead data-column data-column-key="actions" data-view-standard data-view-shipping data-view-refund data-view-conflicts data-view-all>Aktionen</TableHead>
           </TableRow></TableHeader>
           <TableBody>
             {supplierReturns.length === 0 && <TableRow><TableCell colSpan={10} className="py-10 text-center text-muted-foreground">Noch keine Lieferantenretouren. Eine Planung verändert den Bestand nicht.</TableCell></TableRow>}
@@ -168,16 +224,16 @@ export default async function SupplierReturnsPage({
                 data-row-view-conflicts={conflictRelevant || undefined}
                 data-row-view-all
               >
-                <TableCell data-column data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all className="font-mono text-xs">{ret.returnNumber ?? ret.id.slice(0, 8)}</TableCell>
-                <TableCell data-column data-view-standard data-view-all><div className="font-mono text-xs">{ret.purchase.purchaseNumber}</div><div className="text-xs text-muted-foreground">{ret.supplier?.displayName ?? ret.supplierSnapshot}</div></TableCell>
-                <TableCell data-column data-view-standard data-view-shipping data-view-all className="max-w-72"><div className="truncate font-medium">{ret.lines.map((line) => line.purchaseLine.product.name).join(", ")}</div><div className="truncate font-mono text-xs text-muted-foreground">{ret.lines.map((line) => `${line.inventoryPosition.inventoryNumber} · ${bucketLabel(line.sourceBucket)}`).join(" · ")}</div></TableCell>
-                <TableCell data-column data-view-standard data-view-all className="text-right">{quantity}</TableCell>
-                <TableCell data-column data-view-standard data-view-deadlines data-view-all><Deadline value={ret.returnDeadline} /></TableCell>
-                <TableCell data-column data-view-shipping data-view-all><div>{ret.carrier ?? "–"}</div><div className="font-mono text-xs text-muted-foreground">{ret.trackingNumber ?? "kein Tracking"}</div></TableCell>
-                <TableCell data-column data-view-refund data-view-all className="sx-cell-money text-right">{formatEuro(ret.expectedRefundCents)}</TableCell>
-                <TableCell data-column data-view-refund data-view-conflicts data-view-all className="sx-cell-money text-right"><div>{formatEuro(ret.actualRefundCents)}</div><div className={cn("text-xs", difference < 0 ? "text-destructive" : "text-muted-foreground")}>{difference > 0 ? "+" : ""}{formatEuro(difference)}</div></TableCell>
-                <TableCell data-column data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all><Badge variant={ret.status === "REJECTED" ? "destructive" : "outline"}>{STATUS_LABELS[ret.status]}</Badge></TableCell>
-                <TableCell data-column data-view-standard data-view-shipping data-view-refund data-view-conflicts data-view-all><div className="space-y-2"><SupplierReturnDetail ret={ret} /><SupplierReturnActions supplierReturnId={ret.id} status={ret.status} /></div></TableCell>
+                <TableCell data-column data-column-key="number" data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all className="font-mono text-xs">{ret.returnNumber ?? ret.id.slice(0, 8)}</TableCell>
+                <TableCell data-column data-column-key="purchase" data-view-standard data-view-all><div className="font-mono text-xs">{ret.purchase.purchaseNumber}</div><div className="text-xs text-muted-foreground">{ret.supplier?.displayName ?? ret.supplierSnapshot}</div></TableCell>
+                <TableCell data-column data-column-key="items" data-view-standard data-view-shipping data-view-all className="max-w-72"><div className="truncate font-medium">{ret.lines.map((line) => line.purchaseLine.product.name).join(", ")}</div><div className="truncate font-mono text-xs text-muted-foreground">{ret.lines.map((line) => `${line.inventoryPosition.inventoryNumber} · ${bucketLabel(line.sourceBucket)}`).join(" · ")}</div></TableCell>
+                <TableCell data-column data-column-key="quantity" data-view-standard data-view-all className="text-right">{quantity}</TableCell>
+                <TableCell data-column data-column-key="deadline" data-view-standard data-view-deadlines data-view-all><Deadline value={ret.returnDeadline} /></TableCell>
+                <TableCell data-column data-column-key="shipping" data-view-shipping data-view-all><div>{ret.carrier ?? "–"}</div><div className="font-mono text-xs text-muted-foreground">{ret.trackingNumber ?? "kein Tracking"}</div></TableCell>
+                <TableCell data-column data-column-key="expected" data-view-refund data-view-all className="sx-cell-money text-right">{formatEuro(ret.expectedRefundCents)}</TableCell>
+                <TableCell data-column data-column-key="actual" data-view-refund data-view-conflicts data-view-all className="sx-cell-money text-right"><div>{formatEuro(ret.actualRefundCents)}</div><div className={cn("text-xs", difference < 0 ? "text-destructive" : "text-muted-foreground")}>{difference > 0 ? "+" : ""}{formatEuro(difference)}</div></TableCell>
+                <TableCell data-column data-column-key="status" data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all><Badge variant={ret.status === "REJECTED" ? "destructive" : "outline"}>{STATUS_LABELS[ret.status]}</Badge></TableCell>
+                <TableCell data-column data-column-key="actions" data-view-standard data-view-shipping data-view-refund data-view-conflicts data-view-all><div className="space-y-2"><SupplierReturnDetail ret={ret} /><SupplierReturnActions supplierReturnId={ret.id} status={ret.status} /></div></TableCell>
               </TableRow>;
             })}
           </TableBody>
@@ -222,10 +278,4 @@ function SupplierReturnDetail({ ret }: { ret: SupplierReturnRow }) {
 
 function bucketLabel(bucket: string) {
   return { AVAILABLE: "Verfügbar", RESERVED: "Reserviert", INSPECTION: "Prüfung", DEFECTIVE: "Defekt" }[bucket] ?? bucket;
-}
-
-function supplierReturnView(value?: string): string | undefined {
-  return ["standard", "deadlines", "shipping", "refund", "conflicts", "all"].includes(value ?? "")
-    ? value
-    : undefined;
 }

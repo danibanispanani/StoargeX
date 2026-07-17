@@ -6,11 +6,36 @@ import {
 } from "@/components/shipping/carrier-rate-table";
 import { ShippingRateDialog } from "@/components/shipping/shipping-rate-dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/app/page-header";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
+import {
+  OPERATIONAL_MODULES,
+  operationalSearchParams,
+  parseOperationalSearchQuery,
+  parseOperationalModuleView,
+} from "@/lib/operational-modules";
+import { OperationalSearchToolbar } from "@/components/table/operational-search-toolbar";
 
-export default async function ShippingPage() {
-  const { db } = await requireOrg();
+export default async function ShippingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preset?: string; q?: string }>;
+}) {
+  const { db, organization, userId } = await requireOrg();
+  const { preset, q: rawQuery } = await searchParams;
+  const q = parseOperationalSearchQuery(rawQuery);
+  const requestedView = parseOperationalModuleView(OPERATIONAL_MODULES.shipping, preset);
 
   const rates = await db.shippingRate.findMany({
+    where: q
+      ? {
+          OR: [
+            { carrierName: { contains: q, mode: "insensitive" } },
+            { name: { contains: q, mode: "insensitive" } },
+            { zone: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : undefined,
     orderBy: [{ carrierName: "asc" }, { zone: "asc" }, { maxWeightKg: "asc" }],
   });
 
@@ -26,6 +51,11 @@ export default async function ShippingPage() {
     surcharges: parseSurcharges(rate.surcharges),
     active: rate.active,
   }));
+  const visibleRateCount = requestedView === "active"
+    ? plainRates.filter((rate) => rate.active).length
+    : requestedView === "inactive"
+      ? plainRates.filter((rate) => !rate.active).length
+      : plainRates.length;
 
   // Eine Tariftabelle je Dienstleister
   const byCarrier = new Map<string, CarrierRate[]>();
@@ -37,30 +67,42 @@ export default async function ShippingPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Versand</h1>
-          <p className="text-sm text-muted-foreground">
-            Tarif-Verwaltung je Dienstleister – die Tarife erscheinen im
-            Verkauf-Formular, gefiltert nach Zielland.
-          </p>
-        </div>
-        <ShippingRateDialog />
-      </div>
+      <PageHeader
+        eyebrow="Betrieb"
+        title="Versand"
+        description="Tarife je Dienstleister, Zone und Gewichtsklasse; im Verkauf nach Zielland aufgelöst."
+        actions={<ShippingRateDialog />}
+      />
+      <OperationalSearchToolbar
+        basePath="/versand"
+        query={q ?? ""}
+        placeholder="Dienstleister, Tarif oder Zone"
+        hiddenParams={{ preset: requestedView === "standard" ? undefined : requestedView }}
+      />
 
-      {byCarrier.size === 0 && (
-        <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            Noch keine Tarife angelegt. Lege je Dienstleister (DHL, DPD,
-            Hermes, GLS, UPS …) Zonen und Gewichtsklassen mit Preisen an –
-            wie im bisherigen Excel-Sheet.
-          </CardContent>
-        </Card>
-      )}
-
-      {[...byCarrier.entries()].map(([carrier, carrierRates]) => (
-        <CarrierRateTable key={carrier} carrier={carrier} rates={carrierRates} />
-      ))}
+      <CompactTableShell
+        definition={OPERATIONAL_MODULES.shipping}
+        scope={{ organizationId: organization.id, userId }}
+        requestedView={requestedView}
+        currentQuery={operationalSearchParams({
+          preset: requestedView === "standard" ? undefined : requestedView,
+          q,
+        })}
+        totalResults={visibleRateCount}
+      >
+        {byCarrier.size === 0 ? (
+          <Card className="rounded-none border-0">
+            <CardContent className="py-10 text-center text-muted-foreground">
+              Noch keine Tarife angelegt. Lege je Dienstleister Zonen und
+              Gewichtsklassen mit Preisen an.
+            </CardContent>
+          </Card>
+        ) : (
+          [...byCarrier.entries()].map(([carrier, carrierRates]) => (
+            <CarrierRateTable key={carrier} carrier={carrier} rates={carrierRates} />
+          ))
+        )}
+      </CompactTableShell>
     </div>
   );
 }

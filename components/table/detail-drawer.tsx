@@ -28,12 +28,12 @@ export function DetailDrawer({
           {triggerLabel}
         </Button>
       </SheetTrigger>
-      <SheetContent className="w-full sm:max-w-2xl">
-        <SheetHeader>
+      <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-2xl">
+        <SheetHeader className="sticky top-0 z-10 border-b bg-background px-5 py-4 text-left">
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}
         </SheetHeader>
-        <div className="space-y-5 text-sm">{children}</div>
+        <div className="divide-y px-5 text-sm">{children}</div>
       </SheetContent>
     </Sheet>
   );
@@ -47,8 +47,8 @@ export function DetailSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-2 rounded-lg border bg-card/60 p-3">
-      <h3 className="text-sm font-semibold">{title}</h3>
+    <section className="space-y-2 py-4">
+      <h3 className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-foreground">{title}</h3>
       <div className="space-y-1 text-muted-foreground">{children}</div>
     </section>
   );

@@ -55,8 +55,8 @@ export function CarrierRateTable({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+    <Card className="rounded-none border-x-0 border-t-0 shadow-none">
+      <CardHeader className="flex flex-row items-center justify-between py-3">
         <CardTitle className="font-display">{carrier}</CardTitle>
         <ShippingRateDialog
           defaultCarrier={carrier}
@@ -71,43 +71,59 @@ export function CarrierRateTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Tarif</TableHead>
-              <TableHead>Zone</TableHead>
-              <TableHead>Länder</TableHead>
-              <TableHead className="text-right">Gewichtsklasse</TableHead>
-              <TableHead className="text-right">Grundpreis</TableHead>
-              <TableHead className="text-right">Kilopreis</TableHead>
-              <TableHead>Zuschläge</TableHead>
-              <TableHead className="w-48" />
+              <TableHead data-column data-column-key="carrier" data-view-standard data-view-active data-view-inactive data-view-all>Dienstleister</TableHead>
+              <TableHead data-column data-column-key="rate" data-view-standard data-view-active data-view-inactive data-view-all>Tarif</TableHead>
+              <TableHead data-column data-column-key="zone" data-view-standard data-view-active data-view-inactive data-view-all>Zone</TableHead>
+              <TableHead data-column data-column-key="countries" data-view-standard data-view-active data-view-inactive data-view-all>Länder</TableHead>
+              <TableHead data-column data-column-key="weight" data-view-standard data-view-active data-view-inactive data-view-all className="text-right">Gewichtsklasse</TableHead>
+              <TableHead data-column data-column-key="base" data-view-standard data-view-active data-view-inactive data-view-all className="text-right">Grundpreis</TableHead>
+              <TableHead data-column data-column-key="perKg" data-view-all className="text-right">Kilopreis</TableHead>
+              <TableHead data-column data-column-key="surcharges" data-view-all>Zuschläge</TableHead>
+              <TableHead data-column data-column-key="status" data-view-standard data-view-active data-view-inactive data-view-all>Status</TableHead>
+              <TableHead data-column data-column-key="actions" data-view-standard data-view-active data-view-inactive data-view-all className="w-48">Aktionen</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rates.map((rate) => (
-              <TableRow key={rate.id} className={rate.active ? "" : "opacity-50"}>
-                <TableCell className="font-medium">{rate.name}</TableCell>
-                <TableCell>
+              <TableRow
+                key={rate.id}
+                className={rate.active ? "" : "opacity-60"}
+                data-table-view-row
+                data-row-view-standard
+                data-row-view-active={rate.active || undefined}
+                data-row-view-inactive={!rate.active || undefined}
+                data-row-view-all
+              >
+                <TableCell data-column data-column-key="carrier" data-view-standard data-view-active data-view-inactive data-view-all className="font-medium">{carrier}</TableCell>
+                <TableCell data-column data-column-key="rate" data-view-standard data-view-active data-view-inactive data-view-all className="font-medium">{rate.name}</TableCell>
+                <TableCell data-column data-column-key="zone" data-view-standard data-view-active data-view-inactive data-view-all>
                   <Badge variant="outline">{rate.zone}</Badge>
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
+                <TableCell data-column data-column-key="countries" data-view-standard data-view-active data-view-inactive data-view-all className="text-xs text-muted-foreground">
                   {rate.countries.length ? rate.countries.join(", ") : "alle"}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell data-column data-column-key="weight" data-view-standard data-view-active data-view-inactive data-view-all className="text-right">
                   {rate.maxWeightKg !== null ? `bis ${rate.maxWeightKg} kg` : "–"}
                 </TableCell>
-                <TableCell className="text-right font-mono">
+                <TableCell data-column data-column-key="base" data-view-standard data-view-active data-view-inactive data-view-all className="text-right font-mono">
                   {formatEuro(rate.baseCents)}
                 </TableCell>
-                <TableCell className="text-right font-mono">
+                <TableCell data-column data-column-key="perKg" data-view-all className="text-right font-mono">
                   {rate.perKgCents ? `${formatEuro(rate.perKgCents)}/kg` : "–"}
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
+                <TableCell data-column data-column-key="surcharges" data-view-all className="text-xs text-muted-foreground">
                   {rate.surcharges.length
                     ? rate.surcharges
                         .map((s) => `${s.label} +${formatEuro(s.cents)}`)
                         .join(", ")
                     : "–"}
                 </TableCell>
-                <TableCell>
+                <TableCell data-column data-column-key="status" data-view-standard data-view-active data-view-inactive data-view-all>
+                  <Badge variant={rate.active ? "secondary" : "outline"}>
+                    {rate.active ? "Aktiv" : "Inaktiv"}
+                  </Badge>
+                </TableCell>
+                <TableCell data-column data-column-key="actions" data-view-standard data-view-active data-view-inactive data-view-all>
                   <div className="flex gap-1">
                     <ShippingRateDialog
                       rate={toEditable(rate)}

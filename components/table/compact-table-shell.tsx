@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import {
+  updateOperationalViewQuery,
+  type OperationalModuleDefinition,
+} from "@/lib/operational-modules";
+import type { TablePreferenceScope } from "@/lib/operational-table";
+import { OperationalTableWorkspace } from "@/components/table/operational-table-workspace";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -11,33 +18,46 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export type TableView = {
-  value: string;
-  label: string;
-};
-
+/**
+ * Compatibility adapter for module-owned static tables.
+ *
+ * It delegates preference persistence, column visibility, density and saved
+ * views to OperationalTableWorkspace. Selection stays disabled until a module
+ * has a real result-set mutation contract.
+ */
 export function CompactTableShell({
-  storageKey,
-  views,
-  defaultView = views[0]?.value ?? "standard",
+  definition,
+  scope,
   requestedView,
+  viewParam = "preset",
+  currentQuery,
+  totalResults,
   children,
   className,
 }: {
-  storageKey: string;
-  views: TableView[];
-  defaultView?: string;
+  definition: OperationalModuleDefinition;
+  scope: Omit<TablePreferenceScope, "tableKey">;
   requestedView?: string;
+  viewParam?: string;
+  currentQuery: string;
+  totalResults: number;
   children: React.ReactNode;
   className?: string;
 }) {
+  const router = useRouter();
+  const views = definition.views;
+  const defaultView = views[0]?.value ?? "standard";
   const [view, setView] = useState(
     requestedView && views.some((option) => option.value === requestedView)
       ? requestedView
       : defaultView
   );
-  const storageName = `storagex:${storageKey}:table-view`;
-  const css = useMemo(
+  const tableScope = useMemo(
+    () => ({ ...scope, tableKey: definition.key }),
+    [definition.key, scope]
+  );
+  const storageName = `storagex:${scope.organizationId}:${scope.userId}:${definition.key}:module-view`;
+  const viewCss = useMemo(
     () =>
       views
         .map(
@@ -63,24 +83,29 @@ export function CompactTableShell({
   function changeView(nextView: string) {
     setView(nextView);
     window.localStorage.setItem(storageName, nextView);
+    const query = updateOperationalViewQuery(
+      currentQuery,
+      viewParam,
+      nextView,
+      defaultView
+    );
+    router.replace(`${definition.route}${query ? `?${query}` : ""}`, {
+      scroll: false,
+    });
   }
 
   return (
-    <div
-      data-table-view-root
-      data-view={view}
-      className={cn("compact-table-shell space-y-3", className)}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs text-muted-foreground">
-          Ansicht wird auf diesem Gerät gespeichert.
-        </div>
+    <div className={cn("compact-table-shell border", className)}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
+        <p className="text-xs text-muted-foreground">
+          Modulansicht und Tabelleneinstellungen werden benutzerbezogen gespeichert.
+        </p>
         <div className="flex items-center gap-2">
-          <Label htmlFor={`${storageKey}-view`} className="text-xs">
+          <Label htmlFor={`${definition.key}-view`} className="text-xs">
             Ansicht
           </Label>
           <Select value={view} onValueChange={changeView}>
-            <SelectTrigger id={`${storageKey}-view`} className="h-8 w-40">
+            <SelectTrigger id={`${definition.key}-view`} className="h-8 w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -93,8 +118,37 @@ export function CompactTableShell({
           </Select>
         </div>
       </div>
-      <style>{css}</style>
-      {children}
+
+      <OperationalTableWorkspace
+        scope={tableScope}
+        columns={definition.columns}
+        defaultVisibleColumns={definition.defaultVisibleColumns}
+        pageRowIds={[]}
+        totalResults={totalResults}
+        currentQuery={currentQuery}
+        basePath={definition.route}
+        renderTable={({ density, visibleColumns }) => {
+          const columnCss = definition.columns
+            .filter((column) => !visibleColumns.has(column.key))
+            .map(
+              (column) =>
+                `[data-table-view-root] [data-column-key="${column.key}"]{display:none}`
+            )
+            .join("\n");
+
+          return (
+            <div
+              data-table-view-root
+              data-view={view}
+              data-density={density}
+              className="min-w-0"
+            >
+              <style>{`${viewCss}\n${columnCss}`}</style>
+              {children}
+            </div>
+          );
+        }}
+      />
     </div>
   );
 }

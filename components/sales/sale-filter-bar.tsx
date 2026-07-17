@@ -18,16 +18,19 @@ export function SaleFilterBar({
   filters,
   platforms,
   shippingMethods,
+  activeView,
 }: {
   filters: SaleFilters;
   platforms: Array<{ id: string; name: string }>;
   shippingMethods: string[];
+  activeView?: string;
 }) {
   const router = useRouter();
   const hasFilters = Object.values(filters).some(Boolean);
 
   function apply(formData: FormData) {
     const params = new URLSearchParams();
+    if (activeView && activeView !== "standard") params.set("preset", activeView);
     for (const key of ["q", "status", "rechnung", "platform", "versandart", "von", "bis"]) {
       const value = String(formData.get(key) ?? "").trim();
       if (value) params.set(key, value);
@@ -84,7 +87,7 @@ export function SaleFilterBar({
         Filtern
       </Button>
       {hasFilters && (
-        <Button type="button" variant="ghost" onClick={() => router.push("/verkauf")}>
+        <Button type="button" variant="ghost" onClick={() => router.push(activeView && activeView !== "standard" ? `/verkauf?preset=${activeView}` : "/verkauf")}>
           Zurücksetzen
         </Button>
       )}

@@ -17,7 +17,7 @@ export function PurchaseFilterBar({ query, suppliers, paymentAccounts }: {
         return <Link key={preset.key} href={`?${params}`} className={cn(buttonVariants({ variant: query.preset === preset.key ? "default" : "outline", size: "sm" }))}>{preset.label}</Link>;
       })}
     </div>
-    <form className="grid gap-2 md:grid-cols-[minmax(14rem,1fr)_12rem_12rem_10rem_10rem_auto]">
+    <form className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(14rem,1fr)_12rem_12rem_10rem_10rem_auto]">
       <Input name="q" defaultValue={query.q} placeholder="Einkauf, Lieferant, Artikel, Tracking…" aria-label="Einkäufe durchsuchen" />
       <select name="supplier" defaultValue={query.supplier} aria-label="Lieferant filtern" className="h-9 border bg-background px-2 text-sm"><option value="">Alle Lieferanten</option>{suppliers.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
       <select name="paymentAccount" defaultValue={query.paymentAccount} aria-label="Zahlungskonto filtern" className="h-9 border bg-background px-2 text-sm"><option value="">Alle Konten</option>{paymentAccounts.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>

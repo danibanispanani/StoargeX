@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-07-17 - Prompt 8 started
+
+- Loaded the persistent planning and Compound Engineering work, polish, browser-test, and code-review workflows.
+- Committed the locally verified Prompt-7 implementation as `21e8ae9 feat: rebuild tasks for team collaboration`, leaving the unconfirmed external database untouched.
+- Started a clean Prompt-8 audit of the ten requested module groups, shared operational-table surfaces, entitlement gates, and browser proof requirements.
+
+## 2026-07-17 - Prompt 8 operational migration
+
+- Added a tested configuration registry for the ten operational tables and deepened the legacy compact shell into an adapter over the existing user/organization-scoped table workspace.
+- Migrated Lager, Verkauf, both return centers, Konsignation, Schulden, Versand, Zugangsdaten, and Team to module-specific views, column controls, density, saved views, hit counts, and compact detail-drawer styling; Einkauf already used the reference workspace.
+- Added case-insensitive server search to the bounded legacy table routes and kept view/filter URLs stable. Settings now uses a compact management toolbar and flat form sections rather than a synthetic table.
+- Preserved server-side consignment entitlement checks, sale cancellation, movement-backed inventory corrections, credential role checks, and all established domain actions.
+- Focused table/module/navigation tests and TypeScript pass. Documentation, integrated gates, browser validation, review, and commit remain.
+- Final gates: Prisma validate/generate, TypeScript, ESLint, 45 Vitest files with 303 tests, and the network-enabled Next.js production build pass.
+- Inline simplify and full multi-persona review completed because session policy prohibits subagents. Fixed bounded search normalization, canonical view-query transitions, duplicate stock view controls, normalized saved presets, and view-accurate result counts; no actionable code findings remain.
+- Integrity is blocked by the unreachable configured external Supabase host. Browser QA is blocked because neither the embedded browser nor the ChatGPT Chrome Extension/native-host integration is available; no alternate automation stack was installed.
+- Committed the reviewed Prompt-8 implementation with the required message `feat: migrate operational modules to unified product ui`; the working tree is clean.
+
 ## 2026-07-15 — Prompt 7 implementation
 
 - Completed the additive task-domain migration, server-side permission/workflow services, eight operational views, Kanban/list workspace, multi-assignee/Primary editing, checklist-derived progress, activity/comments, snooze/archive, domain links, in-app attention signals, and task import/export extensions.

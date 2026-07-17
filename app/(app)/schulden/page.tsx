@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
+import { PageHeader } from "@/components/app/page-header";
 import {
   DetailDrawer,
   DetailGrid,
@@ -28,6 +29,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  OPERATIONAL_MODULES,
+  operationalSearchParams,
+  parseOperationalSearchQuery,
+  parseOperationalModuleView,
+} from "@/lib/operational-modules";
+import { OperationalSearchToolbar } from "@/components/table/operational-search-toolbar";
 
 type DebtWithReference = Prisma.DebtGetPayload<{
   include: {
@@ -45,12 +53,30 @@ type DebtWithReference = Prisma.DebtGetPayload<{
   };
 }>;
 
-export default async function DebtsPage() {
-  const { db, membership } = await requireOrg();
+export default async function DebtsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preset?: string; q?: string }>;
+}) {
+  const { db, membership, organization, userId } = await requireOrg();
+  const { preset, q: rawQuery } = await searchParams;
+  const q = parseOperationalSearchQuery(rawQuery);
+  const requestedView = parseOperationalModuleView(OPERATIONAL_MODULES.debts, preset);
   const canDelete = hasMinRole(membership.role, "ADMIN");
 
   const [debts, members] = await Promise.all([
     db.debt.findMany({
+      where: q
+        ? {
+            OR: [
+              { debtNumber: { contains: q, mode: "insensitive" } },
+              { refId: { contains: q, mode: "insensitive" } },
+              { description: { contains: q, mode: "insensitive" } },
+              { debtorName: { contains: q, mode: "insensitive" } },
+              { creditorName: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : undefined,
       include: {
         purchaseLink: {
           include: { purchase: { select: { id: true, purchaseNumber: true } } },
@@ -78,6 +104,11 @@ export default async function DebtsPage() {
     .reduce((sum, debt) => sum + debt.amountCents - debt.paidCents, 0);
 
   const memberNames = members.map((member) => member.user.name ?? member.user.email);
+  const visibleDebtCount = debts.filter((debt) => {
+    if (requestedView === "due") return debt.status !== "SETTLED" && Boolean(debt.dueDate);
+    if (requestedView === "settled") return debt.status === "SETTLED";
+    return true;
+  }).length;
 
   function toEditable(debt: DebtWithReference): EditableDebt {
     return {
@@ -99,53 +130,65 @@ export default async function DebtsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Schulden</h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        eyebrow="Finanzen"
+        title="Schulden"
+        description={
+          <>
             Kauf-/Verkaufs-Einträge entstehen automatisch · offen:{" "}
             {formatEuro(openCents)}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ImportExportBar table="schulden" />
-          <DebtDialog memberNames={memberNames} />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <ImportExportBar table="schulden" />
+            <DebtDialog memberNames={memberNames} />
+          </>
+        }
+      />
+      <OperationalSearchToolbar
+        basePath="/schulden"
+        query={q ?? ""}
+        placeholder="SCH-Nummer, Bezug, Beschreibung oder Partei"
+        hiddenParams={{ preset: requestedView === "standard" ? undefined : requestedView }}
+      />
 
       <CompactTableShell
-        storageKey="schulden"
-        views={[
-          { value: "standard", label: "Standard" },
-          { value: "buchhaltung", label: "Buchhaltung" },
-          { value: "all", label: "Alle Spalten" },
-        ]}
+        definition={OPERATIONAL_MODULES.debts}
+        scope={{ organizationId: organization.id, userId }}
+        requestedView={requestedView}
+        currentQuery={operationalSearchParams({
+          preset: requestedView === "standard" ? undefined : requestedView,
+          q,
+        })}
+        totalResults={visibleDebtCount}
       >
-      <Card>
+      <Card className="rounded-none border-0 shadow-none">
         <CardContent className="overflow-x-auto">
           <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
-                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>Datum</TableHead>
-                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>SCH-Nummer</TableHead>
-                <TableHead data-column data-view-standard data-view-all>Bezug</TableHead>
-                <TableHead data-column data-view-standard data-view-all>Beschreibung</TableHead>
-                <TableHead data-column data-view-buchhaltung data-view-all>Art</TableHead>
-                <TableHead data-column data-view-buchhaltung data-view-all className="text-right">Menge</TableHead>
-                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all className="text-right">Betrag</TableHead>
-                <TableHead data-column data-view-standard data-view-all>Schuldner</TableHead>
-                <TableHead data-column data-view-standard data-view-all>Empfänger</TableHead>
-                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all>Status</TableHead>
-                <TableHead data-column data-view-buchhaltung data-view-all>Eintrag</TableHead>
-                <TableHead data-column data-view-buchhaltung data-view-all>Beglichen am</TableHead>
-                <TableHead data-column data-view-buchhaltung data-view-all>Kommentar</TableHead>
-                <TableHead data-column data-view-standard data-view-buchhaltung data-view-all className="w-48">Aktionen</TableHead>
+                <TableHead data-column data-column-key="date" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>Datum</TableHead>
+                <TableHead data-column data-column-key="number" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>SCH-Nummer</TableHead>
+                <TableHead data-column data-column-key="reference" data-view-standard data-view-due data-view-settled data-view-all>Bezug</TableHead>
+                <TableHead data-column data-column-key="description" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>Beschreibung</TableHead>
+                <TableHead data-column data-column-key="due" data-view-standard data-view-due data-view-all>Fällig am</TableHead>
+                <TableHead data-column data-column-key="type" data-view-accounting data-view-all>Art</TableHead>
+                <TableHead data-column data-column-key="quantity" data-view-accounting data-view-all className="text-right">Menge</TableHead>
+                <TableHead data-column data-column-key="amount" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all className="text-right">Betrag</TableHead>
+                <TableHead data-column data-column-key="debtor" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>Schuldner</TableHead>
+                <TableHead data-column data-column-key="creditor" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>Empfänger</TableHead>
+                <TableHead data-column data-column-key="status" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>Status</TableHead>
+                <TableHead data-column data-column-key="entry" data-view-accounting data-view-all>Eintrag</TableHead>
+                <TableHead data-column data-column-key="settledAt" data-view-accounting data-view-settled data-view-all>Beglichen am</TableHead>
+                <TableHead data-column data-column-key="notes" data-view-accounting data-view-all>Kommentar</TableHead>
+                <TableHead data-column data-column-key="actions" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all className="w-48">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {debts.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={14} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={15} className="py-8 text-center text-muted-foreground">
                     Keine Einträge – niemand schuldet niemandem etwas.
                     Einträge entstehen automatisch (ZM bzw. Auszahlung an
                     Personen) oder über „Schuld manuell eintragen“.
@@ -156,41 +199,50 @@ export default async function DebtsPage() {
                 <TableRow
                   key={debt.id}
                   className={debt.status === "SETTLED" ? "opacity-60" : ""}
+                  data-table-view-row
+                  data-row-view-standard
+                  data-row-view-accounting
+                  data-row-view-due={(debt.status !== "SETTLED" && Boolean(debt.dueDate)) || undefined}
+                  data-row-view-settled={debt.status === "SETTLED" || undefined}
+                  data-row-view-all
                 >
-                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all className="whitespace-nowrap">
+                  <TableCell data-column data-column-key="date" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all className="whitespace-nowrap">
                     {debt.debtDate.toLocaleDateString("de-DE")}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all className="max-w-32 truncate font-mono text-xs">
+                  <TableCell data-column data-column-key="number" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all className="max-w-32 truncate font-mono text-xs">
                     {debt.debtNumber ?? "–"}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-all className="max-w-40 truncate">
+                  <TableCell data-column data-column-key="reference" data-view-standard data-view-due data-view-settled data-view-all className="max-w-40 truncate">
                     <DebtReference debt={debt} />
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-all className="sx-cell-primary max-w-52 truncate">
+                  <TableCell data-column data-column-key="description" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all className="sx-cell-primary max-w-52 truncate">
                     {debt.description ?? "–"}
                   </TableCell>
-                  <TableCell data-column data-view-buchhaltung data-view-all>
+                  <TableCell data-column data-column-key="due" data-view-standard data-view-due data-view-all className="whitespace-nowrap">
+                    {debt.dueDate?.toLocaleDateString("de-DE") ?? "–"}
+                  </TableCell>
+                  <TableCell data-column data-column-key="type" data-view-accounting data-view-all>
                     <Badge variant="outline">{DEBT_TYPE_LABELS[debt.type]}</Badge>
                   </TableCell>
-                  <TableCell data-column data-view-buchhaltung data-view-all className="text-right">{debt.quantity}</TableCell>
-                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all className="sx-cell-money text-right font-mono font-medium">
+                  <TableCell data-column data-column-key="quantity" data-view-accounting data-view-all className="text-right">{debt.quantity}</TableCell>
+                  <TableCell data-column data-column-key="amount" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all className="sx-cell-money text-right font-mono font-medium">
                     {formatEuro(debt.amountCents)}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-all>{debt.debtorName}</TableCell>
-                  <TableCell data-column data-view-standard data-view-all>{debt.creditorName}</TableCell>
-                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all>
+                  <TableCell data-column data-column-key="debtor" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>{debt.debtorName}</TableCell>
+                  <TableCell data-column data-column-key="creditor" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>{debt.creditorName}</TableCell>
+                  <TableCell data-column data-column-key="status" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>
                     <DebtStatusSelect debtId={debt.id} status={debt.status} />
                   </TableCell>
-                  <TableCell data-column data-view-buchhaltung data-view-all>
+                  <TableCell data-column data-column-key="entry" data-view-accounting data-view-all>
                     <DebtEntrySelect debtId={debt.id} entryStatus={debt.entryStatus} />
                   </TableCell>
-                  <TableCell data-column data-view-buchhaltung data-view-all className="whitespace-nowrap">
+                  <TableCell data-column data-column-key="settledAt" data-view-accounting data-view-settled data-view-all className="whitespace-nowrap">
                     {debt.settledAt?.toLocaleDateString("de-DE") ?? "–"}
                   </TableCell>
-                  <TableCell data-column data-view-buchhaltung data-view-all className="max-w-36 truncate">
+                  <TableCell data-column data-column-key="notes" data-view-accounting data-view-all className="max-w-36 truncate">
                     {debt.notes ?? "–"}
                   </TableCell>
-                  <TableCell data-column data-view-standard data-view-buchhaltung data-view-all>
+                  <TableCell data-column data-column-key="actions" data-view-standard data-view-accounting data-view-due data-view-settled data-view-all>
                     <div className="flex gap-1">
                       <DebtDetailDrawer debt={debt} />
                       <DebtDialog
