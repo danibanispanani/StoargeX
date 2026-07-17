@@ -41,6 +41,7 @@ yarn-error.log*
 /.agents/skills/
 /skills-lock.json
 /.tmp-*
+/.o11y/
 
 # hochgeladene Artikelbilder (Laufzeitdaten)
 /public/uploads/

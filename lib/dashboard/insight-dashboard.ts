@@ -438,10 +438,10 @@ function buildAttention(input: {
     input.lowStockProducts
       ? {
           key: "low-stock",
-          label: "Niedriger Bestand",
+          label: "Niedriger Eigenbestand",
           count: input.lowStockProducts,
-          detail: "Verfügbare Menge liegt am konfigurierten Schwellenwert",
-          href: "/produkte?preset=low-stock",
+          detail: "Verfügbarer Eigenbestand liegt am konfigurierten Schwellenwert",
+          href: "/lager?view=stock&bestand=niedrig",
           tone: "warning",
           priority: 40,
         }
@@ -519,7 +519,9 @@ export function buildInsightSnapshot(
   const previousProfit = sum(previousSales, (sale) => sale.profitCents);
 
   const inventoryGroups = new Map<string, { available: number; received: number }>();
-  for (const position of source.inventory) {
+  for (const position of source.inventory.filter(
+    (item) => item.inventoryType === "OWNED"
+  )) {
     const group = inventoryGroups.get(position.productLabel) ?? { available: 0, received: 0 };
     group.available += position.available;
     group.received += position.received;

@@ -126,7 +126,11 @@ export function buildProductWhere(
   } else if (query.preset === "low-stock") {
     and.push({
       inventoryPositions: {
-        some: { active: true, quantityAvailable: { lte: lowStockThreshold } },
+        some: {
+          active: true,
+          quantityReceived: { gt: 1 },
+          quantityAvailable: { gt: 0, lte: lowStockThreshold },
+        },
       },
     });
   }

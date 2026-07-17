@@ -14,3 +14,10 @@ export function parseStockView(value: string | undefined): StockView {
     ? value as StockView
     : "standard";
 }
+
+export function matchesLowStockFilter(row: {
+  low: boolean;
+  availableQuantity: number;
+}): boolean {
+  return row.low && row.availableQuantity > 0;
+}

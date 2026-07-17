@@ -231,6 +231,18 @@ describe("dashboard insight calculations", () => {
             defective: 0,
             unitCostCents: 0,
           },
+          {
+            id: "i3",
+            productLabel: "Konsignation niedrig",
+            inventoryType: "CONSIGNMENT",
+            receivedAt: new Date("2026-07-01T00:00:00.000Z"),
+            available: 1,
+            received: 5,
+            reserved: 0,
+            inspection: 0,
+            defective: 0,
+            unitCostCents: 0,
+          },
         ],
         tasks: [
           { id: "t1", status: "OPEN", dueDate: new Date("2026-07-16T00:00:00.000Z"), assigneeLabels: ["Alex"], createdAt: new Date("2026-07-01T00:00:00.000Z"), completedAt: null, blocker: true },
@@ -241,7 +253,7 @@ describe("dashboard insight calculations", () => {
     );
 
     expect(dashboard.inventory).toMatchObject({
-      available: 5,
+      available: 6,
       reserved: 2,
       inspection: 1,
       defective: 1,

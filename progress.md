@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-07-17 - Prompt 12 beta release gate started
+
+- Confirmed a clean Prompt-11 commit baseline and initialized the persistent five-phase release plan.
+- Loaded the requested review, simplify, browser-test, dogfood, optimization, browser-trace, diagnosis, planning, and agent-browser workflows.
+- Re-indexed the repository with codebase memory and captured architecture, routes, hotspots, boundaries, and deep-module clusters.
+- Verified the direct agent-browser binary and `browse cdp` availability; recorded Next.js 15 incompatibility with Next DevTools and loaded the shadcn audit checklist.
+- Confirmed the isolated QA database is current with all 23 migrations applied.
+- Began mapping cumulative E2E/security scenarios to isolated QA data and deterministic automated seams.
+
+## 2026-07-17 - Prompt 12 beta release gate completed
+
+- Executed the cumulative domain/security suite, real product import Dry Run/commit/export flow, permission-denied full export, responsive core-route matrix, keyboard/focus checks, direct CDP trace, Web Vitals, and authenticated Lighthouse.
+- Fixed a 1280 px root overflow, aligned low-stock reporting/drill-down to owned inventory, extended integrity coverage from 13 to 17 checks, and corrected product metadata/hydration diagnostics.
+- Measured the sales route at Lighthouse 35 Performance and traced the cost to unbounded row rendering and per-row editor hydration. Added server-side operational-view filtering, 25/50/100 pagination, and lazy row editors; final score is 71 with payload reduced from about 823 KB to 147 KB.
+- Inline simplify and multi-lens review found no remaining P0/P1 issue and added focused sales pagination/view-query regression coverage.
+- Final gates pass: Prisma validate/generate, 23 migrations current, TypeScript, ESLint, 60 Vitest files/364 tests, 17/17 integrity checks, production build, and diff check.
+- Created the four required beta documents plus the durable dogfood report. Controlled beta decision is YES; external live Stripe/email/restore checks and other P2/P3 limits remain explicitly documented.
+
 ## 2026-07-17 - Prompt 11 started
 
 - Confirmed a clean Prompt-10 baseline and the exact requested commit.
@@ -556,3 +574,14 @@
 - **Status:** in progress
 - Confirmed a clean Prompt-8 baseline at `0338fd3`.
 - Loaded `ce-work`, `planning-with-files`, and `codebase-design`; selected one tenant-scoped insight aggregation module as the intended deep seam.
+### 2026-07-17 — Prompt 12 search adjustment
+
+- Broad repository queries were truncated; no conclusion was drawn from incomplete output.
+- Switched to narrow reads of the security boundary, upload handling, tenant context, and scenario-specific tests.
+
+### 2026-07-17 — Domain and Prisma gates
+
+- 35 focused scenario/security test files passed: 209 tests.
+- `prisma validate` passed.
+- First two `prisma generate` attempts hit a Windows DLL lock (`EPERM`).
+- Identified only the process with the StorageX Prisma engine loaded, stopped that process, and reran successfully.

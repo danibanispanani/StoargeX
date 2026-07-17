@@ -1,4 +1,71 @@
-# Task Plan: Prompt 11 Billing Entitlements and Consignment Add-on
+# Task Plan: Prompt 12 StorageX Beta Release Gate
+
+## Goal
+Validate the cumulative StorageX product as a trustworthy beta without adding major features: execute the named operational journeys, security and integrity checks, responsive browser and performance audits, resolve release-blocking defects, document every limitation honestly, and commit the evidence.
+
+## Current Phase
+Phase 5: release documentation and commit
+
+## Release Decision Rule
+- `STORAGEX BETA READY: YES` only when no reproducible P0/P1 defect remains, all required automated gates pass, browser/security evidence is complete enough for a beta, and every untestable external leg is explicitly documented.
+- Otherwise the gate is `NO` with severity, reproduction, route/file, and recommended fix.
+
+## Phases
+
+### Phase 1: Baseline and test architecture
+- [x] Confirm clean Prompt-11 baseline, current migrations, isolated QA tenant, and usable browser/trace tools
+- [x] Index the current repository and map deep modules, routes, E2E seams, security boundaries, and existing tests
+- [x] Create the durable dogfood flow model, scenario matrix, and bounded performance measurement contract
+- **Status:** complete
+
+### Phase 2: Domain E2E, security, and integrity
+- [x] Execute owned-stock, supplier-return, consignment, fee/profit, expense, task, and data-portability scenarios
+- [x] Audit tenant isolation, roles, entitlements, exports, IDOR, validation, secrets, RLS, rate limiting, audit logs, and uploads
+- [x] Run integrity checks and inspect all requested invariants against isolated QA data
+- **Status:** complete
+
+### Phase 3: Browser, accessibility, and performance
+- [x] Validate central routes at 1440, 1280, 768, and 390 px including large tables
+- [x] Inspect console, network, hydration, overflow, keyboard/focus, and shadcn checklist items
+- [x] Capture Lighthouse/Web Vitals/performance trace evidence and compare against the bounded baseline
+- **Status:** complete
+
+### Phase 4: Review, simplify, and quality gates
+- [x] Run inline simplify lenses for reuse, quality, and efficiency without behavior changes
+- [x] Run structured correctness, security, testing, reliability, performance, migration, and adversarial review
+- [x] Pass Prisma validate/generate, TypeScript, ESLint, full tests, integrity check, production build, and diff checks
+- **Status:** complete
+
+### Phase 5: Release documentation and commit
+- [x] Create all four required beta documents plus the durable dogfood report
+- [x] Record defects, limitations, evidence, and final YES/NO decision without omissions
+- [x] Commit exactly `chore: validate storagex beta release`
+- **Status:** complete
+
+## Constraints
+- No new major feature, schema redesign, or speculative optimization.
+- All data-writing scenarios run only in the isolated QA organization and preserve tenant/inventory invariants.
+- External payment/email/SMS legs are not simulated as successful; they are blocked or documented where credentials/infrastructure are absent.
+- Small, unambiguous release defects may be fixed with regression evidence.
+
+## Tooling Decisions
+- `agent-browser` direct binary is available from the existing local package cache and is the sole driver for ce-dogfood/browser QA.
+- `browse cdp` is available for the read-only browser trace observer.
+- Next.js 15.5.20 has no Next DevTools MCP endpoint; upgrading to Next 16 is explicitly out of release-gate scope.
+- shadcn MCP provides the applicable audit checklist; static and live checks will cover it.
+- Session policy forbids subagents, so simplify and code-review personas run inline.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Global `agent-browser` command is not on PATH | 1 | Use the already-installed direct binary from the local npm cache; no new browser stack is introduced. |
+| `browse --help` emitted a denied WMI process-name probe | 1 | The CLI itself is available and exposes `cdp`; avoid the optional WMI probe and validate tracing against the actual QA browser later. |
+| Next DevTools requires Next.js 16+ | 1 | Record as incompatible; do not upgrade the framework during the beta gate. |
+| Sandboxed Prisma migration status could not reach Supabase | 1 | Re-ran the unchanged read-only command with approved network access; all 23 migrations are applied. |
+
+---
+
+# Historical Task Plan: Prompt 11 Billing Entitlements and Consignment Add-on
 
 ## Goal
 Decouple consignment access from rigid base subscriptions by deepening the existing additive entitlement module with trials, manual activation, Stripe add-ons, cancellation-at-period-end, grace periods, expiry, auditable idempotent webhook processing, and consistent billing/pricing UI without deleting or rewriting consignment data.

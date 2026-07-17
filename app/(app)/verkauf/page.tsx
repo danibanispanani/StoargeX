@@ -6,14 +6,15 @@ import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { getOptions } from "@/lib/options";
 import { formatEuro } from "@/lib/calculations";
 import { SaleDialog, type EditableSale, type SellableItem } from "@/components/sales/sale-dialog";
+import { LazySaleDialog } from "@/components/sales/lazy-sale-dialog";
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
 import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { InvoiceSelect, SaleStatusSelect } from "@/components/sales/sale-inline-selects";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
+import { OperationalPagination } from "@/components/table/operational-pagination";
 import {
   DetailDrawer,
   DetailGrid,
@@ -34,6 +35,10 @@ import {
   parseOperationalSearchQuery,
   parseOperationalModuleView,
 } from "@/lib/operational-modules";
+import {
+  buildSaleViewWhere,
+  parseSalePagination,
+} from "@/lib/sales/sale-table";
 
 export default async function SalesPage({
   searchParams,
@@ -49,6 +54,8 @@ export default async function SalesPage({
     von?: string;
     bis?: string;
     preset?: string;
+    page?: string;
+    pageSize?: string;
   }>;
 }) {
   const context = await requireOrg();
@@ -61,8 +68,9 @@ export default async function SalesPage({
   const normalizedQuery = parseOperationalSearchQuery(rawParams.q);
   const params = { ...rawParams, q: normalizedQuery || undefined };
   const requestedView = parseOperationalModuleView(OPERATIONAL_MODULES.sales, params.preset);
+  const { page: requestedPage, pageSize } = parseSalePagination(params);
 
-  const where: Prisma.SaleWhereInput = {
+  const filterWhere: Prisma.SaleWhereInput = {
     ...(params.status === "PENDING"
       ? { status: { in: ["PENDING", "PAID", "SHIPPED"] } }
       : params.status === "COMPLETED"
@@ -142,6 +150,11 @@ export default async function SalesPage({
         }
       : {}),
   };
+  const viewWhere = buildSaleViewWhere(requestedView);
+  const where: Prisma.SaleWhereInput = { AND: [filterWhere, viewWhere] };
+  const totalResults = await db.sale.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
+  const page = Math.min(requestedPage, totalPages);
 
   const [sales, platforms, payoutOptions, rates, sellablePositions, marketplaceAccounts] =
     await Promise.all([
@@ -175,7 +188,8 @@ export default async function SalesPage({
           },
         },
         orderBy: { soldAt: "desc" },
-        take: 300,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
       }),
       db.platform.findMany({
         where: { active: true },
@@ -281,20 +295,6 @@ export default async function SalesPage({
     }),
     { gross: 0, profit: 0, qty: 0 }
   );
-  const visibleSaleCount = rows.filter((row) => {
-    if (requestedView === "standard") {
-      return !row.sale.invoiceCreated || ["PENDING", "PAID", "SHIPPED"].includes(row.sale.status);
-    }
-    if (requestedView === "shipping") {
-      return !["COMPLETED", "CANCELLED"].includes(row.sale.status)
-        || Boolean(row.sale.shippingMethod);
-    }
-    if (requestedView === "payout") {
-      return Boolean(row.sale.payoutRecipient) || row.sale.debtLinks.length > 0;
-    }
-    return true;
-  }).length;
-
   const shippingMethodOptions = [
     ...new Set([
       ...rates.map((rate) => `${rate.carrierName} ${rate.name}`),
@@ -303,6 +303,21 @@ export default async function SalesPage({
       "Sonstiges",
     ]),
   ];
+  const currentQuery = operationalSearchParams({
+    ...params,
+    preset: requestedView === "standard" ? undefined : requestedView,
+    page: page > 1 ? String(page) : undefined,
+    pageSize: pageSize === 50 ? undefined : String(pageSize),
+  });
+  const hasActiveFilters = Object.entries(params).some(
+    ([key, value]) => Boolean(value) && key !== "page" && key !== "pageSize"
+  );
+  const marketplaceAccountOptions = marketplaceAccounts.map((account) => ({
+    id: account.id,
+    platformId: account.platformId,
+    displayName: account.displayName,
+    catalogVersion: account.defaultFeeSchedule?.version ?? null,
+  }));
 
   function toEditable(row: (typeof rows)[number]): EditableSale {
     const { sale } = row;
@@ -406,13 +421,13 @@ export default async function SalesPage({
         title="Verkauf"
         description={
           <>
-            {rows.length} Verkäufe {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
+            {totalResults} Verkäufe {hasActiveFilters ? "(gefiltert)" : ""}
           </>
         }
         actions={
           <>
             <ImportExportBar table="verkauf" />
-            <SaleDialog items={sellable} platforms={platforms} marketplaceAccounts={marketplaceAccounts.map((account) => ({ id: account.id, platformId: account.platformId, displayName: account.displayName, catalogVersion: account.defaultFeeSchedule?.version ?? null }))} payoutOptions={payoutOptions} shippingRates={rates} />
+            <SaleDialog items={sellable} platforms={platforms} marketplaceAccounts={marketplaceAccountOptions} payoutOptions={payoutOptions} shippingRates={rates} />
           </>
         }
       />
@@ -436,11 +451,8 @@ export default async function SalesPage({
         definition={OPERATIONAL_MODULES.sales}
         scope={{ organizationId: organization.id, userId }}
         requestedView={requestedView}
-        currentQuery={operationalSearchParams({
-          ...params,
-          preset: requestedView === "standard" ? undefined : requestedView,
-        })}
-        totalResults={visibleSaleCount}
+        currentQuery={currentQuery}
+        totalResults={totalResults}
       >
       <Card className="rounded-none border-0 shadow-none">
         <CardContent className="overflow-x-auto">
@@ -568,18 +580,12 @@ export default async function SalesPage({
                   <TableCell data-column data-column-key="actions" data-view-standard data-view-finances data-view-shipping data-view-payout data-view-all>
                     <div className="flex justify-end gap-1">
                       <SaleDetailDrawer row={row} />
-                      <SaleDialog
+                      <LazySaleDialog
                         sale={toEditable(row)}
-                        items={sellable}
                         platforms={platforms}
-                        marketplaceAccounts={marketplaceAccounts.map((account) => ({ id: account.id, platformId: account.platformId, displayName: account.displayName, catalogVersion: account.defaultFeeSchedule?.version ?? null }))}
+                        marketplaceAccounts={marketplaceAccountOptions}
                         payoutOptions={payoutOptions}
                         shippingRates={rates}
-                        trigger={
-                          <Button variant="ghost" size="sm">
-                            Bearbeiten
-                          </Button>
-                        }
                       />
                       {row.hasNewLines && row.sale.status !== "CANCELLED" && (
                         <CancelSaleButton saleId={row.sale.id} />
@@ -610,6 +616,12 @@ export default async function SalesPage({
           </Table>
         </CardContent>
       </Card>
+      <OperationalPagination
+        page={page}
+        pageSize={pageSize}
+        totalResults={totalResults}
+        query={currentQuery}
+      />
       </CompactTableShell>
     </div>
   );

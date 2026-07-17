@@ -8,7 +8,7 @@ import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
 import { StockTable, type StockRow } from "@/components/stock/stock-table";
 import { deriveOwnedStockStatus } from "@/lib/services/owned-purchase-service";
-import { parseStockView } from "@/lib/stock/stock-views";
+import { matchesLowStockFilter, parseStockView } from "@/lib/stock/stock-views";
 import {
   operationalSearchParams,
   parseOperationalSearchQuery,
@@ -28,6 +28,7 @@ export default async function StockPage({
     bis?: string;
     view?: string;
     alter?: string;
+    bestand?: string;
   }>;
 }) {
   const { db, organization, userId } = await requireOrg();
@@ -196,9 +197,7 @@ export default async function StockPage({
         imageUrl: lot.imageUrls[0] ?? position.product.imageUrls[0] ?? null,
         listings: position.listings.map((l) => l.platformId),
         notes: "",
-        low:
-          position.quantityReceived > 1 &&
-          position.quantityAvailable <= organization.lowStockThreshold,
+        low: lowKeys.has(lowStockKey(position.product.name, position.product.variant)),
         availableQuantity: position.quantityAvailable,
         originalQuantity: position.quantityReceived,
       };
@@ -230,7 +229,11 @@ export default async function StockPage({
     originalQuantity: 1,
   }));
 
-  const rows = [...ownedRows, ...legacyRows];
+  const allRows = [...ownedRows, ...legacyRows];
+  const rows =
+    params.bestand === "niedrig"
+      ? allRows.filter(matchesLowStockFilter)
+      : allRows;
 
   return (
     <div className="space-y-4">
@@ -262,6 +265,7 @@ export default async function StockPage({
           plattform: params.plattform ?? "",
           von: params.von ?? "",
           bis: params.bis ?? "",
+          bestand: params.bestand ?? "",
         }}
         platforms={platforms}
         zmOptions={zmOptions}

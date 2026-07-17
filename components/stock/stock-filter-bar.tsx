@@ -20,6 +20,7 @@ export interface StockFilters {
   plattform: string;
   von: string;
   bis: string;
+  bestand: string;
 }
 
 /** Filter fürs Lager: Status, Kauf, Retoure, Datum, Plattform, ZM, Suche. */
@@ -40,7 +41,7 @@ export function StockFilterBar({
   function apply(formData: FormData) {
     const params = new URLSearchParams();
     if (activeView && activeView !== "standard") params.set("view", activeView);
-    for (const key of ["q", "status", "kauf", "retoure", "zm", "plattform", "von", "bis"]) {
+    for (const key of ["q", "status", "kauf", "retoure", "zm", "plattform", "von", "bis", "bestand"]) {
       const value = String(formData.get(key) ?? "").trim();
       if (value) params.set(key, value);
     }
@@ -97,6 +98,10 @@ export function StockFilterBar({
             Gelistet auf {p.name}
           </option>
         ))}
+      </select>
+      <select name="bestand" defaultValue={filters.bestand} className={selectClass}>
+        <option value="">Bestand: alle</option>
+        <option value="niedrig">Bestand: niedrig</option>
       </select>
       <label className="flex items-center gap-1 text-sm text-muted-foreground">
         Von

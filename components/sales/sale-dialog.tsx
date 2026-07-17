@@ -71,6 +71,7 @@ export function SaleDialog({
   payoutOptions,
   shippingRates,
   trigger,
+  initialOpen = false,
 }: {
   sale?: EditableSale;
   items: SellableItem[];
@@ -79,8 +80,9 @@ export function SaleDialog({
   payoutOptions: string[];
   shippingRates: ShippingRateOption[];
   trigger?: React.ReactNode;
+  initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [selected, setSelected] = useState<SelectedSellable[]>([]);
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);

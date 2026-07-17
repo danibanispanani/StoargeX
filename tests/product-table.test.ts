@@ -101,7 +101,15 @@ describe("product table configuration", () => {
     });
     expect(buildProductWhere(parseProductTableQuery({ preset: "low-stock" }), 3)).toMatchObject({
       AND: expect.arrayContaining([
-        { inventoryPositions: { some: { active: true, quantityAvailable: { lte: 3 } } } },
+        {
+          inventoryPositions: {
+            some: {
+              active: true,
+              quantityReceived: { gt: 1 },
+              quantityAvailable: { gt: 0, lte: 3 },
+            },
+          },
+        },
       ]),
     });
     expect(buildProductOrderBy(parseProductTableQuery({ sort: "updatedAt", direction: "desc" }))).toEqual([

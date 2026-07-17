@@ -80,6 +80,77 @@ const CHECKS = [
     `,
   },
   {
+    name: "return_movement_reused_across_allocations",
+    severity: "error",
+    sql: `
+      SELECT organization_id, movement_id, COUNT(*) AS allocation_count
+      FROM (
+        SELECT organization_id, receipt_movement_id AS movement_id
+        FROM return_allocations
+        WHERE receipt_movement_id IS NOT NULL
+        UNION ALL
+        SELECT organization_id, restock_movement_id AS movement_id
+        FROM return_allocations
+        WHERE restock_movement_id IS NOT NULL
+        UNION ALL
+        SELECT organization_id, defective_movement_id AS movement_id
+        FROM return_allocations
+        WHERE defective_movement_id IS NOT NULL
+      ) linked_movements
+      GROUP BY organization_id, movement_id
+      HAVING COUNT(*) > 1
+    `,
+  },
+  {
+    name: "return_movement_link_mismatch",
+    severity: "error",
+    sql: `
+      SELECT ra.id, ra.organization_id, linked.kind, linked.movement_id
+      FROM return_allocations ra
+      CROSS JOIN LATERAL (
+        VALUES
+          ('receipt', ra.receipt_movement_id, 'RETURN_RECEIPT'),
+          ('restock', ra.restock_movement_id, 'RETURN_RESTOCK'),
+          ('defective', ra.defective_movement_id, 'RETURN_DEFECTIVE')
+      ) AS linked(kind, movement_id, expected_type)
+      LEFT JOIN inventory_movements im ON im.id = linked.movement_id
+      WHERE linked.movement_id IS NOT NULL
+        AND (
+          im.id IS NULL
+          OR im.organization_id <> ra.organization_id
+          OR im.movement_type::text <> linked.expected_type
+        )
+    `,
+  },
+  {
+    name: "supplier_return_dispatch_without_valid_movement",
+    severity: "error",
+    sql: `
+      SELECT srl.id, srl.organization_id, sr.status, srl.outbound_movement_id
+      FROM supplier_return_lines srl
+      JOIN supplier_returns sr ON sr.id = srl.supplier_return_id
+      LEFT JOIN inventory_movements im ON im.id = srl.outbound_movement_id
+      WHERE sr.status IN (
+        'DISPATCHED',
+        'ARRIVED',
+        'REFUND_PENDING',
+        'PARTIALLY_REFUNDED',
+        'REFUNDED',
+        'CREDIT_PENDING',
+        'REPLACEMENT_PENDING',
+        'COMPLETED'
+      )
+        AND (
+          srl.outbound_movement_id IS NULL
+          OR im.id IS NULL
+          OR im.organization_id <> srl.organization_id
+          OR im.inventory_position_id <> srl.inventory_position_id
+          OR im.movement_type <> 'SUPPLIER_RETURN_OUT'
+          OR im.quantity <> srl.quantity
+        )
+    `,
+  },
+  {
     name: "sale_line_without_sale",
     severity: "error",
     sql: `
@@ -142,6 +213,17 @@ const CHECKS = [
         SELECT organization_id, debt_number AS number FROM debts WHERE debt_number IS NOT NULL
       ) docs
       GROUP BY organization_id, number
+      HAVING COUNT(*) > 1
+    `,
+  },
+  {
+    name: "duplicate_recurring_expense_occurrences",
+    severity: "error",
+    sql: `
+      SELECT organization_id, recurring_source_expense_id, incurred_at, COUNT(*) AS count
+      FROM expenses
+      WHERE recurring_source_expense_id IS NOT NULL
+      GROUP BY organization_id, recurring_source_expense_id, incurred_at
       HAVING COUNT(*) > 1
     `,
   },

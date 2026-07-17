@@ -65,7 +65,7 @@ export default async function AppLayout({
           featureAccess={featureAccess}
         />
         <AddonTrialBanner featureName="Konsignation" access={consignmentAccess} />
-        <main className="min-w-0 flex-1 px-3 py-3 sm:px-4 lg:px-5">
+        <main className="min-w-0 flex-1 overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5">
           <div className="mb-3 hidden sm:block">
             <Breadcrumbs />
           </div>

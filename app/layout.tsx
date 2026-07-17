@@ -20,16 +20,16 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StoargeX – Warenwirtschaft für Handels-GbRs",
+  title: "StorageX – Warenwirtschaft für Handels-GbRs",
   description:
-    "Handelsware über eBay, Vinted, Kleinanzeigen & Co. kaufen und verkaufen – Steuer, Marge, Retouren und Team automatisch im Griff.",
+    "Handelsware über Plattformkonten kaufen und verkaufen – Steuer, Marge, Retouren und Team im gemeinsamen Arbeitsstand.",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="de" suppressHydrationWarning>
+    <html lang="de" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >

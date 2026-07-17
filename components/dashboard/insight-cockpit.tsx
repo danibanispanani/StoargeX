@@ -340,7 +340,7 @@ export function InsightCockpit({
           eyebrow="Inventory Health"
           title="Bestandslage"
           description="Reale Bestands-Buckets, Reichweitensignale und gebundenes Eigenkapital – ohne synthetischen Score."
-          definition="Mengen stammen aus InventoryPosition-Buckets. Niedriger Bestand: Produkt hatte mehr als eine Einheit und liegt jetzt bei höchstens dem Organisations-Schwellenwert. Langsam: seit mehr als 90 Tagen verfügbar. Gebundenes Kapital: verfügbarer Eigenbestand × EK netto."
+          definition="Mengen stammen aus InventoryPosition-Buckets. Niedriger Eigenbestand: Produkt hatte mehr als eine eigene Einheit und liegt jetzt bei höchstens dem Organisations-Schwellenwert. Langsam: seit mehr als 90 Tagen verfügbar. Gebundenes Kapital: verfügbarer Eigenbestand × EK netto."
           action={{ label: "Lager öffnen", href: "/lager?view=stock" }}
         >
           <div className="p-4">
@@ -377,7 +377,7 @@ export function InsightCockpit({
             </div>
           </div>
           <div className="border-t">
-            <LedgerMetric label="Niedriger Bestand" value={String(snapshot.inventory.lowStockProducts)} detail="Produkte am Schwellenwert" href="/produkte?preset=low-stock" />
+            <LedgerMetric label="Niedriger Eigenbestand" value={String(snapshot.inventory.lowStockProducts)} detail="Eigene Produkte am Schwellenwert" href="/lager?view=stock&bestand=niedrig" />
             <LedgerMetric label="Langsame Artikel" value={`${snapshot.inventory.slowStockUnits} Stk.`} detail="Seit mehr als 90 Tagen verfügbar" href="/lager?view=stock&alter=langsam" />
             <LedgerMetric label="Gebundenes Kapital" value={formatEuro(snapshot.inventory.boundCapitalCents)} detail="Verfügbarer Eigenbestand × EK netto" href="/lager?view=stock" />
           </div>

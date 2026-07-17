@@ -486,7 +486,7 @@ export async function loadLowStockAlerts(
       select: { title: true, variant: true, status: true },
     }),
     db.inventoryPosition.findMany({
-      where: { active: true },
+      where: { active: true, inventoryType: "OWNED" },
       select: {
         quantityAvailable: true,
         quantityReceived: true,

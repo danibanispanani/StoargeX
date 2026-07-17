@@ -1,5 +1,35 @@
 # Findings and Decisions
 
+## Prompt 12 - StorageX beta release gate
+
+### Execution frame
+- Prompt 12 starts from clean commit `8a77c66` on `phase-1/inventory-datamodel`.
+- The cumulative codebase indexes to 3,732 nodes and 9,926 edges. Dominant release seams are `requireOrg`, transactional domain services, `applyInventoryMovement`, import/export services, feature access, reporting, and AuditLog.
+- The isolated QA tenant and password-only MEMBER account from prior phases remain the safe browser target. OWNER/ADMIN actions require the application’s intentional 2FA policy and must be proven through server-side tests or a separately controlled QA owner, not by weakening authentication.
+- Session policy disables subagents. All requested review and simplify lenses therefore run inline; this limitation affects execution machinery, not review scope.
+
+### Tooling evidence
+- `agent-browser` 0.32.1 is callable as a direct binary from the existing npm cache and supplies sessions, network HAR, Web Vitals, React/hydration inspection, screenshots, mobile viewport, and console/error inspection.
+- `browse` 0.9.5 exposes `cdp`, satisfying Browser Trace’s observer prerequisite; Node 24.13.0 exceeds the Node 18 minimum.
+- Next DevTools reports `upgrade_required` because the project is on Next.js 15.5.20. The beta gate will not introduce a Next 16 framework upgrade.
+- The shadcn audit checklist requires correct imports, configured remote image patterns where applicable, installed dependencies, clean lint/typecheck, and browser verification.
+- The approved QA database reports all 23 repository migrations applied; there is no schema drift before beta scenarios begin.
+
+### Release-risk map
+- Highest-risk domains are inventory movement/allocation, return idempotency, tenant/RLS boundaries, billing/webhook authorization, imports, and cumulative dashboard reporting.
+- Hot-path architecture is intentionally deep: route/actions delegate to `requireOrg`, audit, calculations, feature access, and transactional services rather than mutating stock or tenant data directly.
+- Browser testing must include both functional journeys and operational paper cuts for the primary persona: a reseller operator who needs fast, trustworthy answers without hidden state changes.
+
+### Final release decision
+
+- All deterministic gates pass: Prisma validate/generate, 23-current-migration status, TypeScript, ESLint, 60 Vitest files/364 tests, 17 integrity checks, production build, and whitespace validation.
+- Browser QA covers the core route matrix at 1440/1280/768/390, focus restoration, mobile navigation, drawer behavior, import Dry Run/commit, filtered export, role-denied export, console, network, hydration, and overflow.
+- Direct CDP tracing captured 1,196 events across Dashboard, Lager, and Import Center with no runtime/network error.
+- Dashboard Lighthouse is 97 Performance / 100 Accessibility. Sales improved from 35/94 to 71/95 by replacing the unpaginated 300-row render with server-side view filtering, 50-row pagination, and lazy edit forms.
+- Inline correctness, standards, testing, performance, adversarial, code-quality, reuse, and efficiency review found no remaining P0/P1 defect. The sales query contract received focused regression tests.
+- Known medium/low limitations are instanzlocal rate limiting, content-signature/malware upload hardening, remaining sales-table CPU cost, and external live Stripe/email/restore verification.
+- Controlled beta decision: `STORAGEX BETA READY: YES`.
+
 ## Prompt 11 - Billing entitlements and consignment add-on
 
 ### Execution frame
@@ -702,3 +732,15 @@
 2. Route- und Server-Action-Gates einschließlich Rollen und erhaltener Daten.
 3. Stripe-Signatur, Event-Idempotenz, Basis-/Add-on-Trennung, Audit und Fehlernachvollziehbarkeit.
 4. Pricing-/Billing-View-Model und klare Statusdarstellung.
+## Prompt 12 query discipline
+
+- Two broad codebase/search reads exceeded the available output window and were not used as release evidence.
+- Follow-up inspection is intentionally file-scoped and scenario-scoped so every finding remains reproducible.
+
+## Prompt 12 release evidence
+
+- Focused domain/security suite: 35 files, 209 tests, all passing.
+- Prisma schema validation and client generation pass after removing a stale StorageX-only engine lock.
+- Tracked-secret scan found only placeholders and test-only Stripe webhook values.
+- Upload validation currently checks MIME and size but not file signatures.
+- Middleware rate limiting is intentionally in-memory/per-instance and is not a distributed production limiter.
