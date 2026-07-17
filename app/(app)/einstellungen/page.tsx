@@ -9,6 +9,12 @@ import { OrderFormatForm } from "@/components/settings/order-format-form";
 import { GdprCard } from "@/components/settings/gdpr-card";
 import { LowStockCard } from "@/components/settings/low-stock-card";
 import { BillingCard } from "@/components/settings/billing-card";
+import { getFeatureAccess } from "@/lib/feature-access";
+import {
+  FEATURE_KEYS,
+  toFeatureEntitlementSnapshot,
+} from "@/lib/services/feature-entitlement-service";
+import { configuredConsignmentTrialDays } from "@/lib/billing-config";
 import { ThemeSelector } from "@/components/theme/theme-selector";
 import {
   OptionListCard,
@@ -24,10 +30,11 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default async function SettingsPage() {
-  const { organization, membership, db } = await requireOrg();
+  const context = await requireOrg();
+  const { organization, membership, db } = context;
   const canEdit = hasMinRole(membership.role, "ADMIN");
 
-  const [taxRates, platforms, zmOptions, payoutOptions, taskAreaOptions] = await Promise.all([
+  const [taxRates, platforms, zmOptions, payoutOptions, taskAreaOptions, consignmentDecision] = await Promise.all([
     db.taxRate.findMany({ orderBy: [{ country: "asc" }, { name: "asc" }] }),
     db.platform.findMany({ orderBy: { name: "asc" } }),
     db.selectOption.findMany({
@@ -42,7 +49,9 @@ export default async function SettingsPage() {
       where: { kind: "TASK_AREA", active: true },
       orderBy: { sortOrder: "asc" },
     }),
+    getFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT),
   ]);
+  const consignmentAccess = toFeatureEntitlementSnapshot(consignmentDecision);
 
   return (
     <div className="space-y-6">
@@ -106,8 +115,8 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>Abo &amp; Abrechnung</CardTitle>
           <CardDescription>
-            Plan der Organisation – Upgrades schalten Berichte, Versand,
-            Konsignation und den Zugangsdaten-Tresor frei.
+            Basistarif, separat buchbare Add-ons, Testphasen und
+            Stripe-Verwaltung der Organisation.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -115,6 +124,8 @@ export default async function SettingsPage() {
             tier={organization.subscriptionTier}
             hasSubscription={Boolean(organization.stripeCustomerId)}
             isOwner={membership.role === "OWNER"}
+            consignmentAccess={consignmentAccess}
+            consignmentTrialDays={configuredConsignmentTrialDays()}
           />
         </CardContent>
       </Card>

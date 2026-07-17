@@ -1,6 +1,7 @@
 import { Check, Minus } from "lucide-react";
 import { TIERS } from "@/lib/billing";
 import { PricingTiers } from "@/components/marketing/pricing-tiers";
+import { ConsignmentAddonPricing } from "@/components/marketing/consignment-addon-pricing";
 import { Reveal } from "@/components/marketing/reveal";
 import {
   MarketingFooter,
@@ -16,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
+import { configuredConsignmentTrialDays } from "@/lib/billing-config";
 
 // Feature-Vergleich (eigener Entwurf – "Abschnitt 7" des Briefings lag nicht
 // vor; zentral anpassbar). true = enthalten, string = Detailangabe.
@@ -27,7 +29,7 @@ const COMPARISON: Array<{ feature: string; free: boolean | string; pro: boolean 
   { feature: "Teammitglieder", free: "2", pro: "Unbegrenzt", business: "Unbegrenzt" },
   { feature: "Berichte & KPI-Auswertungen", free: false, pro: true, business: true },
   { feature: "Versandtarife & Kalkulator", free: false, pro: true, business: true },
-  { feature: "Konsignation (Fremdfirmen-Ware)", free: false, pro: false, business: true },
+  { feature: "Konsignation (Fremdfirmen-Ware)", free: "Add-on", pro: "Add-on", business: "Enthalten" },
   { feature: "Zugangsdaten-Tresor (AES-256)", free: false, pro: false, business: true },
   { feature: "Support", free: "Community", pro: "E-Mail", business: "Priorität" },
 ];
@@ -44,6 +46,9 @@ export default async function PricingPage({
   searchParams: Promise<{ feature?: string; erforderlich?: string }>;
 }) {
   const { feature, erforderlich } = await searchParams;
+  const isConsignmentFeature =
+    feature?.toLocaleLowerCase("de").includes("konsignation") ?? false;
+  const trialDays = configuredConsignmentTrialDays();
 
   return (
     <div className="public-shell flex min-h-screen flex-col">
@@ -64,16 +69,28 @@ export default async function PricingPage({
           {feature && (
             <Alert className="mx-auto mt-6 max-w-xl border-cargo-amber/50">
               <AlertDescription>
-                <strong>{feature}</strong> ist ab dem{" "}
-                <strong>{erforderlich === "BUSINESS" ? "Business" : "Pro"}</strong>
-                -Plan verfügbar. Wähle unten einen Plan, um das Modul
-                freizuschalten.
+                {isConsignmentFeature ? (
+                  <>
+                    <strong>Konsignation</strong> ist in Business enthalten und
+                    zu Free oder Pro separat als Add-on mit Testphase
+                    aktivierbar.
+                  </>
+                ) : (
+                  <>
+                    <strong>{feature}</strong> ist ab dem{" "}
+                    <strong>
+                      {erforderlich === "BUSINESS" ? "Business" : "Pro"}
+                    </strong>
+                    -Plan verfügbar.
+                  </>
+                )}
               </AlertDescription>
             </Alert>
           )}
 
           <div className="mt-10">
             <PricingTiers tiers={TIERS} />
+            <ConsignmentAddonPricing trialDays={trialDays} />
           </div>
         </section>
 

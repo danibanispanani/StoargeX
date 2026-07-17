@@ -6,6 +6,7 @@ export type KnownFeatureKey = (typeof FEATURE_KEYS)[keyof typeof FEATURE_KEYS];
 export type FeatureKey = KnownFeatureKey | (string & Record<never, never>);
 export type EntitlementStatus =
   | "ACTIVE"
+  | "GRACE_PERIOD"
   | "INACTIVE"
   | "SCHEDULED"
   | "EXPIRED"
@@ -26,6 +27,7 @@ export interface FeatureEntitlementGrant {
 export interface FeatureEntitlementDecision {
   enabled: boolean;
   source: EntitlementSource | "LEGACY_TIER" | null;
+  status: EntitlementStatus | null;
   grantId: string | null;
   validUntil: Date | null;
 }
@@ -33,8 +35,11 @@ export interface FeatureEntitlementDecision {
 export interface FeatureEntitlementSnapshot {
   enabled: boolean;
   source: FeatureEntitlementDecision["source"];
+  status: FeatureEntitlementDecision["status"];
   validUntil: string | null;
   trialDaysRemaining: number | null;
+  graceDaysRemaining: number | null;
+  cancelAtPeriodEnd: boolean;
 }
 
 const LEGACY_TIER_FEATURES: Readonly<Record<SubscriptionTier, readonly string[]>> = {
@@ -54,8 +59,13 @@ export function isEntitlementGrantActive(
   grant: FeatureEntitlementGrant,
   at: Date = new Date()
 ): boolean {
+  const statusAllowsAccess =
+    grant.status === "ACTIVE" ||
+    (grant.status === "GRACE_PERIOD" && grant.endsAt !== null) ||
+    (grant.status === "CANCELLED" && grant.endsAt !== null);
+
   return (
-    grant.status === "ACTIVE" &&
+    statusAllowsAccess &&
     grant.startsAt.getTime() <= at.getTime() &&
     (grant.endsAt === null || grant.endsAt.getTime() > at.getTime())
   );
@@ -108,6 +118,7 @@ export function evaluateFeatureEntitlement(input: {
     return {
       enabled: true,
       source: grant.source,
+      status: grant.status,
       grantId: grant.id,
       validUntil: grant.endsAt,
     };
@@ -120,12 +131,19 @@ export function evaluateFeatureEntitlement(input: {
     return {
       enabled: true,
       source: "LEGACY_TIER",
+      status: "ACTIVE",
       grantId: null,
       validUntil: null,
     };
   }
 
-  return { enabled: false, source: null, grantId: null, validUntil: null };
+  return {
+    enabled: false,
+    source: null,
+    status: null,
+    grantId: null,
+    validUntil: null,
+  };
 }
 
 export function hasFeatureEntitlement(
@@ -138,20 +156,30 @@ export function toFeatureEntitlementSnapshot(
   decision: FeatureEntitlementDecision,
   at: Date = new Date()
 ): FeatureEntitlementSnapshot {
+  const remainingDays = decision.validUntil
+    ? Math.max(
+        0,
+        Math.ceil(
+          (decision.validUntil.getTime() - at.getTime()) / (24 * 60 * 60 * 1000)
+        )
+      )
+    : null;
   const trialDaysRemaining =
     decision.enabled && decision.source === "TRIAL" && decision.validUntil
-      ? Math.max(
-          0,
-          Math.ceil(
-            (decision.validUntil.getTime() - at.getTime()) / (24 * 60 * 60 * 1000)
-          )
-        )
+      ? remainingDays
+      : null;
+  const graceDaysRemaining =
+    decision.enabled && decision.status === "GRACE_PERIOD"
+      ? remainingDays
       : null;
 
   return {
     enabled: decision.enabled,
     source: decision.source,
+    status: decision.status,
     validUntil: decision.validUntil?.toISOString() ?? null,
     trialDaysRemaining,
+    graceDaysRemaining,
+    cancelAtPeriodEnd: decision.enabled && decision.status === "CANCELLED",
   };
 }

@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-07-17 - Prompt 11 started
+
+- Confirmed a clean Prompt-10 baseline and the exact requested commit.
+- Loaded persistent planning, deep-module design, proof-first testing, and complete-work execution workflows.
+- Recorded the entitlement, route/action, webhook, and billing UI seams supplied by the prompt as the TDD contract.
+- Began the existing schema/service/Stripe/pricing/navigation audit before production edits.
+
+## 2026-07-17 - Prompt 11 implementation and verification
+
+- Added the additive entitlement lifecycle, Stripe references, and tenant-protected billing webhook event ledger; deployed the additive migration to the approved QA database.
+- Added central price classification, lifecycle projection, fixed grace-period handling, canonical Stripe synchronization, event-level locking/idempotency, retry/failure recording, and audit writes.
+- Added OWNER-only Stripe add-on checkout, one-time full-feature trial, environment-backed manual enablement, and consistent pricing/settings/navigation/banner states without deleting consignment data.
+- Extended secret-free organization data portability with billing event records and documented configuration, lifecycle, role, webhook, rollout, and recovery behavior.
+- Structured inline review resolved out-of-order Stripe event risk by retrieving the canonical subscription for every subscription event before synchronization.
+- Authenticated browser QA passed `/einstellungen` and `/konsignation` plus public pricing at desktop and 390 px; no application console errors, failed requests, hydration errors, or horizontal overflow were found.
+- Prisma validate/generate, TypeScript, ESLint, 59 Vitest files with 361 tests, 13/13 integrity checks, production build, migration deployment/status, diff checks, and a credential-shape scan pass. The verified scope is ready for the requested commit.
+
 ## 2026-07-17 - Prompt 10 started
 
 - Confirmed a clean Prompt-9 baseline and loaded the persistent planning, deep-module design, surgical implementation, and complete-work shipping workflows.

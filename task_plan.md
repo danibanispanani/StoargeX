@@ -1,4 +1,66 @@
-# Task Plan: Prompt 10 Data Portability, GDPR and Backups
+# Task Plan: Prompt 11 Billing Entitlements and Consignment Add-on
+
+## Goal
+Decouple consignment access from rigid base subscriptions by deepening the existing additive entitlement module with trials, manual activation, Stripe add-ons, cancellation-at-period-end, grace periods, expiry, auditable idempotent webhook processing, and consistent billing/pricing UI without deleting or rewriting consignment data.
+
+## Current Phase
+Complete
+
+## Confirmed Test Seams
+- Pure entitlement evaluation and state transitions: trial, active, grace, cancelled-at-period-end, expired.
+- Protected consignment route access and server-action mutation gates.
+- Stripe webhook signature verification, idempotency, entitlement synchronization, audit, and failure traceability.
+- Pricing/billing view model and retained-data behavior without destructive mutations.
+
+## Phases
+
+### Phase 1: Existing architecture and product contract
+- [x] Audit entitlement schema/service, subscription tiers, Stripe checkout/webhook, route/action gates, navigation, pricing/settings UI, audit and tests
+- [x] Define one deep add-on billing interface over the existing `FeatureEntitlement` seam
+- [x] Record migration compatibility, configuration contract, failure semantics, and role behavior
+- **Status:** complete
+
+### Phase 2: Proof-first entitlement and persistence foundation
+- [x] Add failing tests for all required lifecycle states, access decisions, retained data, roles, and webhook idempotency
+- [x] Add only safe additive Prisma fields/models/indexes required for billing event traceability
+- [x] Implement deterministic entitlement lifecycle evaluation and billing synchronization
+- **Status:** complete
+
+### Phase 3: Stripe, route/action gates, and billing UI
+- [x] Add configured Stripe add-on checkout and idempotent signed webhook handling
+- [x] Apply server-side mutation/read/export policy while preserving all consignment rows and relations
+- [x] Update navigation, trial banner, pricing and billing/settings surfaces consistently
+- **Status:** complete
+
+### Phase 4: Documentation and integrated verification
+- [x] Create `docs/consignment-addon-billing.md`
+- [x] Run migration review, Prisma validate/generate, focused/full tests, TypeScript, ESLint, integrity check, production build, and browser validation
+- [x] Run simplify and structured code review; resolve all actionable findings
+- **Status:** complete
+
+### Phase 5: Commit
+- [x] Verify a scoped secret-free diff and repository state
+- [x] Commit exactly `feat: add consignment addon and trial entitlements`
+- **Status:** complete
+
+## Constraints
+- Preserve the complete consignment domain and all stored data/relations.
+- Extend existing subscription tiers and `FeatureEntitlement`; do not create a parallel access system.
+- Server-side authorization remains authoritative; UI visibility is only a projection.
+- Stripe behavior is enabled only with productive configuration and every event is signature-verified and idempotent.
+- No automatic consignment deletion or functional degradation during a valid trial.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Sandboxed integrity check could not reach the configured QA database | 1 | Re-ran the unchanged read-only integrity command with approved network access; all 13 invariants passed. |
+| Sandboxed production build could not download configured Google fonts | 1 | Re-ran the unchanged build with approved network access; the production build passed. |
+| Browser validation needed authenticated database access | 1 | Started the local server with approved network access and reused the isolated password-only QA account. |
+| Structured review subagent dispatch is disabled by session policy | 1 | Ran the correctness, security, reliability, migration, testing, and maintainability lenses inline and resolved the one actionable ordering issue. |
+
+---
+
+# Historical Task Plan: Prompt 10 Data Portability, GDPR and Backups
 
 ## Goal
 Complete StorageX data portability by extending the established `ImportBatch`/`SourceReference` pipeline with central import/export centers, understandable CSV/XLSX templates, tenant-safe full-domain exports, complete secret-free GDPR coverage, and a deployment-compatible encrypted backup/restore workflow.

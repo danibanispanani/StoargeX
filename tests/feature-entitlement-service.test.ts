@@ -61,7 +61,59 @@ describe("evaluateFeatureEntitlement", () => {
         grants: [grant({ source: "TRIAL", endsAt })],
         at: NOW,
       })
-    ).toEqual({ enabled: true, source: "TRIAL", grantId: "grant-1", validUntil: endsAt });
+    ).toEqual({
+      enabled: true,
+      source: "TRIAL",
+      status: "ACTIVE",
+      grantId: "grant-1",
+      validUntil: endsAt,
+    });
+  });
+
+  it("keeps a grace period active only until its fixed end", () => {
+    const endsAt = new Date("2026-07-16T10:00:00.000Z");
+    const graceGrant = grant({ status: "GRACE_PERIOD", endsAt });
+
+    expect(
+      evaluateFeatureEntitlement({
+        organizationId: "org-1",
+        featureKey: FEATURE_KEYS.CONSIGNMENT,
+        grants: [graceGrant],
+        at: NOW,
+      })
+    ).toMatchObject({ enabled: true, status: "GRACE_PERIOD", validUntil: endsAt });
+
+    expect(
+      evaluateFeatureEntitlement({
+        organizationId: "org-1",
+        featureKey: FEATURE_KEYS.CONSIGNMENT,
+        grants: [graceGrant],
+        at: endsAt,
+      }).enabled
+    ).toBe(false);
+  });
+
+  it("keeps a cancel-at-period-end add-on active only until period end", () => {
+    const endsAt = new Date("2026-08-01T00:00:00.000Z");
+    const cancelledGrant = grant({ status: "CANCELLED", endsAt });
+
+    expect(
+      evaluateFeatureEntitlement({
+        organizationId: "org-1",
+        featureKey: FEATURE_KEYS.CONSIGNMENT,
+        grants: [cancelledGrant],
+        at: NOW,
+      })
+    ).toMatchObject({ enabled: true, status: "CANCELLED", validUntil: endsAt });
+
+    expect(
+      evaluateFeatureEntitlement({
+        organizationId: "org-1",
+        featureKey: FEATURE_KEYS.CONSIGNMENT,
+        grants: [cancelledGrant],
+        at: endsAt,
+      }).enabled
+    ).toBe(false);
   });
 
   it("erhält die bestehende BUSINESS-Tier-Berechtigung additiv", () => {
@@ -118,8 +170,47 @@ describe("evaluateFeatureEntitlement", () => {
     expect(toFeatureEntitlementSnapshot(decision, NOW)).toEqual({
       enabled: true,
       source: "TRIAL",
+      status: "ACTIVE",
       validUntil: "2026-07-15T09:59:59.000Z",
       trialDaysRemaining: 2,
+      graceDaysRemaining: null,
+      cancelAtPeriodEnd: false,
+    });
+  });
+
+  it("projects grace and cancellation state for billing and navigation", () => {
+    const graceDecision = evaluateFeatureEntitlement({
+      organizationId: "org-1",
+      featureKey: FEATURE_KEYS.CONSIGNMENT,
+      grants: [
+        grant({
+          status: "GRACE_PERIOD",
+          endsAt: new Date("2026-07-15T09:59:59.000Z"),
+        }),
+      ],
+      at: NOW,
+    });
+    const cancelledDecision = evaluateFeatureEntitlement({
+      organizationId: "org-1",
+      featureKey: FEATURE_KEYS.CONSIGNMENT,
+      grants: [
+        grant({
+          status: "CANCELLED",
+          endsAt: new Date("2026-07-20T00:00:00.000Z"),
+        }),
+      ],
+      at: NOW,
+    });
+
+    expect(toFeatureEntitlementSnapshot(graceDecision, NOW)).toMatchObject({
+      status: "GRACE_PERIOD",
+      graceDaysRemaining: 2,
+      cancelAtPeriodEnd: false,
+    });
+    expect(toFeatureEntitlementSnapshot(cancelledDecision, NOW)).toMatchObject({
+      status: "CANCELLED",
+      graceDaysRemaining: null,
+      cancelAtPeriodEnd: true,
     });
   });
 });

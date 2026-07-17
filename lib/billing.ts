@@ -72,6 +72,24 @@ export const TIERS: TierInfo[] = [
   },
 ];
 
+export const CONSIGNMENT_ADDON = {
+  id: "CONSIGNMENT",
+  name: "Konsignation",
+  priceLabel: "Preis im sicheren Stripe-Checkout",
+  features: [
+    "Fremdbestand und K-Nummern",
+    "Partner- und Auszahlungsbezug",
+    "Verkauf, Retouren und Movement-Historie",
+    "Keine Datenloeschung bei Deaktivierung",
+  ],
+} as const;
+
+export function consignmentAvailabilityForTier(
+  tier: SubscriptionTier
+): "ADD_ON" | "INCLUDED" {
+  return tier === "BUSINESS" ? "INCLUDED" : "ADD_ON";
+}
+
 /** Routen, die ein Mindest-Tier erfordern (Feature-Gating in der Middleware). */
 export const GATED_ROUTES: Array<{ prefix: string; tier: SubscriptionTier; label: string }> = [
   { prefix: "/versand", tier: "PRO", label: "Versandtarife" },

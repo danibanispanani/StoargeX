@@ -94,6 +94,7 @@ export const GDPR_REQUIRED_DATASETS = [
   "taskActivities",
   "taskDomainLinks",
   "featureEntitlements",
+  "billingWebhookEvents",
   "legacySaleItems",
 ] as const;
 

@@ -28,7 +28,7 @@ export async function getOrganizationFeatureAccess(input: {
     where: {
       organizationId: input.organizationId,
       featureKey: input.featureKey,
-      status: "ACTIVE",
+      status: { in: ["ACTIVE", "GRACE_PERIOD", "CANCELLED"] },
       startsAt: { lte: at },
       OR: [{ endsAt: null }, { endsAt: { gt: at } }],
     },

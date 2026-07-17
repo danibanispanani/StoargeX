@@ -49,6 +49,14 @@ export function AppNavigationList({
                   access?.source === "TRIAL" &&
                   access.trialDaysRemaining !== null
               );
+              const grace = Boolean(
+                item.featureKey &&
+                  access?.status === "GRACE_PERIOD" &&
+                  access.graceDaysRemaining !== null
+              );
+              const cancelAtPeriodEnd = Boolean(
+                item.featureKey && access?.cancelAtPeriodEnd
+              );
 
               return (
                 <Link
@@ -78,6 +86,16 @@ export function AppNavigationList({
                       {trial ? (
                         <span className="font-mono text-[9px] uppercase tracking-wider text-transit-teal">
                           {access?.trialDaysRemaining}T
+                        </span>
+                      ) : null}
+                      {grace ? (
+                        <span className="font-mono text-[9px] uppercase tracking-wider text-cargo-amber">
+                          Grace {access?.graceDaysRemaining}T
+                        </span>
+                      ) : null}
+                      {cancelAtPeriodEnd ? (
+                        <span className="font-mono text-[9px] uppercase tracking-wider text-cargo-amber">
+                          Endet
                         </span>
                       ) : null}
                     </>

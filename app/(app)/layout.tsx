@@ -39,7 +39,13 @@ export default async function AppLayout({
     }),
     getFeatureAccess(orgContext, FEATURE_KEYS.CONSIGNMENT).catch((error) => {
       console.error("App-Shell: Entitlement konnte nicht geladen werden.", error);
-      return { enabled: false, source: null, grantId: null, validUntil: null } as const;
+      return {
+        enabled: false,
+        source: null,
+        status: null,
+        grantId: null,
+        validUntil: null,
+      } as const;
     }),
   ]);
   const consignmentAccess = toFeatureEntitlementSnapshot(consignmentDecision, now);

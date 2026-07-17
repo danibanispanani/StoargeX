@@ -50,6 +50,7 @@ export default async function ConsignmentPage({
       <FeatureGate
         featureName="Konsignation"
         description="Fremdbestand, Partnerabrechnung und K-Nummern bleiben vollständig erhalten. Aktiviere das Add-on, um die operativen Workflows wieder zu öffnen."
+        ctaHref="/pricing?feature=Konsignation#konsignation-addon"
       />
     );
   }

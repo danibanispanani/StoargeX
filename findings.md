@@ -1,5 +1,29 @@
 # Findings and Decisions
 
+## Prompt 11 - Billing entitlements and consignment add-on
+
+### Execution frame
+- Prompt 11 starts from clean commit `8359ec9` on the established `phase-1/inventory-datamodel` branch; the requested final commit is explicit.
+- Work is additive over existing base subscriptions, `FeatureEntitlement`, consignment services, Stripe configuration, and AuditLog.
+- The user-defined test list confirms the public seams: lifecycle evaluation, protected route/action access, retained data/roles, and signed idempotent webhook processing.
+- Session policy disables subagents, so proof-first slices, implementation, browser attempt, simplify, and review run inline.
+
+### Initial constraints
+- No consignment row or relationship may be deleted when access expires.
+- Trial and active add-on share full role-appropriate functionality.
+- Missing productive Stripe configuration must degrade to a clear unavailable checkout state, never an unverified activation path.
+- Billing event processing requires durable idempotency and failure visibility, not only in-memory or log-only deduplication.
+
+### Implemented architecture and review
+- Entitlement evaluation now distinguishes active, trial, grace-period, cancel-at-period-end, and expired access while preserving the legacy Business-tier grant.
+- Stripe base subscriptions and the consignment add-on are classified independently. Add-on changes cannot downgrade the base tier, and no entitlement transition deletes consignment records.
+- Signed Stripe events run under a PostgreSQL advisory lock with a durable unique event record, retry count, bounded error detail, tenant-safe RLS, and atomic entitlement/AuditLog updates.
+- Review found that distinct Stripe events can arrive out of order even when each event is idempotent. Subscription events now retrieve the canonical current Stripe subscription before synchronization, preventing a delayed older event from reactivating expired access.
+- Trial start, manual internal activation, add-on checkout, portal access, route access, and mutations remain server-authorized; OWNER-only billing controls are not inferred from UI visibility.
+- Public pricing and protected billing settings consistently explain Business inclusion, separate Free/Pro add-on availability, full trial behavior, fixed grace period, cancellation at period end, and retained data.
+- Browser QA passed public pricing and authenticated settings/consignment flows at desktop and 390 px, with no document overflow, application console error, failed request, or hydration failure.
+- Final automated proof covers the additive migration, tenant policies, lifecycle, roles, route/action gates, webhook signature/idempotency/retry, base/add-on separation, retained data, canonical Stripe state, integrity, lint, type checking, and production compilation.
+
 ## Prompt 10 - Data portability, GDPR and backups
 
 ### Execution frame
@@ -646,3 +670,35 @@
 - Every score/metric needs an explicit period, data basis, formula/definition, and operational drill-down.
 - Filters must remain tenant-scoped and distinguish platform from marketplace account, owned from consignment stock, customer from supplier returns, and task member scope.
 - Browser validation can use the now-working Chrome DevTools MCP with the persistent password-only QA `MEMBER`; ADMIN-only settings remain outside dashboard scope.
+# Prompt 11 — Billing Entitlements and Consignment Add-on
+
+## Bestehende Architektur und Erweiterungsnaht
+
+- `lib/services/feature-entitlement-service.ts` ist die zentrale, reine Auswertungslogik für Feature-Rechte. Sie kennt bereits `CONSIGNMENT`, Quellen (`SUBSCRIPTION`, `ADD_ON`, `TRIAL`, `MANUAL`) und den kompatiblen Legacy-Zugriff des `BUSINESS`-Tarifs.
+- `lib/feature-access.ts` ist die tenant-sichere Datenbank-/Request-Grenze. Sie muss künftig nicht nur `ACTIVE`, sondern auch zeitlich noch gültige Zustände wie Grace Period und „zum Laufzeitende gekündigt“ an die zentrale Auswertung geben.
+- Konsignationsmutationen nutzen bereits `requireOrgFeature(...)`; die bestehende serverseitige Gate-Seam wird erweitert und nicht dupliziert.
+- Navigation und Trial-Banner nutzen bereits den Feature-Snapshot. Status, Restlaufzeit und Upgrade-Ziel können dort additiv ergänzt werden.
+- `/konsignation` fragt den Feature-Zugriff vor den Fachdaten ab. Ohne Recht bleiben Daten erhalten und Mutationen gesperrt; der vorhandene zentrale Datenexport bietet weiterhin einen definierten, rollenbeschränkten Datenzugang.
+
+## Billing-Lücken
+
+- Die vorhandene Stripe-Checkout-/Webhook-Logik verwaltet nur Basistarife. Ein Add-on-Abonnement würde derzeit als unbekannter Basistarif interpretiert und könnte den Basistarif fälschlich auf `FREE` setzen.
+- Die Webhook-Signatur wird bereits mit dem Raw Body geprüft, aber es gibt noch keine dauerhafte Event-Idempotenz, kein Fehlerprotokoll und keine atomare Audit-Erfassung.
+- Die bestehende Pricing-Seite stellt Konsignation ausschließlich als Business-Leistung dar. Sie muss Business-Kompatibilität und das separat buchbare Add-on gleichzeitig korrekt erklären.
+
+## Gewählte additive Modellierung
+
+- `EntitlementStatus` erhält `GRACE_PERIOD`.
+- `CANCELLED` bedeutet bei zukünftigem `endsAt`: zum Laufzeitende gekündigt und bis dahin aktiv. Ohne zukünftiges Ende ist es nicht aktiv.
+- `GRACE_PERIOD` ist ausschließlich bis `endsAt` aktiv; `EXPIRED` und `INACTIVE` sind nicht aktiv.
+- `FeatureEntitlement` erhält optionale Stripe-Referenzen, ohne Legacy-Datensätze zu erzwingen.
+- Ein tenant-verknüpftes `BillingWebhookEvent` mit global eindeutiger Stripe-Event-ID hält Status, Versuchszahl, Fehler und Abschlusszeit fest. Die Verarbeitung wird pro Event atomar serialisiert; Fachänderung und `AuditLog` erfolgen gemeinsam.
+- Stripe-Abonnements werden über erkannte Price-IDs und Metadaten klassifiziert. Basis- und Add-on-Synchronisierung dürfen sich nicht gegenseitig verändern.
+- `past_due` startet eine feste, nicht bei jedem Webhook verlängerbare Grace Period; `trialing`, `active`, `cancel_at_period_end` und abgelaufene Zustände werden explizit projiziert.
+
+## Bestätigte Test-Seams
+
+1. Lifecycle-Auswertung: Trial, aktiv, Grace Period, zum Laufzeitende gekündigt, abgelaufen.
+2. Route- und Server-Action-Gates einschließlich Rollen und erhaltener Daten.
+3. Stripe-Signatur, Event-Idempotenz, Basis-/Add-on-Trennung, Audit und Fehlernachvollziehbarkeit.
+4. Pricing-/Billing-View-Model und klare Statusdarstellung.
