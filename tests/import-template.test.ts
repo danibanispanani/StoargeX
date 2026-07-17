@@ -83,4 +83,20 @@ describe("import template standard", () => {
     expect(customer.fields.some((field) => field.key === "einkaufsnummer")).toBe(false);
     expect(supplier.fields.some((field) => field.key === "orderid")).toBe(false);
   });
+
+  it("defines the team task template with assignee email and team scope", () => {
+    const template = buildImportTemplate("aufgaben", "example");
+
+    expect(template.headers).toEqual(expect.arrayContaining([
+      "Titel *",
+      "Beschreibung",
+      "Bereich",
+      "Priorität",
+      "Status",
+      "Frist",
+      "Bearbeiter-E-Mail",
+      "Teamaufgabe",
+    ]));
+    expect(template.rows[0]).toMatchObject({ teamaufgabe: "Ja" });
+  });
 });

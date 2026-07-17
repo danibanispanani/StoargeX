@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-07-15 — Prompt 7 implementation
+
+- Completed the additive task-domain migration, server-side permission/workflow services, eight operational views, Kanban/list workspace, multi-assignee/Primary editing, checklist-derived progress, activity/comments, snooze/archive, domain links, in-app attention signals, and task import/export extensions.
+- Structured simplify/review pass fixed legacy-assignee notification compatibility, imported-assignee recipients, calendar-day deadline semantics, snoozed-alert exclusion, UTF-8 text corruption, cancelled-task labeling, mobile detail spacing, bounded server inputs, and post-creation task-detail editing.
+- Green local gates: Prisma validate/generate, 62 focused tests, 298/298 full tests, TypeScript, ESLint, diff check, and network-enabled production build.
+- Remaining external-state gates are deferred: the repository `.env` database has not been proven to be isolated QA, so migration deploy/status, integrity check, and authenticated Prompt-7 browser QA still require explicit target confirmation. The locally verified implementation is committed as requested to establish a clean Prompt-8 baseline.
+- Added the additive task-domain migration (`snoozed_until`, relational `TaskDomainLink`, constraints, and RLS).
+- Added central task workflow and permission policies with TDD coverage.
+- Rebuilt `/aufgaben` with eight URL-backed views, Kanban/list modes, team assignments, checklists, comments, activity notifications, snoozing, and domain links.
+- Extended the existing task import template/pipeline and export contract; documented the workflow and the attachment-security boundary.
+- Prisma validation/generation, focused tests, and TypeScript are green; integrated gates and structured review are active.
+
+
+## 2026-07-15 — Prompt 7 started
+- Loaded planning-with-files, codebase-design, TDD, and ce-work; the active session policy disables subagents, so implementation and review run inline.
+- Confirmed a clean Prompt-6 commit baseline and accepted the user's explicit test seams as the TDD contract.
+- Began the full task-domain, permission, import, notification, and UI compatibility audit before production edits.
+
+
 ## 2026-07-15 — Prompt 6 audit complete
 - Completed the return-domain, route, migration, import/export, dashboard, and tenant seam audit.
 - Selected the existing customer-return service plus one new supplier-return deep module; Phase 2 proof-first implementation is active.

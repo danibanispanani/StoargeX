@@ -945,15 +945,48 @@ async function commitDebtImport(
 async function commitTaskImport(input: ImportRunInput, batchId: string, plannedRows: PlannedRow[]): Promise<number> {
   let imported = 0;
   for (const planned of plannedRows) {
+    const assignee = planned.row.bearbeiter_email?.trim()
+      ? await input.tx.membership.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            user: { email: { equals: planned.row.bearbeiter_email.trim(), mode: "insensitive" } },
+          },
+          select: { userId: true },
+        })
+      : null;
+    const scope = parseBoolTolerant(planned.row.teamaufgabe) ? "TEAM" : "PERSONAL";
+    const assignedUserId = assignee?.userId ?? (scope === "PERSONAL" ? input.createdById : null);
     const task = await input.tx.task.create({
       data: {
         organizationId: input.organizationId,
         title: planned.row.aufgabe?.trim() || "Importierte Aufgabe",
         description: optional(planned.row.anmerkung),
         area: optional(planned.row.bereich),
-        priority: "MEDIUM",
-        status: "OPEN",
+        priority: parseTaskPriority(planned.row.prioritaet),
+        status: parseTaskStatus(planned.row.status),
+        dueDate: parseDateFlexible(planned.row.frist),
+        scope,
+        assigneeId: assignedUserId,
         createdById: input.createdById,
+        ...(assignedUserId ? { assignments: {
+          create: [{
+            organizationId: input.organizationId,
+            userId: assignedUserId,
+            role: "PRIMARY",
+          }],
+        } } : {}),
+        activities: {
+          create: {
+            organizationId: input.organizationId,
+            actorId: input.createdById,
+            action: "IMPORTED",
+            details: {
+              source: "ImportBatch",
+              assigneeEmail: planned.row.bearbeiter_email ?? null,
+              recipientIds: assignedUserId ? [assignedUserId] : [],
+            },
+          },
+        },
       },
     });
     await createSourceReference(input.tx, {
@@ -1071,6 +1104,7 @@ interface ImportContext {
     lines: Array<{ productName: string; quantity: number; receivedQuantity: number }>;
   }>;
   supplierReturnSelections: Map<string, SupplierReturnImportSelection>;
+  taskMemberByEmail: Map<string, { userId: string; email: string }>;
 }
 
 interface SupplierReturnImportSelection {
@@ -1306,7 +1340,17 @@ function validateRow(
     if (row.faelligkeit?.trim() && !parseDateFlexible(row.faelligkeit)) errors.push("Fälligkeit ist ungültig.");
     return { status: errors.length ? "ERROR" : "NEW", message: recurring ? "Wiederkehrende Ausgabe wird importiert." : "Einmalige Ausgabe wird importiert.", warnings, errors, targetEntity: "EXPENSE" };
   }
-  if (table === "aufgaben" && !row.aufgabe?.trim()) errors.push("Aufgabe fehlt.");
+  if (table === "aufgaben") {
+    if (!row.aufgabe?.trim()) errors.push("Aufgabe fehlt.");
+    if (row.aufgabe?.trim().length > 300) errors.push("Titel darf maximal 300 Zeichen lang sein.");
+    if (row.frist?.trim() && !parseDateFlexible(row.frist)) errors.push("Frist ist ungültig.");
+    if (row.prioritaet?.trim() && !isTaskPriorityValue(row.prioritaet)) errors.push("Priorität ist ungültig.");
+    if (row.status?.trim() && !isTaskStatusValue(row.status)) errors.push("Status ist ungültig.");
+    if (row.teamaufgabe?.trim() && !isBooleanValue(row.teamaufgabe)) errors.push("Teamaufgabe muss Ja oder Nein sein.");
+    if (row.bearbeiter_email?.trim() && !context.taskMemberByEmail.has(normalize(row.bearbeiter_email))) {
+      errors.push(`Bearbeiter ${row.bearbeiter_email.trim()} ist kein aktives Mitglied dieser Organisation.`);
+    }
+  }
   return { status: errors.length ? "ERROR" : "NEW", message: `Zeile ${rowNumber} wird importiert.`, warnings, errors, targetEntity: table === "aufgaben" ? "TASK" : "LEGACY_ONLY" };
 }
 
@@ -1366,7 +1410,7 @@ async function loadImportContext(
     ? [...new Set(rows.map((row) => row.lagerid?.trim()).filter(Boolean))] as string[]
     : [];
   const productNames = [...new Set(rows.map((row) => row.name?.trim()).filter(Boolean))] as string[];
-  const [inventoryRefs, products, saleRefs, purchases, supplierPositions] = await Promise.all([
+  const [inventoryRefs, products, saleRefs, purchases, supplierPositions, taskMembers] = await Promise.all([
     needsInventory
       ? tx.sourceReference.findMany({
           where: { organizationId, targetEntity: "INVENTORY_POSITION" },
@@ -1408,6 +1452,12 @@ async function loadImportContext(
       ? tx.inventoryPosition.findMany({
           where: { organizationId, inventoryType: "OWNED", inventoryNumber: { in: supplierInventoryNumbers } },
           include: { ownedLot: { include: { purchaseLine: { include: { purchase: true } } } } },
+        })
+      : Promise.resolve([]),
+    table === "aufgaben"
+      ? tx.membership.findMany({
+          where: { organizationId },
+          select: { userId: true, user: { select: { email: true } } },
         })
       : Promise.resolve([]),
   ]);
@@ -1471,6 +1521,10 @@ async function loadImportContext(
         },
       }]];
     })),
+    taskMemberByEmail: new Map(taskMembers.map((membership) => [
+      normalize(membership.user.email),
+      { userId: membership.userId, email: membership.user.email },
+    ])),
   };
 }
 
@@ -1694,6 +1748,34 @@ function expenseInterval(value: string | undefined): "DAY" | "WEEK" | "MONTH" | 
     default:
       return "MONTH";
   }
+}
+
+function parseTaskPriority(value: string | undefined): "LOW" | "MEDIUM" | "HIGH" | "URGENT" {
+  const normalized = normalize(value);
+  if (["urgent", "dringend", "kritisch"].includes(normalized)) return "URGENT";
+  if (["high", "hoch"].includes(normalized)) return "HIGH";
+  if (["low", "niedrig"].includes(normalized)) return "LOW";
+  return "MEDIUM";
+}
+
+function isTaskPriorityValue(value: string): boolean {
+  return ["urgent", "dringend", "kritisch", "high", "hoch", "medium", "mittel", "normal", "low", "niedrig"].includes(normalize(value));
+}
+
+function parseTaskStatus(value: string | undefined): "OPEN" | "IN_PROGRESS" | "DONE" | "CANCELLED" {
+  const normalized = normalize(value).replace(/[_-]+/g, " ");
+  if (["in progress", "in arbeit", "bearbeitung"].includes(normalized)) return "IN_PROGRESS";
+  if (["done", "erledigt", "abgeschlossen"].includes(normalized)) return "DONE";
+  if (["cancelled", "canceled", "abgebrochen", "storniert"].includes(normalized)) return "CANCELLED";
+  return "OPEN";
+}
+
+function isTaskStatusValue(value: string): boolean {
+  return ["open", "offen", "in progress", "in arbeit", "bearbeitung", "done", "erledigt", "abgeschlossen", "cancelled", "canceled", "abgebrochen", "storniert"].includes(normalize(value).replace(/[_-]+/g, " "));
+}
+
+function isBooleanValue(value: string): boolean {
+  return ["true", "false", "wahr", "falsch", "ja", "nein", "x", "1", "0", "yes", "no", "✓"].includes(normalize(value));
 }
 
 function requiredCents(value: string | undefined): number {

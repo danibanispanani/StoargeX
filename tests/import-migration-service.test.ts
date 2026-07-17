@@ -30,6 +30,7 @@ function dryRunTx(options: {
     purchaseNumber: string;
     quantityAvailable: number;
   }>;
+  members?: Array<{ userId: string; email: string }>;
 } = {}) {
   const existing = new Set(options.existingHashes ?? []);
   const sourceReferences = [
@@ -100,6 +101,12 @@ function dryRunTx(options: {
         lines: purchase.lines.map((line) => ({ ...line, ownedLots: [] })),
       })),
     },
+    membership: {
+      findMany: async () => (options.members ?? []).map((member) => ({
+        userId: member.userId,
+        user: { email: member.email },
+      })),
+    },
   };
   return tx as unknown as Prisma.TransactionClient;
 }
@@ -122,6 +129,42 @@ async function dryRun(table: Parameters<typeof runMigrationImport>[0]["table"], 
 }
 
 describe("import migration pipeline", () => {
+  it("Dry Run resolves a known task assignee by tenant member email", async () => {
+    const result = await dryRun("aufgaben", [{
+      aufgabe: "Wareneingang pruefen",
+      bearbeiter_email: "team@example.test",
+      teamaufgabe: "Ja",
+      frist: "18.07.2026",
+    }], dryRunTx({ members: [{ userId: "user-team", email: "team@example.test" }] }));
+
+    expect(result.validCount).toBe(1);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("Dry Run keeps an unknown task assignee as a review error", async () => {
+    const result = await dryRun("aufgaben", [{
+      aufgabe: "Wareneingang pruefen",
+      bearbeiter_email: "foreign@example.test",
+      teamaufgabe: "Ja",
+    }]);
+
+    expect(result.validCount).toBe(0);
+    expect(result.errors[0]?.message).toMatch(/kein aktives Mitglied/i);
+  });
+
+  it("Dry Run rejects invalid task workflow values row by row", async () => {
+    const result = await dryRun("aufgaben", [{
+      aufgabe: "Wareneingang pruefen",
+      prioritaet: "irgendwann",
+      status: "vielleicht",
+      teamaufgabe: "eventuell",
+      frist: "morgen",
+    }]);
+
+    expect(result.validCount).toBe(0);
+    expect(result.errors.map((item) => item.message).join(" ")).toMatch(/Priorität|Status|Teamaufgabe|Frist/);
+  });
+
   it("Dry Run: Ausgaben validieren Pflichtfelder und Wiederholungsintervall", async () => {
     const valid = await dryRun("ausgaben", [{
       bezeichnung: "eBay-Shop",

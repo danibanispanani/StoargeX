@@ -1,4 +1,64 @@
-# Task Plan: Prompt 6 Customer and Supplier Return Center
+# Task Plan: Prompt 7 Team Task Management
+
+## Goal
+Evolve the existing task Kanban into a tenant-safe team workspace while preserving legacy tasks and archive behavior. Put assignment, permission, checklist/progress, activity, snooze, domain-link, notification, and import invariants behind one deep task module; expose the requested operational views and Kanban/list modes; document, verify, and commit the complete result.
+
+## Current Phase
+Local implementation, review, and commit complete; external QA database/browser validation remains deferred
+
+## Confirmed test seams
+- Task-domain module interface: assignment invariants, derived progress, archive/snooze, links, activity, notifications, and tenant checks.
+- Permission-policy interface: explicit READONLY/MEMBER/ADMIN/OWNER decisions for create, self/team assignment, team edit, and archive.
+- Existing import pipeline interface: task templates, user resolution, dry run/review, commit, ImportBatch, and SourceReference.
+
+## Phases
+
+### Phase 1: Evidence and compatibility audit
+- [x] Read governance/domain/table/import docs plus task schema, migrations, actions, UI, activity, notifications, import/export, roles, and tests
+- [x] Map existing Task data/archive compatibility and identify additive schema/service seams
+- [x] Record permission matrix, notification semantics, domain-link strategy, and proof plan
+- **Status:** completed
+
+### Phase 2: Proof-first task domain and migration
+- [x] Add failing tests for multiple assignees, checklist progress, permissions, archive/snooze, domain links, notification triggers, import resolution, and tenant isolation
+- [x] Add a strictly additive migration with nullable/defaulted compatibility fields and RLS-safe relations
+- [x] Implement task collaboration and permission modules without replacing legacy records
+- **Status:** completed
+
+### Phase 3: Team workspace, import/export, and notifications
+- [x] Rebuild `/aufgaben` with the eight requested views plus Kanban/list presentation and meaningful derived progress
+- [x] Add create/detail flows for assignments, primary owner, checklist, comments/activity, archive, snooze, and optional domain links
+- [x] Extend the existing import/export pipeline and in-app notification surface; do not add unsafe uploads or external email infrastructure
+- **Status:** completed
+
+### Phase 4: Documentation and integrated verification
+- [x] Create `docs/team-task-workflow.md` and update governing navigation/table documents where required
+- [x] Run focused/full tests, Prisma validate/generate, typecheck, lint, and production build
+- [ ] Deploy/status-check the additive migration, run integrity check, and perform authenticated browser QA against an explicitly confirmed isolated QA database
+- **Status:** blocked on explicit confirmation that the `.env` database is isolated QA and approved for migration
+
+### Phase 5: Simplify, review, and commit
+- [x] Run simplification and structured code review; resolve all actionable findings and residuals
+- [x] Confirm a secret-free clean diff and commit exactly `feat: rebuild tasks for team collaboration`
+- **Status:** completed
+
+## Constraints
+- Preserve every existing task and the current archive behavior; no destructive migration or forced legacy rewrite.
+- Authorization is enforced server-side and tested for every role.
+- Checklist progress is derived; tasks without checklists use status rather than a fabricated percentage.
+- Attachments are omitted unless the audit finds an existing secure upload foundation.
+- Reuse AuditLog, ImportBatch, SourceReference, tenant RLS, role helpers, and operational table patterns.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Local portable PostgreSQL is unavailable and Docker is not supported on this laptop | 1 | Do not invent a second database runtime; use the existing external environment only after its purpose is explicitly confirmed |
+| The default `.env` points to an external database, while `.env.qa.local` contains only QA account metadata and does not prove the database is isolated QA | 1 | Stop before `prisma migrate deploy`, integrity checks, authenticated browser QA, and commit; request explicit database-target confirmation |
+| Sandboxed production build cannot fetch the three configured Google fonts | 1 | Re-ran the unchanged build with approved network access; the final build completed successfully |
+
+---
+
+# Historical Task Plan: Prompt 6 Customer and Supplier Return Center
 
 ## Goal
 Split the operational return center into independent customer-return and supplier-return routes and tables, preserve the established relational customer-return allocation/movement workflow, deepen the additive supplier-return module around transactional inventory movements and document numbering, add separate dashboard/import/export surfaces, verify tenant and idempotency invariants, and commit the complete Prompt 6 result.

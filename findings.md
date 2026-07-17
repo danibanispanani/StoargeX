@@ -1,5 +1,13 @@
 # Findings and Decisions
 
+## Prompt 7 — Implementation decisions
+- `TaskActivity` remains the durable event source for assignment, comment, and status notifications; deadline attention is derived so resolved or rescheduled deadlines never leave stale notifications.
+- The current upload helper exposes public image paths and lacks task-scoped download authorization, so task attachments are deliberately omitted until private storage exists.
+- Existing `TaskAssignment`, `TaskChecklistItem`, and `TaskActivity` are deepened; no parallel task foundation is introduced.
+- `TaskDomainLink` is relational and tenant-owned. Database checks enforce exactly one type-matching target; server resolution verifies target ownership before creation.
+- MEMBER can assign work to active members of the same organization. MEMBER edits require creator/assignee participation; archive additionally requires creator or Primary. READONLY has no mutation route, while ADMIN/OWNER can manage all tenant tasks.
+
+
 ## Prompt 6 — Selected module interfaces and proof strategy
 - Keep `returns-service.ts` authoritative for customer allocation and inventory disposition. Add explicit non-stock transition helpers there instead of letting route actions invent status rules.
 - Introduce one supplier-return deep module responsible for line planning, LR document creation, state transitions, dispatch idempotency, refund classification, audit events, and the call into the existing inventory service.
@@ -500,6 +508,13 @@
 - The active QA catalogs contain 17 reviewed eBay leaf categories with 265 generated rules and 13 published Kaufland groups. Ambiguous or structurally unsupported fee cases remain excluded/review-required rather than being presented as official active facts.
 - Responsive QA showed no document-level horizontal overflow. Dense product and expense tables keep their own bounded horizontal scrollers at tablet/mobile widths.
 - Coordinate activation of some Radix controls was unreliable in the local browser driver, while semantic DOM activation and keyboard behavior worked correctly. This was treated as an automation-driver limitation after dialogs, selection state, Escape close, and focus restoration were verified in the live application.
+# Prompt 7 initial constraints (2026-07-15)
+
+- Prompt 7 must deepen the existing Task foundation and preserve current records/archive behavior; new collaboration structures must be additive.
+- Server-side permission policy and tenant scoping are first-class domain invariants, not UI visibility rules.
+- Existing ImportBatch/SourceReference and operational table foundations remain the required seams for task import/export and views.
+- No attachment implementation is authorized unless an existing secure upload/storage module is found during audit.
+
 # Prompt 6 initial constraints (2026-07-15)
 
 - Prompt 6 explicitly requires two operational modules rather than a shared table: customer returns preserve the existing allocation chain, while supplier returns extend the additive Prompt-1/4 foundation.

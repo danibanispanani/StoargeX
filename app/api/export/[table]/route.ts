@@ -347,18 +347,37 @@ export async function GET(
     }
     case "aufgaben": {
       const tasks = await db.task.findMany({
-        include: { assignee: { select: { name: true, email: true } } },
+        include: {
+          assignee: { select: { name: true, email: true } },
+          assignments: { include: { user: { select: { name: true, email: true } } } },
+          checklistItems: { select: { completed: true } },
+          createdBy: { select: { name: true, email: true } },
+          domainLinks: { select: { type: true, labelSnapshot: true } },
+        },
         orderBy: { createdAt: "desc" },
       });
-      rows = tasks.map((t) => ({
-        Aufgabe: t.title,
-        Zuständig: t.assignee ? t.assignee.name ?? t.assignee.email : "Alle",
-        Frist: date(t.dueDate),
+      rows = tasks.map((t) => {
+        const assignees = t.assignments.length
+          ? t.assignments.map((item) => item.user.email).join(", ")
+          : t.assignee?.email ?? "";
+        const completed = t.checklistItems.filter((item) => item.completed).length;
+        return {
+        Titel: t.title,
+        Beschreibung: t.description ?? "",
         Bereich: t.area ?? "",
         Priorität: t.priority === "HIGH" || t.priority === "URGENT" ? "Hoch" : t.priority === "MEDIUM" ? "Mittel" : "Niedrig",
         Status: t.status === "DONE" ? "Erledigt" : t.status === "IN_PROGRESS" ? "In Arbeit" : t.status === "CANCELLED" ? "Abgebrochen" : "Offen",
-        Anmerkung: t.description ?? "",
-      }));
+        Frist: date(t.dueDate),
+        "Bearbeiter-E-Mail": assignees,
+        Teamaufgabe: t.scope === "TEAM" ? "Ja" : "Nein",
+        "Primär verantwortlich": t.assignments.find((item) => item.role === "PRIMARY")?.user.email ?? t.assignee?.email ?? "",
+        Ersteller: t.createdBy.name ?? t.createdBy.email,
+        Fortschritt: t.checklistItems.length ? `${completed}/${t.checklistItems.length}` : t.status === "DONE" ? "Erledigt" : "Statusgeführt",
+        Archiviert: t.archived ? "Ja" : "Nein",
+        Wiedervorlage: date(t.snoozedUntil),
+        Fachobjekte: t.domainLinks.map((link) => link.labelSnapshot ?? link.type).join(", "),
+        };
+      });
       break;
     }
     case "ausgaben": {

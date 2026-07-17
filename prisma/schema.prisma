@@ -215,6 +215,15 @@ enum TaskAssignmentRole {
   COLLABORATOR
 }
 
+enum TaskDomainLinkType {
+  PURCHASE
+  INVENTORY_POSITION
+  SALE
+  CUSTOMER_RETURN
+  SUPPLIER_RETURN
+  DEBT
+}
+
 enum FeeRuleOrigin {
   MANUAL
   IMPORTED
@@ -497,6 +506,7 @@ model Organization {
   taskAssignments            TaskAssignment[]
   taskChecklistItems         TaskChecklistItem[]
   taskActivities             TaskActivity[]
+  taskDomainLinks            TaskDomainLink[]
   feeSchedules               FeeSchedule[]
   feeRules                   FeeRule[]
   feeCategories              FeeCategory[]
@@ -863,6 +873,7 @@ model Sale {
   returns            Return[]
   consignments       ConsignmentInventory[]
   debtLinks          DebtSaleLink[]
+  taskLinks          TaskDomainLink[]
 
   @@index([organizationId])
   @@index([organizationId, soldAt])
@@ -901,9 +912,10 @@ model Return {
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sale         Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
   returnLines  ReturnLine[]
+  taskLinks    TaskDomainLink[] @relation("TaskCustomerReturn")
 
   @@unique([organizationId, returnNumber])
   @@index([organizationId])
@@ -1025,6 +1037,7 @@ model Debt {
   purchaseLink   DebtPurchaseLink?
   saleLink       DebtSaleLink?
   inventoryLinks DebtInventoryLink[]
+  taskLinks      TaskDomainLink[]
 
   @@unique([organizationId, debtNumber])
   @@index([organizationId])
@@ -1095,6 +1108,7 @@ model Task {
   // Erledigte Aufgaben werden archiviert statt gelöscht (Filter im Board)
   archived        Boolean      @default(false)
   dueDate         DateTime?    @map("due_date")
+  snoozedUntil    DateTime?    @map("snoozed_until")
   assigneeId      String?      @map("assignee_id")
   createdById     String       @map("created_by_id")
   completedAt     DateTime?    @map("completed_at")
@@ -1107,9 +1121,11 @@ model Task {
   assignments    TaskAssignment[]
   checklistItems TaskChecklistItem[]
   activities     TaskActivity[]
+  domainLinks    TaskDomainLink[]
 
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, snoozedUntil])
   @@index([assigneeId])
   @@map("tasks")
 }
@@ -1318,6 +1334,7 @@ model Purchase {
   paymentAccount  PayoutAccount?     @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
   supplierReturns SupplierReturn[]
   receipts        PurchaseReceipt[]
+  taskLinks       TaskDomainLink[]
 
   @@unique([organizationId, purchaseNumber])
   @@index([organizationId])
@@ -1446,6 +1463,7 @@ model InventoryPosition {
   debtLinks           DebtInventoryLink[]
   supplierReturnLines SupplierReturnLine[]
   purchaseReceiptLine PurchaseReceiptLine?
+  taskLinks           TaskDomainLink[]
 
   @@unique([organizationId, inventoryNumber])
   @@index([organizationId])
@@ -1854,6 +1872,7 @@ model SupplierReturn {
   supplier     BusinessPartner?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   createdBy    User                 @relation("SupplierReturnCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   lines        SupplierReturnLine[]
+  taskLinks    TaskDomainLink[]
 
   @@unique([organizationId, returnNumber])
   @@index([organizationId])
@@ -1952,6 +1971,40 @@ model TaskActivity {
   @@index([taskId, createdAt])
   @@index([actorId])
   @@map("task_activities")
+}
+
+model TaskDomainLink {
+  id                  String             @id @default(cuid())
+  organizationId      String             @map("organization_id")
+  taskId              String             @map("task_id")
+  type                TaskDomainLinkType
+  purchaseId          String?            @map("purchase_id")
+  inventoryPositionId String?            @map("inventory_position_id")
+  saleId              String?            @map("sale_id")
+  customerReturnId    String?            @map("customer_return_id")
+  supplierReturnId    String?            @map("supplier_return_id")
+  debtId              String?            @map("debt_id")
+  labelSnapshot       String?            @map("label_snapshot")
+  createdAt           DateTime           @default(now()) @map("created_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task              Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  purchase          Purchase?          @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  inventoryPosition InventoryPosition? @relation(fields: [inventoryPositionId], references: [id], onDelete: Cascade)
+  sale              Sale?              @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  customerReturn    Return?            @relation("TaskCustomerReturn", fields: [customerReturnId], references: [id], onDelete: Cascade)
+  supplierReturn    SupplierReturn?    @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+  debt              Debt?              @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([taskId])
+  @@index([purchaseId])
+  @@index([inventoryPositionId])
+  @@index([saleId])
+  @@index([customerReturnId])
+  @@index([supplierReturnId])
+  @@index([debtId])
+  @@map("task_domain_links")
 }
 
 model FeeSchedule {
