@@ -185,6 +185,9 @@ export async function runMigrationImport(input: {
     case "ausgaben":
       importedCount = await commitExpenseImport(input, batch.id, validRows);
       break;
+    case "gebuehrenregeln":
+      importedCount = await commitFeeRuleImport(input, batch.id, validRows, context);
+      break;
   }
 
   await input.tx.importBatch.update({
@@ -279,6 +282,8 @@ function planRows(
   summary: ImportSummary
 ): PlannedRow[] {
   const plannedProductKeys = new Set<string>();
+  const plannedFeeRuleKeys = new Set<string>();
+  const plannedRowHashes = new Set<string>();
   const plannedRows: PlannedRow[] = rows.map((row, index) => {
     const rowNumber = index + 1;
     const rowHash = hashRow(row);
@@ -292,6 +297,16 @@ function planRows(
       });
       return { row, rowNumber, rowHash, legacyReference, status: "UNCHANGED" };
     }
+    if (plannedRowHashes.has(rowHash)) {
+      addReview(summary, {
+        row: rowNumber,
+        status: "CONFLICT",
+        message: "Identische Zeile kommt in dieser Datei mehrfach vor.",
+        legacyReference,
+      });
+      return { row, rowNumber, rowHash, legacyReference, status: "CONFLICT" };
+    }
+    plannedRowHashes.add(rowHash);
 
     const validation = validateRow(table, row, rowNumber, context);
     if (validation.errors.length > 0) {
@@ -319,6 +334,20 @@ function planRows(
         return { row, rowNumber, rowHash, legacyReference, status: "CONFLICT" };
       }
       plannedProductKeys.add(key);
+    }
+    if (table === "gebuehrenregeln" && validation.status === "NEW") {
+      const key = feeRuleKeyFromImportRow(row, context);
+      if (key && plannedFeeRuleKeys.has(key)) {
+        addReview(summary, {
+          row: rowNumber,
+          status: "CONFLICT",
+          message: "Gültigkeits- und Geltungsbereich kommen in dieser Datei mehrfach vor.",
+          legacyReference,
+          targetEntity: "FEE_RULE",
+        });
+        return { row, rowNumber, rowHash, legacyReference, status: "CONFLICT" };
+      }
+      if (key) plannedFeeRuleKeys.add(key);
     }
 
     addReview(summary, {
@@ -1077,6 +1106,61 @@ async function commitExpenseImport(input: ImportRunInput, batchId: string, plann
   return imported;
 }
 
+async function commitFeeRuleImport(
+  input: ImportRunInput,
+  batchId: string,
+  plannedRows: PlannedRow[],
+  context: ImportContext
+): Promise<number> {
+  let imported = 0;
+  for (const planned of plannedRows) {
+    const row = planned.row;
+    const platform = context.feePlatformsByName.get(normalize(row.plattform))!;
+    const account = row.marktplatzkonto?.trim()
+      ? context.feeAccountsByName.get(
+          feeAccountImportKey(platform.id, row.marktplatzkonto)
+        )
+      : undefined;
+    const record = await input.tx.feeRule.create({
+      data: {
+        organizationId: input.organizationId,
+        platformId: platform.id,
+        marketplaceAccountId: account?.id,
+        category: optional(row.kategorie),
+        itemCondition: itemCondition(row.zustand) ?? null,
+        validFrom: parseDateFlexible(row.gueltig_ab)!,
+        validUntil: parseDateFlexible(row.gueltig_bis),
+        percentage: percentDecimal(row.prozent),
+        fixedFeeCents: parseEuroTolerant(row.fix) ?? 0,
+        minimumFeeCents: parseEuroTolerant(row.minimum),
+        maximumFeeCents: parseEuroTolerant(row.maximum),
+        advertisingPercent: percentDecimal(row.werbung),
+        paymentFeePercent: percentDecimal(row.zahlungsgebuehr),
+        vatTreatment: feeVatTreatment(row.ust_behandlung),
+        priority: parseIntegerStrict(row.prioritaet) ?? 0,
+        origin: "IMPORTED",
+        source: optional(row.quelle) ?? input.metadata?.fileName ?? "Import",
+        active: row.aktiv?.trim() ? parseBoolTolerant(row.aktiv) : true,
+        metadata: {
+          importedVia: "ImportBatch",
+          sourceFile: input.metadata?.fileName ?? null,
+        },
+      },
+    });
+    await createSourceReference(input.tx, {
+      organizationId: input.organizationId,
+      batchId,
+      sheetName: input.metadata?.sheetName,
+      planned,
+      targetEntity: "FEE_RULE",
+      targetEntityId: record.id,
+      status: "NEW",
+    });
+    imported++;
+  }
+  return imported;
+}
+
 interface ImportRunInput {
   tx: Tx;
   organizationId: string;
@@ -1105,6 +1189,9 @@ interface ImportContext {
   }>;
   supplierReturnSelections: Map<string, SupplierReturnImportSelection>;
   taskMemberByEmail: Map<string, { userId: string; email: string }>;
+  feePlatformsByName: Map<string, { id: string; name: string }>;
+  feeAccountsByName: Map<string, { id: string; platformId: string; displayName: string }>;
+  feeRuleKeys: Set<string>;
 }
 
 interface SupplierReturnImportSelection {
@@ -1340,6 +1427,52 @@ function validateRow(
     if (row.faelligkeit?.trim() && !parseDateFlexible(row.faelligkeit)) errors.push("Fälligkeit ist ungültig.");
     return { status: errors.length ? "ERROR" : "NEW", message: recurring ? "Wiederkehrende Ausgabe wird importiert." : "Einmalige Ausgabe wird importiert.", warnings, errors, targetEntity: "EXPENSE" };
   }
+  if (table === "gebuehrenregeln") {
+    const platform = context.feePlatformsByName.get(normalize(row.plattform));
+    if (!platform) errors.push(`Plattform "${row.plattform ?? ""}" wurde in dieser Organisation nicht eindeutig gefunden.`);
+    const account = platform && row.marktplatzkonto?.trim()
+      ? context.feeAccountsByName.get(
+          feeAccountImportKey(platform.id, row.marktplatzkonto)
+        )
+      : undefined;
+    if (row.marktplatzkonto?.trim() && !account) {
+      errors.push(`Marktplatzkonto "${row.marktplatzkonto.trim()}" gehört nicht eindeutig zur angegebenen Plattform.`);
+    }
+    const validFrom = parseDateFlexible(row.gueltig_ab);
+    const validUntil = parseDateFlexible(row.gueltig_bis);
+    if (!validFrom) errors.push("Gültig ab ist ungültig.");
+    if (row.gueltig_bis?.trim() && !validUntil) errors.push("Gültig bis ist ungültig.");
+    if (validFrom && validUntil && validUntil < validFrom) errors.push("Gültig bis darf nicht vor Gültig ab liegen.");
+    validatePercentField(row.prozent, "Prozentuale Gebühr", errors, true);
+    validatePercentField(row.werbung, "Werbegebühr", errors);
+    validatePercentField(row.zahlungsgebuehr, "Zahlungsgebühr", errors);
+    for (const [field, label] of [["fix", "Fixe Gebühr"], ["minimum", "Mindestwert"], ["maximum", "Maximalwert"]] as const) {
+      const amount = row[field]?.trim() ? parseEuroTolerant(row[field]) : 0;
+      if (amount === null || amount < 0) errors.push(`${label} ist ungültig.`);
+    }
+    const minimum = parseEuroTolerant(row.minimum);
+    const maximum = parseEuroTolerant(row.maximum);
+    if (minimum !== null && maximum !== null && maximum < minimum) {
+      errors.push("Maximalwert darf nicht kleiner als Mindestwert sein.");
+    }
+    if (row.zustand?.trim() && !itemCondition(row.zustand)) errors.push("Artikelzustand ist ungültig.");
+    if (row.ust_behandlung?.trim() && !["INCLUDED", "EXCLUDED", "UNKNOWN"].includes(row.ust_behandlung.trim().toUpperCase())) {
+      errors.push("USt-Behandlung ist ungültig.");
+    }
+    if (row.prioritaet?.trim() && parseIntegerStrict(row.prioritaet) === null) errors.push("Priorität muss eine Ganzzahl sein.");
+    if (row.aktiv?.trim() && !isBooleanValue(row.aktiv)) errors.push("Aktiv muss Ja oder Nein sein.");
+    const key = feeRuleKeyFromImportRow(row, context);
+    const duplicate = key ? context.feeRuleKeys.has(key) : false;
+    return {
+      status: errors.length ? "ERROR" : duplicate ? "CONFLICT" : "NEW",
+      message: duplicate
+        ? "Eine Gebührenregel mit gleichem Gültigkeits- und Geltungsbereich existiert bereits."
+        : "Neue Gebührenregel wird importiert.",
+      warnings,
+      errors,
+      targetEntity: "FEE_RULE",
+    };
+  }
   if (table === "aufgaben") {
     if (!row.aufgabe?.trim()) errors.push("Aufgabe fehlt.");
     if (row.aufgabe?.trim().length > 300) errors.push("Titel darf maximal 300 Zeichen lang sein.");
@@ -1410,7 +1543,7 @@ async function loadImportContext(
     ? [...new Set(rows.map((row) => row.lagerid?.trim()).filter(Boolean))] as string[]
     : [];
   const productNames = [...new Set(rows.map((row) => row.name?.trim()).filter(Boolean))] as string[];
-  const [inventoryRefs, products, saleRefs, purchases, supplierPositions, taskMembers] = await Promise.all([
+  const [inventoryRefs, products, saleRefs, purchases, supplierPositions, taskMembers, feePlatforms, feeAccounts, feeRules] = await Promise.all([
     needsInventory
       ? tx.sourceReference.findMany({
           where: { organizationId, targetEntity: "INVENTORY_POSITION" },
@@ -1458,6 +1591,30 @@ async function loadImportContext(
       ? tx.membership.findMany({
           where: { organizationId },
           select: { userId: true, user: { select: { email: true } } },
+        })
+      : Promise.resolve([]),
+    table === "gebuehrenregeln"
+      ? tx.platform.findMany({
+          where: { organizationId },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+    table === "gebuehrenregeln"
+      ? tx.marketplaceAccount.findMany({
+          where: { organizationId },
+          select: { id: true, platformId: true, displayName: true },
+        })
+      : Promise.resolve([]),
+    table === "gebuehrenregeln"
+      ? tx.feeRule.findMany({
+          where: { organizationId },
+          select: {
+            platformId: true,
+            marketplaceAccountId: true,
+            category: true,
+            itemCondition: true,
+            validFrom: true,
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -1525,6 +1682,24 @@ async function loadImportContext(
       normalize(membership.user.email),
       { userId: membership.userId, email: membership.user.email },
     ])),
+    feePlatformsByName: new Map(
+      feePlatforms.map((platform) => [normalize(platform.name), platform])
+    ),
+    feeAccountsByName: new Map(
+      feeAccounts.map((account) => [
+        feeAccountImportKey(account.platformId, account.displayName),
+        account,
+      ])
+    ),
+    feeRuleKeys: new Set(
+      feeRules.map((rule) => feeRuleImportKey({
+        platformId: rule.platformId,
+        marketplaceAccountId: rule.marketplaceAccountId,
+        category: rule.category ?? undefined,
+        condition: rule.itemCondition,
+        validFrom: rule.validFrom,
+      }))
+    ),
   };
 }
 
@@ -1674,6 +1849,7 @@ function primaryLegacyReference(table: TableKey, row: ImportRow, rowNumber: numb
     case "schulden": value = row.refid; break;
     case "aufgaben": value = undefined; break;
     case "ausgaben": value = `${row.zahlungsdatum}:${row.bezeichnung}:${row.brutto}`; break;
+    case "gebuehrenregeln": value = `${row.plattform}:${row.marktplatzkonto ?? ""}:${row.kategorie ?? ""}:${row.zustand ?? ""}:${row.gueltig_ab}`; break;
   }
   return normalizeLegacy(value) || `${table}:row:${rowNumber}`;
 }
@@ -1729,6 +1905,74 @@ function parsePercentTolerant(value: string | undefined): number | null {
   if (!value?.trim()) return null;
   const parsed = Number(value.trim().replace(",", "."));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function validatePercentField(
+  value: string | undefined,
+  label: string,
+  errors: string[],
+  required = false
+): void {
+  if (!value?.trim()) {
+    if (required) errors.push(`${label} fehlt.`);
+    return;
+  }
+  const parsed = parsePercentTolerant(value);
+  if (parsed === null || parsed > 100) errors.push(`${label} muss zwischen 0 und 100 liegen.`);
+}
+
+function percentDecimal(value: string | undefined): string {
+  return (parsePercentTolerant(value) ?? 0).toFixed(4);
+}
+
+function feeVatTreatment(value: string | undefined): "INCLUDED" | "EXCLUDED" | "UNKNOWN" {
+  const normalized = value?.trim().toUpperCase();
+  return normalized === "INCLUDED" || normalized === "EXCLUDED" ? normalized : "UNKNOWN";
+}
+
+function feeAccountImportKey(platformId: string, displayName: string | undefined): string {
+  return `${platformId}:${normalize(displayName)}`;
+}
+
+function feeRuleImportKey(input: {
+  platformId: string;
+  marketplaceAccountId: string | null;
+  category: string | undefined;
+  condition: ItemCondition | null;
+  validFrom: Date;
+}): string {
+  return [
+    input.platformId,
+    input.marketplaceAccountId ?? "",
+    normalize(input.category),
+    input.condition ?? "",
+    [
+      input.validFrom.getFullYear(),
+      String(input.validFrom.getMonth() + 1).padStart(2, "0"),
+      String(input.validFrom.getDate()).padStart(2, "0"),
+    ].join("-"),
+  ].join(":");
+}
+
+function feeRuleKeyFromImportRow(
+  row: ImportRow,
+  context: ImportContext
+): string | null {
+  const platform = context.feePlatformsByName.get(normalize(row.plattform));
+  const validFrom = parseDateFlexible(row.gueltig_ab);
+  if (!platform || !validFrom) return null;
+  const account = row.marktplatzkonto?.trim()
+    ? context.feeAccountsByName.get(
+        feeAccountImportKey(platform.id, row.marktplatzkonto)
+      )
+    : undefined;
+  return feeRuleImportKey({
+    platformId: platform.id,
+    marketplaceAccountId: account?.id ?? null,
+    category: row.kategorie,
+    condition: itemCondition(row.zustand) ?? null,
+    validFrom,
+  });
 }
 
 function expenseStatus(value: string | undefined): "DRAFT" | "POSTED" | "CANCELLED" {

@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { signOut } from "@/auth";
 import type { ActionState } from "@/lib/actions/team";
+import { loadOrganizationPortableData } from "@/lib/data-portability/organization-data";
 
 // DSGVO Art. 15 (Auskunft) / Art. 20 (Datenübertragbarkeit):
 // vollständiger Export aller Organisationsdaten als JSON.
@@ -22,53 +23,7 @@ export type ExportResult = { json: string; filename: string } | { error: string 
 /** Alle Daten der Organisation als JSON exportieren (nur OWNER). */
 export async function exportOrganizationDataAction(): Promise<ExportResult> {
   const { db, organization, userId } = await requireOrg("OWNER");
-
-  const [
-    memberships,
-    invitations,
-    platforms,
-    carriers,
-    taxRates,
-    shippingRates,
-    stockItems,
-    listings,
-    sales,
-    returns,
-    consignments,
-    debts,
-    tasks,
-    credentials,
-    auditLogs,
-  ] = await Promise.all([
-    db.membership.findMany({
-      include: { user: { select: { email: true, name: true } } },
-    }),
-    db.invitation.findMany(),
-    db.platform.findMany(),
-    db.carrier.findMany(),
-    db.taxRate.findMany(),
-    db.shippingRate.findMany(),
-    db.stockItem.findMany(),
-    db.stockItemListing.findMany(),
-    db.sale.findMany(),
-    db.return.findMany(),
-    db.consignmentInventory.findMany(),
-    db.debt.findMany(),
-    db.task.findMany(),
-    // Secrets bleiben verschlüsselt – der Export enthält KEINE Klartext-Secrets
-    db.credential.findMany({
-      select: {
-        id: true,
-        label: true,
-        username: true,
-        platformId: true,
-        notes: true,
-        lastRotatedAt: true,
-        createdAt: true,
-      },
-    }),
-    db.auditLog.findMany({ orderBy: { createdAt: "asc" } }),
-  ]);
+  const payload = await loadOrganizationPortableData(db, organization);
 
   const h = await headers();
   await writeAuditLog({
@@ -79,27 +34,6 @@ export async function exportOrganizationDataAction(): Promise<ExportResult> {
     entityId: organization.id,
     ipAddress: h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
   });
-
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    format: "storagex-export-v1",
-    organization,
-    memberships,
-    invitations,
-    platforms,
-    carriers,
-    taxRates,
-    shippingRates,
-    stockItems,
-    stockItemListings: listings,
-    sales,
-    returns,
-    consignmentInventory: consignments,
-    debts,
-    tasks,
-    credentials, // ohne Secrets
-    auditLogs,
-  };
 
   const date = new Date().toISOString().slice(0, 10);
   return {

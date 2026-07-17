@@ -47,8 +47,8 @@ export function GdprCard({ organizationName }: { organizationName: string }) {
         <div>
           <p className="font-medium">Datenexport (Art. 15/20 DSGVO)</p>
           <p className="text-sm text-muted-foreground">
-            Alle Daten der Organisation als JSON herunterladen. Secrets bleiben
-            verschlüsselt und sind nicht enthalten.
+            Relationalen Organisationskern als JSON herunterladen. Credential-,
+            Auth-, Token-, Passwort-, TOTP- und Recovery-Secrets sind nicht enthalten.
           </p>
         </div>
         <Button variant="outline" onClick={exportData} disabled={exporting}>

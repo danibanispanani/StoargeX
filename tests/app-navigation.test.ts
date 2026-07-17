@@ -10,6 +10,7 @@ describe("app navigation metadata", () => {
       "Retouren",
       "Finanzen",
       "Betrieb",
+      "Daten",
       "Verwaltung",
     ]);
     expect(APP_NAVIGATION.flatMap((section) => section.items).map((item) => item.href)).toEqual([
@@ -28,6 +29,8 @@ describe("app navigation metadata", () => {
       "/versand",
       "/konsignation",
       "/aufgaben",
+      "/daten/import",
+      "/daten/export",
       "/team",
       "/zugangsdaten",
       "/einstellungen/marktplatzkonten",

@@ -261,7 +261,7 @@ export default async function SettingsPage() {
       </Card>
 
       {membership.role === "OWNER" && (
-        <Card>
+        <Card id="daten-dsgvo">
           <CardHeader>
             <CardTitle>Daten &amp; DSGVO</CardTitle>
             <CardDescription>

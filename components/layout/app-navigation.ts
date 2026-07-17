@@ -5,6 +5,8 @@ import {
   Calculator,
   HandCoins,
   Handshake,
+  FileDown,
+  FileUp,
   KeyRound,
   LayoutDashboard,
   Package,
@@ -74,6 +76,13 @@ export const APP_NAVIGATION: readonly AppNavigationSection[] = [
         featureKey: FEATURE_KEYS.CONSIGNMENT,
       },
       { href: "/aufgaben", label: "Aufgaben", Icon: CheckSquare },
+    ],
+  },
+  {
+    label: "Daten",
+    items: [
+      { href: "/daten/import", label: "Import Center", Icon: FileUp },
+      { href: "/daten/export", label: "Export Center", Icon: FileDown },
     ],
   },
   {

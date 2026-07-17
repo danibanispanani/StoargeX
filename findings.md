@@ -1,5 +1,27 @@
 # Findings and Decisions
 
+## Prompt 10 - Data portability, GDPR and backups
+
+### Execution frame
+- Prompt 10 starts from the clean Prompt-9 commit `f35d5c3` on the existing `phase-1/inventory-datamodel` branch; the user explicitly requested the final commit.
+- The change is cross-cutting but has an explicit contract. Work remains inline and serial because the active session policy prohibits subagents.
+- The architectural target is a shared portability catalog over the established import/export engine, not a second import path.
+- Backup automation must be operationally useful without storing dumps, encryption material, or provider credentials in Git.
+
+### Initial evidence
+- Existing reusable seams are `lib/import-export.ts`, `lib/services/import-migration-service.ts`, `components/import-export/import-export-bar.tsx`, authenticated template/export routes, `ImportBatch`, and `SourceReference`.
+- Existing GDPR behavior is concentrated in `lib/actions/gdpr.ts` and its settings card; its relational coverage must be compared model-by-model with the current schema before edits.
+- The central routes `/daten/import` and `/daten/export` do not yet exist; navigation currently exposes only the read-only `/importe` conflict review route.
+
+### Implemented architecture and review
+- `/daten/import` reuses `ImportCenterControls`, `IMPORT_TABLES`, `runMigrationImport`, `ImportBatch`, and `SourceReference`; Gebührenregeln extend the same dry-run/commit path and require ADMIN.
+- `/daten/export` provides tenant-safe relational CSV/XLSX datasets with search and explicit column selection; OWNER receives a sanitized multi-sheet full extract.
+- The DSGVO v2 loader uses only `TenantDb`, explicit safe projections, and recursive secret-key removal. Schema coverage includes current relational data plus legacy `StockItem`, listing, `SaleItem`, and consignment compatibility records.
+- The backup job writes only below runner temp, encrypts before retention, verifies with `pg_restore --list`, optionally captures Supabase Storage through its S3 endpoint, and pins third-party Actions to immutable SHAs.
+- Review fixed four concrete issues: filter limits now apply to filtered results; fee-rule scope duplicates within one file are conflicts; legacy SaleItems are no longer omitted; mutable Action tags are eliminated.
+- The browser connection could not be established because the Windows native-host registry key is missing despite the extension being installed and enabled. No unsupported repair or alternative automation was used.
+- Final automated proof: Prisma validate/generate, TypeScript, full ESLint, 52 Vitest files with 335 tests, 13/13 integrity invariants, production build, and diff whitespace checks pass.
+
 ## Prompt 9 - StorageX Insight Dashboard
 
 ### Reporting seam audit

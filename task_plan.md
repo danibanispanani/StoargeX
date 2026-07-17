@@ -1,4 +1,64 @@
-# Task Plan: Prompt 9 StorageX Insight Dashboard
+# Task Plan: Prompt 10 Data Portability, GDPR and Backups
+
+## Goal
+Complete StorageX data portability by extending the established `ImportBatch`/`SourceReference` pipeline with central import/export centers, understandable CSV/XLSX templates, tenant-safe full-domain exports, complete secret-free GDPR coverage, and a deployment-compatible encrypted backup/restore workflow.
+
+## Current Phase
+Phase 6: committed delivery
+
+## Phases
+
+### Phase 1: Existing pipeline and deployment audit
+- [x] Map every current import template, mapping/dry-run/commit path, export, GDPR query, tenant seam, navigation route, and deployment/backup facility
+- [x] Define one shared portability catalog instead of a parallel import architecture
+- [x] Record explicit coverage, secret exclusions, relationship resolution, and backup trust boundaries
+- **Status:** completed
+
+### Phase 2: Proof-first portability contracts
+- [x] Add focused tests for templates, mapping, dry run, duplicates, CSV/XLSX exports, full-domain coverage, secret exclusion, tenant boundaries, and backup configuration
+- [x] Extend the existing import/export modules only at their established seams
+- [x] Keep ambiguous relationship resolution reviewable and never fabricate internal identifiers
+- **Status:** completed
+
+### Phase 3: Import and export centers
+- [x] Build `/daten/import` over the existing import dialog/service with module history and template guidance
+- [x] Build `/daten/export` with filtered/column-aware module exports and complete CSV/XLSX domain extracts
+- [x] Add route-safe navigation and accessible responsive states
+- **Status:** completed
+
+### Phase 4: GDPR and backup operations
+- [x] Complete tenant-scoped GDPR coverage for the requested relational core and prove credentials/secrets remain excluded
+- [x] Add encrypted daily logical backup automation, retention, status/failure signaling, and a non-destructive restore verification path
+- [x] Document managed-provider backup checks and the operator restore runbook
+- **Status:** completed
+
+### Phase 5: Documentation and integrated verification
+- [x] Create `docs/data-portability.md`, `docs/backup-and-restore.md`, and `docs/gdpr-data-coverage.md`
+- [x] Run focused/full tests, Prisma validate/generate, TypeScript, ESLint, integrity check, production build, browser QA attempt, and diff checks
+- [x] Run simplify and structured code review, resolve actionable findings, and verify no backup artifacts or secrets entered Git
+- **Status:** completed
+
+### Phase 6: Commit
+- [x] Commit the complete verified change exactly as `feat: complete data portability gdpr and backup workflows`
+- **Status:** completed
+
+## Constraints
+- Reuse `ImportBatch`, `SourceReference`, `lib/import-export.ts`, and the existing dry-run/commit service; do not introduce a second import engine.
+- Resolve relationships through visible business identifiers and review ambiguous partner matches; never require user UUIDs.
+- Every query remains tenant-scoped through the existing organization/RLS seams.
+- Never export credentials, encrypted secret payloads, TOTP material, session tokens, or backup encryption keys.
+- Never write database backup payloads into the repository.
+
+## Errors Encountered
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Sandboxed integrity check could not reach the configured Supabase database | 1 | Repeated the same read-only check with approved network access; all 13 invariants passed. |
+| Sandboxed build could not download the three existing Google Fonts | 1 | Repeated the production build with approved network access; compilation, type validation, static generation, and tracing passed. |
+| Embedded browser and Chrome control were unavailable | 1 | Verified that the extension is installed/enabled but the Windows native-host registry entry is missing; did not repair or bypass it. Automated route, component, build, and navigation coverage remains green. |
+
+---
+
+# Historical Task Plan: Prompt 9 StorageX Insight Dashboard
 
 ## Goal
 Rebuild the existing dashboard into a tenant-safe operational insight cockpit that exposes transparent calculations, period comparisons, attention signals, drill-down links, and responsive performance views without replacing existing domain logic or creating decorative KPI/chart grids.

@@ -58,7 +58,7 @@ export async function importRowsAction(
   dryRun: boolean,
   metadata?: ImportMetadata
 ): Promise<ImportResult> {
-  const context = await requireOrg("MEMBER");
+  const context = await requireOrg(table === "gebuehrenregeln" ? "ADMIN" : "MEMBER");
   const { db, organization, userId } = context;
   const consignmentAccess =
     table === "verkauf" || table === "konsignation"
@@ -256,6 +256,8 @@ function revalidateImportViews(table: TableKey) {
   revalidatePath(`/${table === "verkauf" ? "verkauf" : table}`);
   if (table === "einkauf" || table === "wareneingang") revalidatePath("/einkauf");
   if (table === "ausgaben") revalidatePath("/finanzen/ausgaben");
+  if (table === "gebuehrenregeln") revalidatePath("/finanzen/gebuehren");
+  revalidatePath("/daten/import");
   revalidatePath("/produkte");
   revalidatePath("/lager");
   revalidatePath("/dashboard");

@@ -56,6 +56,15 @@ export function ImportExportBar({ table }: { table: TableKey }) {
   );
 }
 
+export function ImportCenterControls({ table }: { table: TableKey }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <TemplateDialog table={table} />
+      <ImportDialog table={table} />
+    </div>
+  );
+}
+
 function ExportDownloadButton({ url, label }: { url: string; label: string }) {
   const [pending, startTransition] = useTransition();
   const requestRef = useRef<AbortController | null>(null);

@@ -31,6 +31,15 @@ function dryRunTx(options: {
     quantityAvailable: number;
   }>;
   members?: Array<{ userId: string; email: string }>;
+  feePlatforms?: Array<{ id: string; name: string }>;
+  feeAccounts?: Array<{ id: string; platformId: string; displayName: string }>;
+  feeRules?: Array<{
+    platformId: string;
+    marketplaceAccountId: string | null;
+    category: string | null;
+    itemCondition: "NEW" | "OPEN_BOX" | "REFURBISHED" | "USED" | "DEFECTIVE" | null;
+    validFrom: Date;
+  }>;
 } = {}) {
   const existing = new Set(options.existingHashes ?? []);
   const sourceReferences = [
@@ -107,6 +116,15 @@ function dryRunTx(options: {
         user: { email: member.email },
       })),
     },
+    platform: {
+      findMany: async () => options.feePlatforms ?? [],
+    },
+    marketplaceAccount: {
+      findMany: async () => options.feeAccounts ?? [],
+    },
+    feeRule: {
+      findMany: async () => options.feeRules ?? [],
+    },
   };
   return tx as unknown as Prisma.TransactionClient;
 }
@@ -181,6 +199,104 @@ describe("import migration pipeline", () => {
     expect(valid.summary.errors).toBe(0);
     expect(invalid.summary.errors).toBe(1);
     expect(invalid.summary.review[0].errors).toEqual(expect.arrayContaining(["Bezeichnung fehlt.", "Zahlungsdatum ist ungültig.", "Betrag brutto ist ungültig."]));
+  });
+
+  it("Dry Run resolves fee rules by tenant platform/account and detects duplicates", async () => {
+    const row = {
+      plattform: "Kaufland",
+      marktplatzkonto: "Kaufland Deutschland",
+      kategorie: "Elektronik",
+      zustand: "NEW",
+      gueltig_ab: "01.07.2026",
+      prozent: "11,00",
+      fix: "0,35",
+      ust_behandlung: "EXCLUDED",
+      aktiv: "Ja",
+    };
+    const context = {
+      feePlatforms: [{ id: "platform-a", name: "Kaufland" }],
+      feeAccounts: [{ id: "account-a", platformId: "platform-a", displayName: "Kaufland Deutschland" }],
+    };
+
+    const valid = await dryRun("gebuehrenregeln", [row], dryRunTx(context));
+    const duplicate = await dryRun("gebuehrenregeln", [row], dryRunTx({
+      ...context,
+      feeRules: [{
+        platformId: "platform-a",
+        marketplaceAccountId: "account-a",
+        category: "Elektronik",
+        itemCondition: "NEW",
+        validFrom: new Date("2026-07-01T00:00:00.000Z"),
+      }],
+    }));
+
+    expect(valid.validCount).toBe(1);
+    expect(valid.summary.errors).toBe(0);
+    expect(duplicate.validCount).toBe(0);
+    expect(duplicate.summary.conflicts).toBe(1);
+  });
+
+  it("Dry Run blocks duplicate rows within the same fee-rule file", async () => {
+    const row = {
+      plattform: "Kaufland",
+      gueltig_ab: "01.07.2026",
+      prozent: "11,00",
+    };
+    const result = await dryRun("gebuehrenregeln", [row, row], dryRunTx({
+      feePlatforms: [{ id: "platform-a", name: "Kaufland" }],
+    }));
+
+    expect(result.validCount).toBe(1);
+    expect(result.summary.conflicts).toBe(1);
+    expect(result.summary.review[1]).toMatchObject({
+      status: "CONFLICT",
+      message: expect.stringMatching(/mehrfach/),
+    });
+  });
+
+  it("Dry Run blocks duplicate fee-rule scopes with different amounts in one file", async () => {
+    const base = {
+      plattform: "Kaufland",
+      kategorie: "Elektronik",
+      gueltig_ab: "01.07.2026",
+    };
+    const result = await dryRun(
+      "gebuehrenregeln",
+      [
+        { ...base, prozent: "11,00" },
+        { ...base, prozent: "12,00" },
+      ],
+      dryRunTx({
+        feePlatforms: [{ id: "platform-a", name: "Kaufland" }],
+      })
+    );
+
+    expect(result.validCount).toBe(1);
+    expect(result.summary.conflicts).toBe(1);
+    expect(result.summary.review[1]).toMatchObject({
+      status: "CONFLICT",
+      message: expect.stringMatching(/Gültigkeits- und Geltungsbereich/),
+    });
+  });
+
+  it("Dry Run rejects unresolved and malformed fee-rule references", async () => {
+    const result = await dryRun("gebuehrenregeln", [{
+      plattform: "Unbekannt",
+      marktplatzkonto: "Fremdkonto",
+      gueltig_ab: "morgen",
+      gueltig_bis: "gestern",
+      prozent: "101",
+      fix: "-1",
+      zustand: "SUPER",
+      ust_behandlung: "BRUTTO",
+      prioritaet: "hoch",
+      aktiv: "vielleicht",
+    }]);
+
+    expect(result.validCount).toBe(0);
+    expect(result.errors.map((error) => error.message).join(" ")).toMatch(
+      /Plattform|Marktplatzkonto|Gültig|Prozentuale|Fixe|Artikelzustand|USt|Priorität|Aktiv/
+    );
   });
 
   it("parst Einzelreferenzen, & und Bereiche", () => {

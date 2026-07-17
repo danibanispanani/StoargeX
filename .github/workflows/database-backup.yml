@@ -1,0 +1,96 @@
+name: StorageX encrypted database backup
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storagex-database-backup
+  cancel-in-progress: false
+
+jobs:
+  logical-backup:
+    name: Encrypted pg_dump and restore verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-backup
+    steps:
+      - name: Check out backup tooling
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client awscli
+
+      - name: Create encrypted and verified logical backup
+        id: backup
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+          BACKUP_OUTPUT_DIR: ${{ runner.temp }}/storagex-backups
+        run: node scripts/backup-database.mjs
+
+      - name: Retain encrypted backup artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: storagex-database-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.backup.outputs.file }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Create optional encrypted Storage object backup
+        id: storage
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SUPABASE_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.SUPABASE_S3_REGION }}
+          SUPABASE_S3_ENDPOINT: ${{ secrets.SUPABASE_S3_ENDPOINT }}
+          SUPABASE_STORAGE_BUCKET: ${{ secrets.SUPABASE_STORAGE_BUCKET }}
+          STORAGEX_BACKUP_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_DEFAULT_REGION" ] || [ -z "$SUPABASE_S3_ENDPOINT" ] || [ -z "$SUPABASE_STORAGE_BUCKET" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Storage object backup skipped: S3 backup secrets are not fully configured." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/storagex-storage/objects"
+          aws s3 sync "s3://$SUPABASE_STORAGE_BUCKET" "$RUNNER_TEMP/storagex-storage/objects" \
+            --endpoint-url "$SUPABASE_S3_ENDPOINT" \
+            --no-progress
+          tar -C "$RUNNER_TEMP/storagex-storage" -cf "$RUNNER_TEMP/storagex-storage/storage-objects.tar" objects
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -in "$RUNNER_TEMP/storagex-storage/storage-objects.tar" \
+            -out "$RUNNER_TEMP/storagex-storage/storage-objects.tar.enc" \
+            -pass env:STORAGEX_BACKUP_PASSPHRASE
+          rm -rf "$RUNNER_TEMP/storagex-storage/objects" "$RUNNER_TEMP/storagex-storage/storage-objects.tar"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Retain encrypted Storage object artifact
+        if: steps.storage.outputs.enabled == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: storagex-storage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/storagex-storage/storage-objects.tar.enc
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Emit failure warning
+        if: failure()
+        env:
+          BACKUP_ALERT_WEBHOOK_URL: ${{ secrets.BACKUP_ALERT_WEBHOOK_URL }}
+        run: |
+          echo "::error title=StorageX database backup failed::Inspect this workflow run immediately. No verified backup artifact was retained."
+          if [ -n "$BACKUP_ALERT_WEBHOOK_URL" ]; then
+            curl --fail-with-body --silent --show-error \
+              -H "Content-Type: application/json" \
+              --data "{\"text\":\"StorageX database backup failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}" \
+              "$BACKUP_ALERT_WEBHOOK_URL"
+          fi

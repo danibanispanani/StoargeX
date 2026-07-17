@@ -406,6 +406,43 @@ export async function GET(
       }));
       break;
     }
+    case "gebuehrenregeln": {
+      const rules = await db.feeRule.findMany({
+        where: q ? {
+          OR: [
+            { category: { contains: q, mode: "insensitive" } },
+            { source: { contains: q, mode: "insensitive" } },
+            { platform: { name: { contains: q, mode: "insensitive" } } },
+            { marketplaceAccount: { displayName: { contains: q, mode: "insensitive" } } },
+          ],
+        } : undefined,
+        include: {
+          platform: { select: { name: true } },
+          marketplaceAccount: { select: { displayName: true } },
+          feeCategory: { select: { officialName: true } },
+        },
+        orderBy: [{ validFrom: "desc" }, { priority: "desc" }],
+      });
+      rows = rules.map((rule) => ({
+        Plattform: rule.platform.name,
+        Marktplatzkonto: rule.marketplaceAccount?.displayName ?? "",
+        Kategorie: rule.feeCategory?.officialName ?? rule.category ?? "",
+        Artikelzustand: rule.itemCondition ?? "",
+        "Gültig ab": date(rule.validFrom),
+        "Gültig bis": date(rule.validUntil),
+        "Prozentuale Gebühr": rule.percentage.toString().replace(".", ","),
+        "Fixe Gebühr": euro(rule.fixedFeeCents),
+        Mindestwert: rule.minimumFeeCents == null ? "" : euro(rule.minimumFeeCents),
+        Maximalwert: rule.maximumFeeCents == null ? "" : euro(rule.maximumFeeCents),
+        "Werbegebühr (%)": rule.advertisingPercent.toString().replace(".", ","),
+        "Zahlungsgebühr (%)": rule.paymentFeePercent.toString().replace(".", ","),
+        "USt-Behandlung": rule.vatTreatment,
+        Priorität: rule.priority,
+        Quelle: rule.source ?? "",
+        Aktiv: rule.active ? "Ja" : "Nein",
+      }));
+      break;
+    }
   }
 
   const filenameBase = `storagex-${table}-${new Date().toISOString().slice(0, 10)}`;

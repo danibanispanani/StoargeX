@@ -1,5 +1,20 @@
 # Progress Log
 
+## 2026-07-17 - Prompt 10 started
+
+- Confirmed a clean Prompt-9 baseline and loaded the persistent planning, deep-module design, surgical implementation, and complete-work shipping workflows.
+- Selected one shared portability catalog over the existing ImportBatch/SourceReference pipeline; no second import engine or destructive schema change is planned.
+- Began the full import/export/GDPR/deployment audit before behavior-bearing changes.
+
+## 2026-07-17 - Prompt 10 completed
+
+- Added the central import and export centers, shared portability catalog, fee-rule templates/import validation, filtered CSV/XLSX datasets, and OWNER full extracts without introducing another import engine.
+- Replaced the incomplete GDPR query list with an explicit tenant-scoped v2 loader covering current relational data, provenance, accounts/partners, tasks/fees/entitlements, and legacy compatibility while recursively excluding secret material.
+- Added a daily encrypted logical PostgreSQL backup workflow, optional encrypted Supabase Storage capture, finite retention, status/failure signaling, restore-list verification, and a documented quarterly isolated restore test.
+- Structured simplify/security/correctness review fixed filtered limit ordering, fee-rule file duplicates, missing legacy SaleItems, broader secret-key filtering, and immutable GitHub Action pins.
+- Final gates: Prisma validate/generate, TypeScript, full ESLint, 52 Vitest files with 335 tests, all 13 integrity checks, production build, and diff checks pass.
+- Browser automation was attempted through both supported surfaces. Neither embedded Browser nor Chrome control is available because the Chrome native-host registry entry is missing; the extension itself is installed and enabled. No unsupported workaround was used.
+
 ## 2026-07-17 - Prompt 9 insight calculations
 
 - Added a proof-first dashboard suite covering rolling/custom period semantics, immediately preceding comparison windows, filter normalization, trade and margin loads, recurring/one-time expenses, separate customer/supplier returns, inventory buckets, team flow, empty data, and 10,000-sale inputs.
