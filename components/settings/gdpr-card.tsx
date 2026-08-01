@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   deleteOrganizationAction,
@@ -74,8 +75,22 @@ export function GdprCard({ organizationName }: { organizationName: string }) {
 
 function DeleteOrgDialog({ organizationName }: { organizationName: string }) {
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  async function deleteOrganizationAndReset(
+    previousState: ActionState,
+    formData: FormData
+  ) {
+    try {
+      const result = await deleteOrganizationAction(previousState, formData);
+      if (!result?.error) queryClient.clear();
+      return result;
+    } catch (error) {
+      queryClient.clear();
+      throw error;
+    }
+  }
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    deleteOrganizationAction,
+    deleteOrganizationAndReset,
     null
   );
 

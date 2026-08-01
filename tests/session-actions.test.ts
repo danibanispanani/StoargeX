@@ -71,10 +71,11 @@ describe("switchOrganizationAction", () => {
   it("übernimmt nur die von der Datenbank bestätigte Organisation", async () => {
     mocks.findMembership.mockResolvedValue({ organizationId: "org-a" });
 
-    await expect(
-      switchOrganizationAction(organizationForm("org-a"))
-    ).rejects.toThrow("REDIRECT:/dashboard");
+    await expect(switchOrganizationAction(organizationForm("org-a"))).resolves.toEqual({
+      organizationId: "org-a",
+    });
 
     expect(mocks.updateSession).toHaveBeenCalledWith({ activeOrgId: "org-a" });
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 });

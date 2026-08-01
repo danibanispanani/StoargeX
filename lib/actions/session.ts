@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { auth, signOut, updateSession } from "@/auth";
 import { bypassDb } from "@/lib/prisma";
 
-export async function switchOrganizationAction(formData: FormData): Promise<void> {
+export async function switchOrganizationAction(
+  formData: FormData
+): Promise<{ organizationId: string }> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
@@ -23,7 +25,7 @@ export async function switchOrganizationAction(formData: FormData): Promise<void
   if (!membership) throw new Error("Keine Berechtigung für diese Organisation.");
 
   await updateSession({ activeOrgId: membership.organizationId });
-  redirect("/dashboard");
+  return { organizationId: membership.organizationId };
 }
 
 export async function logoutAction(): Promise<void> {

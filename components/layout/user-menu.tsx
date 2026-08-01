@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LogOut, Settings2, ShieldCheck } from "lucide-react";
 import { logoutAction } from "@/lib/actions/session";
+import { SignOutCacheResetForm } from "@/components/providers/sign-out-cache-reset-form";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,11 +59,11 @@ export function UserMenu({
           <Link href="/einstellungen/sicherheit"><ShieldCheck aria-hidden="true" /> Sicherheit</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <form action={logoutAction}>
+        <SignOutCacheResetForm action={logoutAction}>
           <DropdownMenuItem asChild>
             <button type="submit" className="w-full"><LogOut aria-hidden="true" /> Abmelden</button>
           </DropdownMenuItem>
-        </form>
+        </SignOutCacheResetForm>
       </DropdownMenuContent>
     </DropdownMenu>
   );

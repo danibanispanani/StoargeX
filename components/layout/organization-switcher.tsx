@@ -1,6 +1,11 @@
+"use client";
+
+import { useRef, useState } from "react";
 import { Building2, Check, ChevronsUpDown } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { SessionMembership } from "@/types/next-auth";
 import { switchOrganizationAction } from "@/lib/actions/session";
+import { resetOrganizationCache } from "@/lib/query/query-client";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,7 +24,30 @@ export function OrganizationSwitcher({
   activeOrganizationId: string;
 }) {
   const active = memberships.find((membership) => membership.orgId === activeOrganizationId);
+  const queryClient = useQueryClient();
+  const switchInFlight = useRef(false);
+  const [isSwitching, setIsSwitching] = useState(false);
   if (!active) return null;
+
+  async function switchOrganization(formData: FormData) {
+    if (switchInFlight.current) return;
+    switchInFlight.current = true;
+    setIsSwitching(true);
+
+    try {
+      const result = await switchOrganizationAction(formData);
+      resetOrganizationCache(
+        queryClient,
+        activeOrganizationId,
+        result.organizationId
+      );
+      window.location.assign("/dashboard");
+    } catch (error) {
+      switchInFlight.current = false;
+      setIsSwitching(false);
+      throw error;
+    }
+  }
 
   return (
     <DropdownMenu>
@@ -36,9 +64,12 @@ export function OrganizationSwitcher({
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {memberships.map((membership) => (
-          <form action={switchOrganizationAction} key={membership.orgId}>
+          <form action={switchOrganization} key={membership.orgId}>
             <input type="hidden" name="organizationId" value={membership.orgId} />
-            <DropdownMenuItem asChild disabled={membership.orgId === activeOrganizationId}>
+            <DropdownMenuItem
+              asChild
+              disabled={isSwitching || membership.orgId === activeOrganizationId}
+            >
               <button type="submit" className="w-full">
                 <span className="min-w-0 flex-1 truncate text-left">{membership.orgName}</span>
                 {membership.orgId === activeOrganizationId ? <Check className="size-4 text-transit-teal" aria-hidden="true" /> : null}

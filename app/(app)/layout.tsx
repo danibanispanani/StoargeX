@@ -11,6 +11,8 @@ import {
   toFeatureEntitlementSnapshot,
 } from "@/lib/services/feature-entitlement-service";
 import { getFeatureAccess } from "@/lib/feature-access";
+import { AppQueryProvider } from "@/components/providers/app-query-provider";
+import { ActiveOrganizationProvider } from "@/components/providers/active-organization-provider";
 
 export default async function AppLayout({
   children,
@@ -47,26 +49,36 @@ export default async function AppLayout({
   const featureAccess = { [FEATURE_KEYS.CONSIGNMENT]: consignmentAccess };
 
   return (
-    <div className="sx-app-shell flex min-h-screen bg-background">
-      <ThemeSync dbTheme={dbUser?.theme ?? null} />
-      <AppSidebar featureAccess={featureAccess} />
+    <ActiveOrganizationProvider
+      scope={{
+        id: organization.id,
+        name: organization.name,
+        role: membership.role,
+      }}
+    >
+      <AppQueryProvider>
+        <div className="sx-app-shell flex min-h-screen bg-background">
+          <ThemeSync dbTheme={dbUser?.theme ?? null} />
+          <AppSidebar featureAccess={featureAccess} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <AppTopbar
-          memberships={session.memberships}
-          activeOrganizationId={organization.id}
-          activeRole={membership.role}
-          user={session.user}
-          featureAccess={featureAccess}
-        />
-        <AddonTrialBanner featureName="Konsignation" access={consignmentAccess} />
-        <main className="min-w-0 flex-1 overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5">
-          <div className="mb-3 hidden sm:block">
-            <Breadcrumbs />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <AppTopbar
+              memberships={session.memberships}
+              activeOrganizationId={organization.id}
+              activeRole={membership.role}
+              user={session.user}
+              featureAccess={featureAccess}
+            />
+            <AddonTrialBanner featureName="Konsignation" access={consignmentAccess} />
+            <main className="min-w-0 flex-1 overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5">
+              <div className="mb-3 hidden sm:block">
+                <Breadcrumbs />
+              </div>
+              {children}
+            </main>
           </div>
-          {children}
-        </main>
-      </div>
-    </div>
+        </div>
+      </AppQueryProvider>
+    </ActiveOrganizationProvider>
   );
 }
