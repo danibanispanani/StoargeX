@@ -144,6 +144,12 @@ export default auth((req) => {
     return NextResponse.redirect(upgradeUrl);
   }
 
+  if (process.env.NODE_ENV === "development" && pathname === "/lager") {
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set("x-storagex-request-id", crypto.randomUUID());
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   return NextResponse.next();
 });
 

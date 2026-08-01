@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { EntryStatus, ItemCondition, StockItemStatus } from "@prisma/client";
 import {
@@ -12,6 +12,7 @@ import {
   updateStockItemStatusAction,
   loadStockHistoryAction,
   type StockHistoryPayload,
+  type StockMetadataPatch,
 } from "@/lib/actions/stock";
 import {
   ENTRY_STATUS,
@@ -58,6 +59,7 @@ import {
   inventoryMovementLabel,
 } from "@/lib/inventory-labels";
 import { ITEM_CONDITION_OPTIONS } from "@/lib/item-condition-options";
+import { applyStockMetadataPatch } from "@/lib/stock/stock-row-update";
 
 export interface StockRow {
   source: "owned" | "legacy";
@@ -111,9 +113,20 @@ export function StockTable({
   tableQuery: StockTableQuery;
   currentQuery: string;
 }) {
+  const [tableRows, setTableRows] = useState(rows);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
-  const legacyRows = rows.filter((row) => row.source === "legacy");
+  const legacyRows = tableRows.filter((row) => row.source === "legacy");
+
+  useEffect(() => {
+    setTableRows(rows);
+  }, [rows]);
+
+  const applyMetadataPatch = useCallback((patch: StockMetadataPatch) => {
+    setTableRows((currentRows) =>
+      applyStockMetadataPatch(currentRows, patch, currentQuery)
+    );
+  }, [currentQuery]);
 
   const allSelected = legacyRows.length > 0 && selected.size === legacyRows.length;
 
@@ -158,7 +171,7 @@ export function StockTable({
         definition={OPERATIONAL_MODULES.stock}
         scope={scope}
         currentQuery={currentQuery}
-        totalResults={rows.length}
+        totalResults={tableRows.length}
       >
       <Card className="rounded-none border-0 shadow-none">
         <CardContent className="overflow-x-auto">
@@ -190,7 +203,7 @@ export function StockTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 && (
+              {tableRows.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={13}
@@ -202,7 +215,7 @@ export function StockTable({
                   </TableCell>
                 </TableRow>
               )}
-              {rows.map((row) => (
+              {tableRows.map((row) => (
                 <TableRow
                   key={row.id}
                   data-selected={selected.has(row.id)}
@@ -337,7 +350,12 @@ export function StockTable({
                   </TableCell>
                   <TableCell data-column data-column-key="actions" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all>
                     <div className="flex justify-end gap-1">
-                      <StockDetailDrawer row={row} platforms={platforms} storageLocations={storageLocations} />
+                      <StockDetailDrawer
+                        row={row}
+                        platforms={platforms}
+                        storageLocations={storageLocations}
+                        onMetadataSaved={applyMetadataPatch}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -355,10 +373,12 @@ function StockDetailDrawer({
   row,
   platforms,
   storageLocations,
+  onMetadataSaved,
 }: {
   row: StockRow;
   platforms: Array<{ id: string; name: string }>;
   storageLocations: string[];
+  onMetadataSaved: (patch: StockMetadataPatch) => void;
 }) {
   const [history, setHistory] = useState<StockHistoryPayload | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -368,6 +388,7 @@ function StockDetailDrawer({
   const listingNames = platforms
     .filter((platform) => row.listings.includes(platform.id))
     .map((platform) => platform.name);
+  const ownedDetails = history?.ownedDetails;
   const refreshHistory = useCallback(() => {
     if (historyRequestPending.current) {
       historyRefreshQueued.current = true;
@@ -391,6 +412,10 @@ function StockDetailDrawer({
       }
     });
   }, [row.id, row.source]);
+  const handleMetadataSaved = useCallback((patch: StockMetadataPatch) => {
+    onMetadataSaved(patch);
+    refreshHistory();
+  }, [onMetadataSaved, refreshHistory]);
 
   return (
     <DetailDrawer
@@ -485,23 +510,23 @@ function StockDetailDrawer({
             location={row.location}
             storageLocations={storageLocations}
             notes={row.notes}
-            onSaved={refreshHistory}
+            onSaved={handleMetadataSaved}
           />
-          {row.source === "owned" && row.purchaseNumber && (
+          {row.source === "owned" && ownedDetails?.purchaseNumber && (
             <StockSupplierReturnDialog
               inventoryPositionId={row.id}
               inventoryNumber={row.sku}
               productName={row.title}
               supplier={row.supplier}
-              purchaseNumber={row.purchaseNumber}
-              returnableQuantity={row.returnableQuantity}
+              purchaseNumber={ownedDetails.purchaseNumber}
+              returnableQuantity={ownedDetails.returnableQuantity}
             />
           )}
-          {row.source === "owned" && row.receiptId && !row.receiptCancelled && row.cancellableQuantity > 0 && (
+          {row.source === "owned" && ownedDetails?.receiptId && !ownedDetails.receiptCancelled && ownedDetails.cancellableQuantity > 0 && (
             <CancelStockQuantityButton
               inventoryPositionId={row.id}
               inventoryNumber={row.sku}
-              maxQuantity={row.cancellableQuantity}
+              maxQuantity={ownedDetails.cancellableQuantity}
             />
           )}
           {row.source === "legacy" && row.status !== "CANCELLED" && (
@@ -512,13 +537,16 @@ function StockDetailDrawer({
             />
           )}
         </div>
-        {row.source === "owned" && row.receiptId && !row.receiptCancelled && row.cancellableQuantity > 0 && (
+        {row.source === "owned" && historyPending && !ownedDetails && (
+          <p className="mt-2 text-xs">Aktionsdaten werden geladenâ€¦</p>
+        )}
+        {row.source === "owned" && ownedDetails?.receiptId && !ownedDetails.receiptCancelled && ownedDetails.cancellableQuantity > 0 && (
           <p className="mt-2 text-xs">
             Teil- und Vollstorno werden über die bestehende Bewegungshistorie zurückgebucht.
             Bereits verkaufte, reservierte oder verschobene Mengen sind nicht auswählbar.
           </p>
         )}
-        {row.source === "owned" && !row.purchaseNumber && (
+        {row.source === "owned" && ownedDetails && !ownedDetails.purchaseNumber && (
           <p className="text-xs">Keine Lieferantenretoure möglich: Der historischen Position fehlt die Verknüpfung zu einem Einkauf.</p>
         )}
       </DetailSection>

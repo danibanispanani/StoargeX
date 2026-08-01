@@ -26,7 +26,7 @@ describe("erste Performance-Runde", () => {
     const salesActions = source("lib/actions/sales.ts");
 
     expect(stockActions).toMatch(
-      /loadStockReceiptProductOptionsAction[\s\S]*requireOrg\("MEMBER"\)/
+      /loadStockReceiptProductOptionsAction[\s\S]*requireOrg\("MEMBER", trace\)/
     );
     expect(purchaseActions).toMatch(
       /loadPurchaseProductOptionsAction[\s\S]*requireOrg\("MEMBER"\)/

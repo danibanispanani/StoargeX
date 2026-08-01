@@ -22,14 +22,15 @@ const DEFAULTS: Record<OptionKind, string[]> = {
 export async function getOptions(
   db: TenantDb,
   organizationId: string,
-  kind: OptionKind
+  kind: OptionKind,
+  config: { seedMissing?: boolean } = {}
 ): Promise<string[]> {
   let options = await db.selectOption.findMany({
     where: { kind, active: true },
     orderBy: { sortOrder: "asc" },
   });
 
-  if (options.length === 0) {
+  if (options.length === 0 && config.seedMissing !== false) {
     const defaults = DEFAULTS[kind];
     if (defaults.length > 0) {
       await db.selectOption.createMany({
@@ -49,4 +50,51 @@ export async function getOptions(
   }
 
   return options.map((o) => o.label);
+}
+
+export async function getOptionsForKinds(
+  db: TenantDb,
+  organizationId: string,
+  kinds: readonly OptionKind[],
+  config: { seedMissing?: boolean } = {}
+): Promise<Record<OptionKind, string[]>> {
+  const result = emptyOptionsByKind();
+  let options = await db.selectOption.findMany({
+    where: { organizationId, kind: { in: [...kinds] }, active: true },
+    orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+    select: { kind: true, label: true },
+  });
+
+  if (config.seedMissing !== false) {
+    const presentKinds = new Set(options.map((option) => option.kind));
+    const missingKinds = kinds.filter((kind) => !presentKinds.has(kind));
+    const defaults = missingKinds.flatMap((kind) =>
+      DEFAULTS[kind].map((label, sortOrder) => ({
+        organizationId,
+        kind,
+        label,
+        sortOrder,
+      }))
+    );
+    if (defaults.length > 0) {
+      await db.selectOption.createMany({ data: defaults, skipDuplicates: true });
+      options = await db.selectOption.findMany({
+        where: { organizationId, kind: { in: [...kinds] }, active: true },
+        orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+        select: { kind: true, label: true },
+      });
+    }
+  }
+
+  for (const option of options) result[option.kind].push(option.label);
+  return result;
+}
+
+function emptyOptionsByKind(): Record<OptionKind, string[]> {
+  return {
+    PAYMENT_METHOD: [],
+    PAYOUT_RECIPIENT: [],
+    TASK_AREA: [],
+    STORAGE_LOCATION: [],
+  };
 }

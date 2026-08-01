@@ -69,7 +69,19 @@ describe("stock actions", () => {
       id: "platform-a",
       name: "Kaufland.de",
     });
-    mocks.updateInventoryPositionMetadata.mockResolvedValue({ changed: true });
+    mocks.updateInventoryPositionMetadata.mockResolvedValue({
+      changed: true,
+      metadata: {
+        productName: "Produkt neu",
+        variant: "Blau",
+        size: "L",
+        ean: "1234567890123",
+        itemCondition: "USED",
+        imageUrls: ["https://example.test/image.jpg"],
+        location: "Regal B-2",
+        notes: "Geprüft",
+      },
+    });
     mocks.inventoryMovementFindMany.mockResolvedValue([]);
     mocks.auditLogFindMany.mockResolvedValue([]);
     mocks.selectOptionFindFirst.mockResolvedValue({ id: "location-a" });
@@ -143,8 +155,8 @@ describe("stock actions", () => {
       form
     );
 
-    expect(mocks.requireOrg).toHaveBeenLastCalledWith("MEMBER");
-    expect(mocks.updateInventoryPositionMetadata).toHaveBeenCalledWith({
+    expect(mocks.requireOrg).toHaveBeenLastCalledWith("MEMBER", expect.anything());
+    expect(mocks.updateInventoryPositionMetadata).toHaveBeenCalledWith(expect.objectContaining({
       organizationId: "org-a",
       inventoryPositionId: "position-a",
       userId: "user-a",
@@ -156,18 +168,37 @@ describe("stock actions", () => {
       imageUrls: ["https://example.test/image.jpg"],
       location: "Regal B-2",
       notes: "GeprÃ¼ft",
-    });
+      performanceTrace: expect.anything(),
+    }));
     expect(result?.success).toMatch(/gespeichert/);
+    expect(result?.rowPatch).toEqual(expect.objectContaining({
+      id: "position-a",
+      source: "owned",
+      title: "Produkt neu",
+      imageUrl: "https://example.test/image.jpg",
+    }));
+    expect(mocks.revalidatePath).not.toHaveBeenCalledWith("/lager");
   });
 
   it("loads history only after tenant-safe position resolution", async () => {
+    mocks.inventoryPositionFindFirst.mockResolvedValueOnce({
+      id: "position-a",
+      quantityAvailable: 1,
+      quantityInspection: 0,
+      quantityDefective: 0,
+      ownedLot: {
+        purchaseLine: { purchase: { purchaseNumber: "E-26-0001" } },
+      },
+      purchaseReceiptLine: null,
+      supplierReturnLines: [],
+    });
     const result = await loadStockHistoryAction("owned", "position-a");
 
     expect(mocks.requireOrg).toHaveBeenLastCalledWith();
-    expect(mocks.inventoryPositionFindFirst).toHaveBeenLastCalledWith({
+    expect(mocks.inventoryPositionFindFirst).toHaveBeenLastCalledWith(expect.objectContaining({
       where: { id: "position-a", organizationId: "org-a" },
-      select: { id: true },
-    });
+      select: expect.objectContaining({ id: true, supplierReturnLines: expect.anything() }),
+    }));
     expect(mocks.inventoryMovementFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { organizationId: "org-a", inventoryPositionId: "position-a" },
@@ -182,11 +213,30 @@ describe("stock actions", () => {
         }),
       })
     );
-    expect(result.data).toEqual({ movements: [], auditLogs: [] });
+    expect(result.data).toEqual({
+      ownedDetails: expect.objectContaining({
+        purchaseNumber: "E-26-0001",
+        returnableQuantity: 1,
+      }),
+      movements: [],
+      auditLogs: [],
+    });
   });
 
   it("does not invalidate the stock page for an unchanged metadata save", async () => {
-    mocks.updateInventoryPositionMetadata.mockResolvedValue({ changed: false });
+    mocks.updateInventoryPositionMetadata.mockResolvedValue({
+      changed: false,
+      metadata: {
+        productName: "Produkt",
+        variant: null,
+        size: null,
+        ean: null,
+        itemCondition: "NEW",
+        imageUrls: [],
+        location: null,
+        notes: null,
+      },
+    });
     const form = new FormData();
     form.set("productName", "Produkt");
     form.set("itemCondition", "NEW");

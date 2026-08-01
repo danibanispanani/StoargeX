@@ -22,6 +22,29 @@ import {
   updateLegacyStockItemMetadata,
 } from "@/lib/stock/stock-metadata-service";
 import type { ActionState } from "@/lib/actions/team";
+import { createLagerPerformanceTrace } from "@/lib/stock/lager-performance";
+import {
+  ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES,
+  calculateSupplierReturnableQuantity,
+} from "@/lib/services/supplier-return-service";
+
+export interface StockMetadataPatch {
+  id: string;
+  source: "owned" | "legacy";
+  title: string;
+  variant: string;
+  size: string;
+  ean: string;
+  itemCondition: ItemCondition | null;
+  imageUrls: string[];
+  imageUrl: string | null;
+  location: string | null;
+  notes: string;
+}
+
+export type StockMetadataActionState =
+  | { error?: string; success?: string; rowPatch?: StockMetadataPatch }
+  | null;
 
 const stockItemSchema = z.object({
   productId: z.string().optional().or(z.literal("")),
@@ -326,17 +349,19 @@ function parseStockMetadata(formData: FormData) {
 
 export async function updateInventoryPositionMetadataAction(
   inventoryPositionId: string,
-  _previous: ActionState,
+  _previous: StockMetadataActionState,
   formData: FormData
-): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
-  const parsed = parseStockMetadata(formData);
+): Promise<StockMetadataActionState> {
+  const trace = await createLagerPerformanceTrace("POST /lager metadata owned");
+  return trace.run(async () => {
+  const { db, organization, userId } = await requireOrg("MEMBER", trace);
+  const parsed = trace.measureSync("validation.metadata", () => parseStockMetadata(formData));
   if ("error" in parsed) return { error: parsed.error };
   if (parsed.data.location) {
-    const location = await db.selectOption.findFirst({
+    const location = await trace.measureDb("validation.storage_location", () => db.selectOption.findFirst({
       where: { kind: "STORAGE_LOCATION", label: parsed.data.location },
       select: { id: true },
-    });
+    }));
     if (!location) return { error: "Der gewählte Lagerstandort ist ungültig." };
   }
 
@@ -353,31 +378,35 @@ export async function updateInventoryPositionMetadataAction(
       imageUrls: parsed.data.imageUrls,
       location: parsed.data.location || null,
       notes: parsed.data.notes || null,
+      performanceTrace: trace,
     });
-    if (result.changed) revalidatePath("/lager");
     return {
       success: result.changed ? "Lagerposition gespeichert ✓" : "Keine Änderungen vorhanden.",
+      rowPatch: stockMetadataPatch(inventoryPositionId, "owned", result.metadata),
     };
   } catch (error) {
     return {
       error: stockMetadataError(error),
     };
   }
+  });
 }
 
 export async function updateLegacyStockItemMetadataAction(
   stockItemId: string,
-  _previous: ActionState,
+  _previous: StockMetadataActionState,
   formData: FormData
-): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
-  const parsed = parseStockMetadata(formData);
+): Promise<StockMetadataActionState> {
+  const trace = await createLagerPerformanceTrace("POST /lager metadata legacy");
+  return trace.run(async () => {
+  const { db, organization, userId } = await requireOrg("MEMBER", trace);
+  const parsed = trace.measureSync("validation.metadata", () => parseStockMetadata(formData));
   if ("error" in parsed) return { error: parsed.error };
   if (parsed.data.location) {
-    const location = await db.selectOption.findFirst({
+    const location = await trace.measureDb("validation.storage_location", () => db.selectOption.findFirst({
       where: { kind: "STORAGE_LOCATION", label: parsed.data.location },
       select: { id: true },
-    });
+    }));
     if (!location) return { error: "Der gewählte Lagerstandort ist ungültig." };
   }
 
@@ -394,16 +423,47 @@ export async function updateLegacyStockItemMetadataAction(
       imageUrls: parsed.data.imageUrls,
       location: parsed.data.location || null,
       notes: parsed.data.notes || null,
+      performanceTrace: trace,
     });
-    if (result.changed) revalidatePath("/lager");
     return {
       success: result.changed ? "Lagerposition gespeichert ✓" : "Keine Änderungen vorhanden.",
+      rowPatch: stockMetadataPatch(stockItemId, "legacy", result.metadata),
     };
   } catch (error) {
     return {
       error: stockMetadataError(error),
     };
   }
+  });
+}
+
+function stockMetadataPatch(
+  id: string,
+  source: "owned" | "legacy",
+  metadata: {
+    productName: string;
+    variant: string | null;
+    size: string | null;
+    ean: string | null;
+    itemCondition: ItemCondition | null;
+    imageUrls: string[];
+    location: string | null;
+    notes: string | null;
+  }
+): StockMetadataPatch {
+  return {
+    id,
+    source,
+    title: metadata.productName,
+    variant: metadata.variant ?? "",
+    size: metadata.size ?? "",
+    ean: metadata.ean ?? "",
+    itemCondition: metadata.itemCondition,
+    imageUrls: metadata.imageUrls,
+    imageUrl: metadata.imageUrls[0] ?? null,
+    location: metadata.location,
+    notes: metadata.notes ?? "",
+  };
 }
 
 function stockMetadataError(error: unknown): string {
@@ -413,6 +473,14 @@ function stockMetadataError(error: unknown): string {
 }
 
 export interface StockHistoryPayload {
+  ownedDetails?: {
+    purchaseNumber: string | null;
+    returnableQuantity: number;
+    receiptId: string | null;
+    receiptCancelled: boolean;
+    receiptLineCount: number;
+    cancellableQuantity: number;
+  };
   movements: Array<{
     id: string;
     movementType: InventoryMovementType;
@@ -438,16 +506,53 @@ export async function loadStockHistoryAction(
 ): Promise<{ data?: StockHistoryPayload; error?: string }> {
   const { db, organization } = await requireOrg();
   const entityType = source === "owned" ? "InventoryPosition" : "StockItem";
-  const exists = source === "owned"
+  const ownedPosition = source === "owned"
     ? await db.inventoryPosition.findFirst({
+        where: { id: positionId, organizationId: organization.id },
+        select: {
+          id: true,
+          quantityAvailable: true,
+          quantityInspection: true,
+          quantityDefective: true,
+          ownedLot: {
+            select: {
+              purchaseLine: {
+                select: { purchase: { select: { purchaseNumber: true } } },
+              },
+            },
+          },
+          purchaseReceiptLine: {
+            select: {
+              quantity: true,
+              cancelledQuantity: true,
+              inboundMovement: { select: { toBucket: true } },
+              purchaseReceipt: {
+                select: {
+                  id: true,
+                  cancelledAt: true,
+                  _count: { select: { lines: true } },
+                },
+              },
+            },
+          },
+          supplierReturnLines: {
+            where: {
+              outboundMovementId: null,
+              sourceBucket: "AVAILABLE",
+              supplierReturn: { status: { in: ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES } },
+            },
+            select: { quantity: true, sourceBucket: true },
+          },
+        },
+      })
+    : null;
+  const legacyItem = source === "legacy"
+    ? await db.stockItem.findFirst({
         where: { id: positionId, organizationId: organization.id },
         select: { id: true },
       })
-    : await db.stockItem.findFirst({
-        where: { id: positionId, organizationId: organization.id },
-        select: { id: true },
-      });
-  if (!exists) return { error: "Lagerposition wurde nicht gefunden." };
+    : null;
+  if (!ownedPosition && !legacyItem) return { error: "Lagerposition wurde nicht gefunden." };
 
   const [movements, auditLogs] = await Promise.all([
     source === "owned"
@@ -478,6 +583,9 @@ export async function loadStockHistoryAction(
 
   return {
     data: {
+      ...(ownedPosition
+        ? { ownedDetails: ownedStockDetails(ownedPosition) }
+        : {}),
       movements: movements.map((movement) => ({
         id: movement.id,
         movementType: movement.movementType,
@@ -496,6 +604,46 @@ export async function loadStockHistoryAction(
         after: jsonObject(entry.after),
       })),
     },
+  };
+}
+
+function ownedStockDetails(position: {
+  quantityAvailable: number;
+  quantityInspection: number;
+  quantityDefective: number;
+  ownedLot: { purchaseLine: { purchase: { purchaseNumber: string } } | null } | null;
+  purchaseReceiptLine: {
+    quantity: number;
+    cancelledQuantity: number;
+    inboundMovement: { toBucket: InventoryBucket | null };
+    purchaseReceipt: {
+      id: string;
+      cancelledAt: Date | null;
+      _count: { lines: number };
+    };
+  } | null;
+  supplierReturnLines: Array<{ quantity: number; sourceBucket: InventoryBucket }>;
+}): NonNullable<StockHistoryPayload["ownedDetails"]> {
+  const receiptLine = position.purchaseReceiptLine;
+  const bucketQuantity = receiptLine?.inboundMovement.toBucket === "AVAILABLE"
+    ? position.quantityAvailable
+    : receiptLine?.inboundMovement.toBucket === "INSPECTION"
+      ? position.quantityInspection
+      : receiptLine?.inboundMovement.toBucket === "DEFECTIVE"
+        ? position.quantityDefective
+        : 0;
+  return {
+    purchaseNumber: position.ownedLot?.purchaseLine?.purchase.purchaseNumber ?? null,
+    returnableQuantity: calculateSupplierReturnableQuantity(
+      position.quantityAvailable,
+      position.supplierReturnLines
+    ),
+    receiptId: receiptLine?.purchaseReceipt.id ?? null,
+    receiptCancelled: Boolean(receiptLine?.purchaseReceipt.cancelledAt),
+    receiptLineCount: receiptLine?.purchaseReceipt._count.lines ?? 0,
+    cancellableQuantity: receiptLine
+      ? Math.min(receiptLine.quantity - receiptLine.cancelledQuantity, bucketQuantity)
+      : 0,
   };
 }
 
@@ -677,9 +825,11 @@ export async function loadStockReceiptProductOptionsAction(): Promise<{
   }>;
   error?: string;
 }> {
+  const trace = await createLagerPerformanceTrace("POST /lager receipt options");
+  return trace.run(async () => {
   try {
-    const { db } = await requireOrg("MEMBER");
-    const products = await db.product.findMany({
+    const { db } = await requireOrg("MEMBER", trace);
+    const products = await trace.measureDb("query.receipt_product_options", () => db.product.findMany({
       orderBy: { name: "asc" },
       select: {
         id: true,
@@ -691,10 +841,11 @@ export async function loadStockReceiptProductOptionsAction(): Promise<{
         defaultPriceCents: true,
       },
       take: 500,
-    });
+    }));
     return { products };
   } catch {
     return { error: "Produkte konnten nicht geladen werden." };
   }
+  });
 }
 

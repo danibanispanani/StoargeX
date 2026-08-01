@@ -7,8 +7,9 @@ import { toast } from "sonner";
 import {
   updateInventoryPositionMetadataAction,
   updateLegacyStockItemMetadataAction,
+  type StockMetadataActionState,
+  type StockMetadataPatch,
 } from "@/lib/actions/stock";
-import type { ActionState } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -50,13 +51,13 @@ export function StockMetadataDialog({
   location?: string | null;
   storageLocations: string[];
   notes?: string | null;
-  onSaved?: () => void;
+  onSaved?: (patch: StockMetadataPatch) => void;
 }) {
   const [open, setOpen] = useState(false);
   const action = source === "owned"
     ? updateInventoryPositionMetadataAction.bind(null, positionId)
     : updateLegacyStockItemMetadataAction.bind(null, positionId);
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+  const [state, formAction, pending] = useActionState<StockMetadataActionState, FormData>(
     action,
     null
   );
@@ -64,7 +65,7 @@ export function StockMetadataDialog({
   useEffect(() => {
     if (state?.success) {
       toast.success(state.success);
-      onSaved?.();
+      if (state.rowPatch) onSaved?.(state.rowPatch);
       setOpen(false);
     }
   }, [onSaved, state]);
