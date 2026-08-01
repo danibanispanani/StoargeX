@@ -15,15 +15,17 @@ export function DetailDrawer({
   title,
   description,
   triggerLabel = "Details anzeigen",
+  onOpenChange,
   children,
 }: {
   title: string;
   description?: string;
   triggerLabel?: string;
+  onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
   return (
-    <Sheet>
+    <Sheet onOpenChange={onOpenChange}>
       <SheetTrigger asChild>
         <ActionIconButton label={triggerLabel} icon={EyeIcon} />
       </SheetTrigger>

@@ -1227,6 +1227,7 @@ model AuditLog {
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId, action, createdAt, id])
   @@map("audit_logs")
 }
 
@@ -1851,6 +1852,7 @@ model SupplierReturn {
   id                  String               @id @default(cuid())
   organizationId      String               @map("organization_id")
   returnNumber        String?              @map("return_number")
+  idempotencyKey      String?              @map("idempotency_key")
   purchaseId          String               @map("purchase_id")
   supplierId          String?              @map("supplier_id")
   supplierSnapshot    String               @map("supplier_snapshot")
@@ -1885,6 +1887,7 @@ model SupplierReturn {
   taskLinks    TaskDomainLink[]
 
   @@unique([organizationId, returnNumber])
+  @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, requestedAt])

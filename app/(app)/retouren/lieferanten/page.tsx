@@ -19,6 +19,7 @@ import {
   parseOperationalModuleView,
 } from "@/lib/operational-modules";
 import { OperationalSearchToolbar } from "@/components/table/operational-search-toolbar";
+import { inventoryBucketLabel } from "@/lib/inventory-labels";
 
 const STATUS_LABELS: Record<SupplierReturnStatus, string> = {
   DRAFT: "Geplant",
@@ -210,7 +211,7 @@ export default async function SupplierReturnsPage({
               >
                 <TableCell data-column data-column-key="number" data-view-standard data-view-deadlines data-view-shipping data-view-refund data-view-conflicts data-view-all className="font-mono text-xs">{ret.returnNumber ?? ret.id.slice(0, 8)}</TableCell>
                 <TableCell data-column data-column-key="purchase" data-view-standard data-view-all><div className="font-mono text-xs">{ret.purchase.purchaseNumber}</div><div className="text-xs text-muted-foreground">{ret.supplier?.displayName ?? ret.supplierSnapshot}</div></TableCell>
-                <TableCell data-column data-column-key="items" data-view-standard data-view-shipping data-view-all className="max-w-72"><div className="truncate font-medium">{ret.lines.map((line) => line.purchaseLine.product.name).join(", ")}</div><div className="truncate font-mono text-xs text-muted-foreground">{ret.lines.map((line) => `${line.inventoryPosition.inventoryNumber} · ${bucketLabel(line.sourceBucket)}`).join(" · ")}</div></TableCell>
+                <TableCell data-column data-column-key="items" data-view-standard data-view-shipping data-view-all className="max-w-72"><div className="truncate font-medium">{ret.lines.map((line) => line.purchaseLine.product.name).join(", ")}</div><div className="truncate font-mono text-xs text-muted-foreground">{ret.lines.map((line) => `${line.inventoryPosition.inventoryNumber} · ${inventoryBucketLabel(line.sourceBucket)}`).join(" · ")}</div></TableCell>
                 <TableCell data-column data-column-key="quantity" data-view-standard data-view-all className="text-right">{quantity}</TableCell>
                 <TableCell data-column data-column-key="deadline" data-view-standard data-view-deadlines data-view-all><Deadline value={ret.returnDeadline} /></TableCell>
                 <TableCell data-column data-column-key="shipping" data-view-shipping data-view-all><div>{ret.carrier ?? "–"}</div><div className="font-mono text-xs text-muted-foreground">{ret.trackingNumber ?? "kein Tracking"}</div></TableCell>
@@ -244,7 +245,7 @@ function SupplierReturnDetail({ ret }: { ret: SupplierReturnRow }) {
     ]} /></DetailSection>
     <DetailSection title="Positionen & Bewegungen">
       {ret.lines.map((line) => <p key={line.id} className="font-mono text-xs">
-        {line.inventoryPosition.inventoryNumber} · {line.quantity} × {bucketLabel(line.sourceBucket)} · Movement {line.outboundMovement?.id ?? "noch nicht gebucht"}
+        {line.inventoryPosition.inventoryNumber} · {line.quantity} × {inventoryBucketLabel(line.sourceBucket)} · Movement {line.outboundMovement?.id ?? "noch nicht gebucht"}
       </p>)}
     </DetailSection>
     <DetailSection title="Finanzen"><DetailGrid items={[
@@ -258,8 +259,4 @@ function SupplierReturnDetail({ ret }: { ret: SupplierReturnRow }) {
     </DetailSection>}
     {ret.notes && <DetailSection title="Notizen"><p>{ret.notes}</p></DetailSection>}
   </DetailDrawer>;
-}
-
-function bucketLabel(bucket: string) {
-  return { AVAILABLE: "Verfügbar", RESERVED: "Reserviert", INSPECTION: "Prüfung", DEFECTIVE: "Defekt" }[bucket] ?? bucket;
 }

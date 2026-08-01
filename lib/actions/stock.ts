@@ -1,17 +1,26 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { randomUUID } from "crypto";
 import { z } from "zod";
-import { EntryStatus, InventoryBucket, StockItemStatus } from "@prisma/client";
+import {
+  EntryStatus,
+  ItemCondition,
+  StockItemStatus,
+  type InventoryBucket,
+  type InventoryMovementType,
+} from "@prisma/client";
 import { requireOrg } from "@/lib/org";
 import { assertFeatureAccess } from "@/lib/feature-access";
 import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { writeAuditLog } from "@/lib/audit";
 import { calcPurchaseNetCents, euroToCents } from "@/lib/calculations";
 import { createOwnedPurchase } from "@/lib/services/owned-purchase-service";
-import { adjust } from "@/lib/services/inventory-service";
 import { httpImageUrlSchema } from "@/lib/validation/http-image-url";
+import { parseHttpUrlList } from "@/lib/url-list";
+import {
+  updateInventoryPositionMetadata,
+  updateLegacyStockItemMetadata,
+} from "@/lib/stock/stock-metadata-service";
 import type { ActionState } from "@/lib/actions/team";
 
 const stockItemSchema = z.object({
@@ -25,9 +34,6 @@ const stockItemSchema = z.object({
   inputTaxDeductible: z.coerce.boolean(), // VST
   inputTaxRatePercent: z.coerce.number().min(0).max(100).default(19),
   paymentMethod: z.string().min(1, "Zahlungsmethode (ZM) fehlt.").max(100),
-  kaufStatus: z.nativeEnum(EntryStatus).default("O"),
-  retoureStatus: z.nativeEnum(EntryStatus).default("NN"),
-  status: z.nativeEnum(StockItemStatus).default("IN_STOCK"),
   ean: z.string().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional().or(z.literal("")),
   quantity: z.coerce.number().int().min(1).max(500).default(1),
   notes: z.string().max(2000).optional().or(z.literal("")),
@@ -47,9 +53,6 @@ function parseStockForm(formData: FormData) {
     inputTaxDeductible: formData.get("inputTaxDeductible") === "on",
     inputTaxRatePercent: formData.get("inputTaxRatePercent") || 19,
     paymentMethod: formData.get("paymentMethod"),
-    kaufStatus: formData.get("kaufStatus") || "O",
-    retoureStatus: formData.get("retoureStatus") || "NN",
-    status: formData.get("status") || "IN_STOCK",
     ean: formData.get("ean"),
     quantity: formData.get("quantity") || 1,
     notes: formData.get("notes"),
@@ -118,8 +121,8 @@ export async function createStockItemAction(
           unitPriceGrossCents: grossCents,
           inputTaxDeductible: data.inputTaxDeductible,
           inputTaxRatePercent: data.inputTaxRatePercent,
-          purchaseEntryStatus: data.kaufStatus,
-          returnEntryStatus: data.retoureStatus,
+          purchaseEntryStatus: "O",
+          returnEntryStatus: "NN",
           platformIds: platforms.map((p) => p.id),
           imageUrls,
           comment: data.notes || undefined,
@@ -256,141 +259,196 @@ export async function toggleInventoryPositionListingAction(
   };
 }
 
-const inventoryAdjustmentSchema = z.object({
-  direction: z.enum(["IN", "OUT"]),
-  bucket: z.nativeEnum(InventoryBucket).default(InventoryBucket.AVAILABLE),
-  quantity: z.coerce.number().int().min(1).max(500),
-  comment: z.string().min(1, "Grund/Kommentar fehlt.").max(500),
+const stockMetadataSchema = z.object({
+  itemCondition: z.preprocess(
+    (value) => value === "" ? null : value,
+    z.nativeEnum(ItemCondition).nullable()
+  ),
+  imageUrls: z.string().max(100_000).optional(),
+  location: z.string().trim().max(200).optional(),
+  notes: z.string().trim().max(2000).optional(),
 });
 
-export async function adjustOwnedInventoryQuantityAction(
+function parseStockMetadata(formData: FormData) {
+  const parsed = stockMetadataSchema.safeParse({
+    itemCondition: formData.get("itemCondition") ?? "",
+    imageUrls: String(formData.get("imageUrls") ?? ""),
+    location: String(formData.get("location") ?? ""),
+    notes: String(formData.get("notes") ?? ""),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Metadaten." } as const;
+  }
+  try {
+    const imageUrls = parseHttpUrlList(parsed.data.imageUrls);
+    if (imageUrls.some((value) => {
+      const url = new URL(value);
+      return Boolean(url.username || url.password);
+    })) {
+      throw new Error("Bildadressen mit eingebetteten Zugangsdaten sind nicht erlaubt.");
+    }
+    return {
+      data: {
+        ...parsed.data,
+        imageUrls,
+      },
+    } as const;
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Ungültige Bildadresse.",
+    } as const;
+  }
+}
+
+export async function updateInventoryPositionMetadataAction(
   inventoryPositionId: string,
-  _prev: ActionState,
+  _previous: ActionState,
   formData: FormData
 ): Promise<ActionState> {
   const { organization, userId } = await requireOrg("MEMBER");
-
-  const parsed = inventoryAdjustmentSchema.safeParse({
-    direction: formData.get("direction"),
-    bucket: formData.get("bucket") || InventoryBucket.AVAILABLE,
-    quantity: formData.get("quantity"),
-    comment: formData.get("comment"),
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Ungültige Korrektur." };
-  }
+  const parsed = parseStockMetadata(formData);
+  if ("error" in parsed) return { error: parsed.error };
 
   try {
-    const result = await adjust({
+    const result = await updateInventoryPositionMetadata({
       organizationId: organization.id,
       inventoryPositionId,
-      quantity: parsed.data.quantity,
-      direction: parsed.data.direction,
-      bucket: parsed.data.bucket,
-      comment: parsed.data.comment,
-      referenceType: "ManualStockAdjustment",
-      referenceId: inventoryPositionId,
-      referenceAction: parsed.data.direction === "IN" ? "adjustment_in" : "adjustment_out",
-      idempotencyKey: `manual-adjust:${inventoryPositionId}:${randomUUID()}`,
-      createdById: userId,
-      requiredInventoryType: "OWNED",
+      userId,
+      itemCondition: parsed.data.itemCondition,
+      imageUrls: parsed.data.imageUrls,
     });
-    revalidatePath("/lager");
-    return { success: `Bestand von ${result.position.inventoryNumber} korrigiert ✓` };
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "POSITION_NOT_FOUND" || error.code === "INVENTORY_TYPE_MISMATCH")
-    ) {
-      return { error: "Charge nicht gefunden." };
-    }
+    if (result.changed) revalidatePath("/lager");
     return {
-      error: error instanceof Error ? error.message : "Bestand konnte nicht korrigiert werden.",
+      success: result.changed ? "Lagerposition gespeichert ✓" : "Keine Änderungen vorhanden.",
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Lagerposition konnte nicht gespeichert werden.",
     };
   }
 }
 
-
-/** Einzelnen Lagereintrag vollstÃ¤ndig bearbeiten. */
-export async function updateStockItemAction(
+export async function updateLegacyStockItemMetadataAction(
   stockItemId: string,
-  _prev: ActionState,
+  _previous: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
+  const { organization, userId } = await requireOrg("MEMBER");
+  const parsed = parseStockMetadata(formData);
+  if ("error" in parsed) return { error: parsed.error };
 
-  const existing = await db.stockItem.findFirst({
-    where: { id: stockItemId },
-    include: { listings: true },
-  });
-  if (!existing) return { error: "Artikel nicht gefunden." };
-
-  const result = parseStockForm(formData);
-  if ("error" in result) return { error: result.error };
-  const { data, grossCents } = result;
-
-  const imageUrls = data.imageUrl ? [data.imageUrl] : [];
-
-  const platforms = data.platformIds.length
-    ? await db.platform.findMany({ where: { id: { in: data.platformIds } } })
-    : [];
-  if (platforms.length !== data.platformIds.length) {
-    return { error: "Mindestens eine gewÃ¤hlte Plattform ist ungÃ¼ltig." };
-  }
-
-  const netCents = calcPurchaseNetCents(
-    grossCents,
-    data.inputTaxDeductible,
-    data.inputTaxRatePercent
-  );
-
-  await db.stockItem.update({
-    where: { id: stockItemId },
-    data: {
-      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : existing.purchaseDate,
-      supplier: data.supplier || null,
-      title: data.title,
-      variant: data.variant || null,
-      size: data.size || null,
-      ean: data.ean || null,
-      purchasePriceCents: grossCents,
-      purchaseNetCents: netCents,
-      inputTaxDeductible: data.inputTaxDeductible,
-      paymentMethod: data.paymentMethod,
-      kaufStatus: data.kaufStatus,
-      retoureStatus: data.retoureStatus,
-      status: data.status,
-      notes: data.notes || null,
-      imageUrls,
-    },
-  });
-
-  // Listings synchronisieren
-  await db.stockItemListing.deleteMany({ where: { stockItemId } });
-  if (platforms.length > 0) {
-    await db.stockItemListing.createMany({
-      data: platforms.map((p) => ({
-        organizationId: organization.id,
-        stockItemId,
-        platformId: p.id,
-      })),
+  try {
+    const result = await updateLegacyStockItemMetadata({
+      organizationId: organization.id,
+      stockItemId,
+      userId,
+      itemCondition: parsed.data.itemCondition,
+      imageUrls: parsed.data.imageUrls,
+      location: parsed.data.location || null,
+      notes: parsed.data.notes || null,
     });
+    if (result.changed) revalidatePath("/lager");
+    return {
+      success: result.changed ? "Lagerposition gespeichert ✓" : "Keine Änderungen vorhanden.",
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Lagerposition konnte nicht gespeichert werden.",
+    };
   }
-
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId,
-    action: "stock_item.update",
-    entityType: "StockItem",
-    entityId: stockItemId,
-    before: { title: existing.title, status: existing.status },
-    after: { title: data.title, status: data.status },
-  });
-
-  revalidatePath("/lager");
-  return { success: `Artikel ${existing.sku} gespeichert âœ“` };
 }
+
+export interface StockHistoryPayload {
+  movements: Array<{
+    id: string;
+    movementType: InventoryMovementType;
+    quantity: number;
+    fromBucket: InventoryBucket | null;
+    toBucket: InventoryBucket | null;
+    comment: string | null;
+    createdAt: string;
+    actor: string;
+  }>;
+  auditLogs: Array<{
+    id: string;
+    createdAt: string;
+    actor: string;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+  }>;
+}
+
+export async function loadStockHistoryAction(
+  source: "owned" | "legacy",
+  positionId: string
+): Promise<{ data?: StockHistoryPayload; error?: string }> {
+  const { db, organization } = await requireOrg();
+  const entityType = source === "owned" ? "InventoryPosition" : "StockItem";
+  const exists = source === "owned"
+    ? await db.inventoryPosition.findFirst({
+        where: { id: positionId, organizationId: organization.id },
+        select: { id: true },
+      })
+    : await db.stockItem.findFirst({
+        where: { id: positionId, organizationId: organization.id },
+        select: { id: true },
+      });
+  if (!exists) return { error: "Lagerposition wurde nicht gefunden." };
+
+  const [movements, auditLogs] = await Promise.all([
+    source === "owned"
+      ? db.inventoryMovement.findMany({
+          where: {
+            organizationId: organization.id,
+            inventoryPositionId: positionId,
+          },
+          include: { createdBy: { select: { name: true, email: true } } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 30,
+        })
+      : Promise.resolve([]),
+    db.auditLog.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType,
+        entityId: positionId,
+        action: "inventory_position.updated",
+      },
+      include: { user: { select: { name: true, email: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 30,
+    }),
+  ]);
+
+  return {
+    data: {
+      movements: movements.map((movement) => ({
+        id: movement.id,
+        movementType: movement.movementType,
+        quantity: movement.quantity,
+        fromBucket: movement.fromBucket,
+        toBucket: movement.toBucket,
+        comment: movement.comment,
+        createdAt: movement.createdAt.toLocaleString("de-DE"),
+        actor: movement.createdBy?.name ?? movement.createdBy?.email ?? "System",
+      })),
+      auditLogs: auditLogs.map((entry) => ({
+        id: entry.id,
+        createdAt: entry.createdAt.toLocaleString("de-DE"),
+        actor: entry.user?.name ?? entry.user?.email ?? "System",
+        before: jsonObject(entry.before),
+        after: jsonObject(entry.after),
+      })),
+    },
+  };
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
 
 /** Status eines Artikels Ã¤ndern (Inline-Dropdown). */
 export async function updateStockItemStatusAction(

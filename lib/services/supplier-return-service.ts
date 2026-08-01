@@ -1,11 +1,11 @@
-import type {
-  InventoryBucket,
-  InventoryType,
-  ItemCondition,
+import {
   Prisma,
-  PrismaClient,
-  SupplierReturn,
-  SupplierReturnStatus,
+  type InventoryBucket,
+  type InventoryType,
+  type ItemCondition,
+  type PrismaClient,
+  type SupplierReturn,
+  type SupplierReturnStatus,
 } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
 import { returnOwnedStockToSupplier } from "@/lib/services/inventory-service";
@@ -20,6 +20,22 @@ const SOURCE_BUCKETS: InventoryBucket[] = [
   "INSPECTION",
   "DEFECTIVE",
 ];
+
+export const ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES: SupplierReturnStatus[] = [
+  "DRAFT",
+  "REQUESTED",
+  "APPROVED",
+];
+
+export function calculateSupplierReturnableQuantity(
+  availableQuantity: number,
+  plannedLines: Array<{ sourceBucket: InventoryBucket; quantity: number }>
+): number {
+  const plannedAvailable = plannedLines
+    .filter((line) => line.sourceBucket === "AVAILABLE")
+    .reduce((sum, line) => sum + line.quantity, 0);
+  return Math.max(0, availableQuantity - plannedAvailable);
+}
 
 const TRANSITIONS: Record<SupplierReturnStatus, SupplierReturnStatus[]> = {
   DRAFT: ["REQUESTED", "CANCELLED"],
@@ -54,6 +70,7 @@ export interface SupplierReturnInventorySnapshot {
   inventoryPositionId: string;
   inventoryType: InventoryType;
   quantities: Record<InventoryBucket, number>;
+  plannedQuantities?: Partial<Record<InventoryBucket, number>>;
   unitPriceNetCents: number;
 }
 
@@ -65,6 +82,7 @@ export interface CreateSupplierReturnInput {
   organizationId: string;
   createdById: string;
   purchaseId: string;
+  idempotencyKey?: string;
   requestedAt: Date;
   returnDeadline?: Date | null;
   rmaNumber?: string | null;
@@ -161,7 +179,11 @@ export function planSupplierReturnLinesFromSnapshots(input: {
       );
     }
 
-    const available = snapshot.quantities[selection.sourceBucket];
+    const available = Math.max(
+      0,
+      snapshot.quantities[selection.sourceBucket] -
+        (snapshot.plannedQuantities?.[selection.sourceBucket] ?? 0)
+    );
     if (quantity > available) {
       throw new SupplierReturnDomainError(
         "INSUFFICIENT_STOCK",
@@ -229,9 +251,25 @@ export async function createSupplierReturn(
 ): Promise<SupplierReturn> {
   assertNonNegativeAmount(input.expectedRefundCents ?? 0, "Erwartete Erstattung");
   assertNonNegativeAmount(input.shippingCostCents ?? 0, "Versandkosten");
-  return withSupplierReturnTransaction(input.organizationId, input, (tx) =>
-    createSupplierReturnInTransaction(tx, input)
-  );
+  try {
+    return await withSupplierReturnTransaction(input.organizationId, input, (tx) =>
+      createSupplierReturnInTransaction(tx, input)
+    );
+  } catch (error) {
+    if (!input.idempotencyKey || input.tx || !isUniqueConstraintError(error)) throw error;
+    const existing = await withSupplierReturnTransaction(
+      input.organizationId,
+      { prisma: input.prisma },
+      (tx) => tx.supplierReturn.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          idempotencyKey: input.idempotencyKey,
+        },
+      })
+    );
+    if (existing) return existing;
+    throw error;
+  }
 }
 
 export async function dispatchSupplierReturn(input: {
@@ -245,6 +283,13 @@ export async function dispatchSupplierReturn(input: {
   prisma?: SupplierReturnPrismaClient;
 }): Promise<SupplierReturn> {
   return withSupplierReturnTransaction(input.organizationId, input, async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "supplier_returns"
+      WHERE "id" = ${input.supplierReturnId}
+        AND "organization_id" = ${input.organizationId}
+      FOR UPDATE
+    `;
     const supplierReturn = await tx.supplierReturn.findFirst({
       where: { id: input.supplierReturnId, organizationId: input.organizationId },
       include: { lines: true },
@@ -259,7 +304,11 @@ export async function dispatchSupplierReturn(input: {
     }
     assertSupplierReturnTransition(supplierReturn.status, "DISPATCHED");
 
-    for (const line of supplierReturn.lines) {
+    const lines = [...supplierReturn.lines].sort((left, right) =>
+      left.inventoryPositionId.localeCompare(right.inventoryPositionId)
+      || left.id.localeCompare(right.id)
+    );
+    for (const line of lines) {
       if (line.outboundMovementId) continue;
       const result = await returnOwnedStockToSupplier({
         organizationId: input.organizationId,
@@ -395,6 +444,39 @@ async function createSupplierReturnInTransaction(
   tx: SupplierReturnTransaction,
   input: CreateSupplierReturnInput
 ): Promise<SupplierReturn> {
+  if (input.idempotencyKey) {
+    const existing = await tx.supplierReturn.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        idempotencyKey: input.idempotencyKey,
+      },
+    });
+    if (existing) return existing;
+  }
+
+  const positionIds = [...new Set(
+    input.selections.map((selection) => selection.inventoryPositionId)
+  )].sort();
+  if (positionIds.length > 0) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "inventory_positions"
+      WHERE "organization_id" = ${input.organizationId}
+        AND "id" IN (${Prisma.join(positionIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+  }
+  if (input.idempotencyKey) {
+    const existingAfterLock = await tx.supplierReturn.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        idempotencyKey: input.idempotencyKey,
+      },
+    });
+    if (existingAfterLock) return existingAfterLock;
+  }
+
   const purchase = await tx.purchase.findFirst({
     where: { id: input.purchaseId, organizationId: input.organizationId },
     include: {
@@ -413,6 +495,30 @@ async function createSupplierReturnInTransaction(
     );
   }
 
+  const activePlannedLines = await tx.supplierReturnLine.findMany({
+    where: {
+      organizationId: input.organizationId,
+      inventoryPositionId: {
+        in: input.selections.map((selection) => selection.inventoryPositionId),
+      },
+      outboundMovementId: null,
+      supplierReturn: {
+        status: { in: ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES },
+      },
+    },
+    select: {
+      inventoryPositionId: true,
+      sourceBucket: true,
+      quantity: true,
+    },
+  });
+  const plannedByPosition = new Map<string, Partial<Record<InventoryBucket, number>>>();
+  for (const line of activePlannedLines) {
+    const quantities = plannedByPosition.get(line.inventoryPositionId) ?? {};
+    quantities[line.sourceBucket] = (quantities[line.sourceBucket] ?? 0) + line.quantity;
+    plannedByPosition.set(line.inventoryPositionId, quantities);
+  }
+
   const snapshots: SupplierReturnInventorySnapshot[] = purchase.lines.flatMap((line) =>
     line.ownedLots.map((lot) => ({
       organizationId: lot.organizationId,
@@ -426,6 +532,7 @@ async function createSupplierReturnInTransaction(
         INSPECTION: lot.inventoryPosition.quantityInspection,
         DEFECTIVE: lot.inventoryPosition.quantityDefective,
       },
+      plannedQuantities: plannedByPosition.get(lot.inventoryPositionId),
       unitPriceNetCents: Math.round(Number(line.unitPriceNet) * 100),
     }))
   );
@@ -446,6 +553,7 @@ async function createSupplierReturnInTransaction(
     data: {
       organizationId: input.organizationId,
       returnNumber,
+      idempotencyKey: input.idempotencyKey,
       purchaseId: purchase.id,
       supplierId: purchase.businessPartnerId,
       supplierSnapshot: purchase.businessPartner?.displayName ?? purchase.vendor,
@@ -489,6 +597,11 @@ async function createSupplierReturnInTransaction(
     },
   });
   return supplierReturn;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error
+    && (error as { code?: unknown }).code === "P2002";
 }
 
 async function withSupplierReturnTransaction<T>(

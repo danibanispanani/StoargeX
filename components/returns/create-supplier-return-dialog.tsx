@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { inventoryBucketLabel } from "@/lib/inventory-labels";
+import { ITEM_CONDITION_OPTIONS } from "@/lib/item-condition-options";
 
 export interface SupplierReturnPurchaseOption {
   id: string;
@@ -44,16 +46,23 @@ export function CreateSupplierReturnDialog({
   const [purchaseId, setPurchaseId] = useState(purchases[0]?.id ?? "");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [state, action, pending] = useActionState<ActionState, FormData>(
     createSupplierReturnAction,
     null
   );
 
   useEffect(() => {
+    setIdempotencyKey(crypto.randomUUID());
+  }, []);
+
+  useEffect(() => {
     if (state?.success) {
       toast.success(state.success);
       setOpen(false);
       setQuantities({});
+      setReasons({});
+      setIdempotencyKey(crypto.randomUUID());
     }
   }, [state]);
 
@@ -80,6 +89,7 @@ export function CreateSupplierReturnDialog({
           </DialogDescription>
         </DialogHeader>
         <form action={action} className="space-y-5">
+          <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
           {state?.error && <Alert variant="destructive"><AlertDescription>{state.error}</AlertDescription></Alert>}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field id="supplier-return-search" label="Einkauf suchen" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="E-Nummer, Lieferant, Artikel" />
@@ -89,7 +99,11 @@ export function CreateSupplierReturnDialog({
                 id="supplier-return-purchase"
                 name="purchaseId"
                 value={purchaseId}
-                onChange={(event) => { setPurchaseId(event.target.value); setQuantities({}); }}
+                onChange={(event) => {
+                  setPurchaseId(event.target.value);
+                  setQuantities({});
+                  setReasons({});
+                }}
                 className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
                 required
               >
@@ -110,8 +124,8 @@ export function CreateSupplierReturnDialog({
                     const quantity = quantities[key] ?? 0;
                     return (
                       <div key={key} className="grid gap-2 bg-muted/35 p-2 sm:grid-cols-[8rem_7rem_1fr]">
-                        <div className="text-sm"><strong>{bucketLabel(bucket.key)}</strong><div className="text-xs text-muted-foreground">verfügbar {bucket.quantity}</div></div>
-                        <Input type="number" min={0} max={bucket.quantity} value={quantity} onChange={(event) => setQuantities((current) => ({ ...current, [key]: Math.min(bucket.quantity, Math.max(0, Number(event.target.value) || 0)) }))} aria-label={`Menge ${position.inventoryNumber} ${bucketLabel(bucket.key)}`} />
+                        <div className="text-sm"><strong>{inventoryBucketLabel(bucket.key)}</strong><div className="text-xs text-muted-foreground">verfügbar {bucket.quantity}</div></div>
+                        <Input type="number" min={0} max={bucket.quantity} value={quantity} onChange={(event) => setQuantities((current) => ({ ...current, [key]: Math.min(bucket.quantity, Math.max(0, Number(event.target.value) || 0)) }))} aria-label={`Menge ${position.inventoryNumber} ${inventoryBucketLabel(bucket.key)}`} />
                         <Input value={reasons[key] ?? ""} onChange={(event) => setReasons((current) => ({ ...current, [key]: event.target.value }))} placeholder="Rückgabegrund" aria-label={`Rückgabegrund ${position.inventoryNumber}`} required={quantity > 0} />
                         {quantity > 0 && <>
                           <input type="hidden" name="purchaseLineIds" value={line.id} />
@@ -128,11 +142,9 @@ export function CreateSupplierReturnDialog({
                               aria-label={`Artikelzustand ${position.inventoryNumber}`}
                             >
                               <option value="">Nicht festgelegt</option>
-                              <option value="NEW">Neu</option>
-                              <option value="OPEN_BOX">Geöffnet</option>
-                              <option value="REFURBISHED">Refurbished</option>
-                              <option value="USED">Gebraucht</option>
-                              <option value="DEFECTIVE">Defekt</option>
+                              {ITEM_CONDITION_OPTIONS.map((condition) => (
+                                <option key={condition.value} value={condition.value}>{condition.label}</option>
+                              ))}
                             </select>
                           </label>
                         </>}
@@ -155,7 +167,7 @@ export function CreateSupplierReturnDialog({
             <Field id="supplier-return-evidence" name="evidenceUrls" label="Bilder / Nachweise (URLs)" placeholder="eine URL je Zeile" />
           </section>
 
-          <Button type="submit" className="w-full" disabled={pending || !selected || selectedCount === 0}>
+          <Button type="submit" className="w-full" disabled={pending || !selected || selectedCount === 0 || !idempotencyKey}>
             {pending ? "Wird geplant…" : "Lieferantenretoure planen"}
           </Button>
         </form>
@@ -166,8 +178,4 @@ export function CreateSupplierReturnDialog({
 
 function Field({ id, label, ...props }: React.ComponentProps<typeof Input> & { id: string; label: string }) {
   return <div className="space-y-2"><Label htmlFor={id}>{label}</Label><Input id={id} {...props} /></div>;
-}
-
-function bucketLabel(bucket: string): string {
-  return { AVAILABLE: "Verfügbar", RESERVED: "Reserviert", INSPECTION: "Prüfung", DEFECTIVE: "Defekt" }[bucket] ?? bucket;
 }

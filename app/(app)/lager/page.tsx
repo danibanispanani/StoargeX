@@ -7,6 +7,10 @@ import { StockItemDialog } from "@/components/stock/stock-item-dialog";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
 import { StockTable, type StockRow } from "@/components/stock/stock-table";
 import { deriveOwnedStockStatus } from "@/lib/services/owned-purchase-service";
+import {
+  ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES,
+  calculateSupplierReturnableQuantity,
+} from "@/lib/services/supplier-return-service";
 import { matchesLowStockFilter, parseStockView } from "@/lib/stock/stock-views";
 import {
   parseStockTableQuery,
@@ -102,8 +106,22 @@ export default async function StockPage({
       },
       include: {
         product: true,
-        ownedLot: true,
+        ownedLot: {
+          include: {
+            purchaseLine: {
+              include: { purchase: { select: { purchaseNumber: true } } },
+            },
+          },
+        },
         listings: { select: { platformId: true } },
+        supplierReturnLines: {
+          where: {
+            outboundMovementId: null,
+            sourceBucket: "AVAILABLE",
+            supplierReturn: { status: { in: ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES } },
+          },
+          select: { quantity: true, sourceBucket: true },
+        },
       },
       orderBy: { inventoryNumber: "desc" },
       take: 500,
@@ -202,11 +220,19 @@ export default async function StockPage({
         derivedStatus: deriveOwnedStockStatus(position),
         ean: lot.ean ?? position.product.ean ?? "",
         imageUrl: lot.imageUrls[0] ?? position.product.imageUrls[0] ?? null,
+        imageUrls: lot.imageUrls,
+        itemCondition: position.itemCondition,
+        location: null,
         listings: position.listings.map((l) => l.platformId),
         notes: "",
         low: lowKeys.has(lowStockKey(position.product.name, position.product.variant)),
         availableQuantity: position.quantityAvailable,
         originalQuantity: position.quantityReceived,
+        returnableQuantity: calculateSupplierReturnableQuantity(
+          position.quantityAvailable,
+          position.supplierReturnLines
+        ),
+        purchaseNumber: lot.purchaseLine?.purchase.purchaseNumber ?? null,
       };
     });
 
@@ -229,11 +255,16 @@ export default async function StockPage({
     status: item.status,
     ean: item.ean ?? "",
     imageUrl: item.imageUrls[0] ?? null,
+    imageUrls: item.imageUrls,
+    itemCondition: item.itemCondition,
+    location: item.location,
     listings: item.listings.map((l) => l.platformId),
     notes: item.notes ?? "",
     low: lowKeys.has(lowStockKey(item.title, item.variant)),
     availableQuantity: item.quantity,
     originalQuantity: 1,
+    returnableQuantity: 0,
+    purchaseNumber: null,
   }));
 
   const allRows = [...ownedRows, ...legacyRows];
@@ -265,8 +296,6 @@ export default async function StockPage({
       <StockTable
         rows={rows}
         platforms={platforms}
-        zmOptions={zmOptions}
-        products={products}
         scope={{ organizationId: organization.id, userId }}
         tableQuery={tableQuery}
         currentQuery={operationalSearchParams({

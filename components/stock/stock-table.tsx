@@ -1,17 +1,17 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
-import { PencilIcon } from "lucide-react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import type { EntryStatus, StockItemStatus } from "@prisma/client";
+import type { EntryStatus, ItemCondition, StockItemStatus } from "@prisma/client";
 import {
   bulkUpdateStockAction,
-  adjustOwnedInventoryQuantityAction,
   toggleListingAction,
   toggleInventoryPositionListingAction,
   updateOwnedLotEntryStatusAction,
   updateEntryStatusAction,
   updateStockItemStatusAction,
+  loadStockHistoryAction,
+  type StockHistoryPayload,
 } from "@/lib/actions/stock";
 import {
   ENTRY_STATUS,
@@ -24,7 +24,6 @@ import {
 import { formatEuro } from "@/lib/calculations";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ActionIconButton } from "@/components/ui/action-icon-button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -47,15 +46,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  StockItemDialog,
-  type EditableStockItem,
-} from "@/components/stock/stock-item-dialog";
-import type { PickerProduct } from "@/components/products/product-picker";
-import type { ActionState } from "@/lib/actions/team";
+import { StockMetadataDialog } from "@/components/stock/stock-metadata-dialog";
+import { StockSupplierReturnDialog } from "@/components/stock/stock-supplier-return-dialog";
 import { OPERATIONAL_MODULES } from "@/lib/operational-modules";
 import type { TablePreferenceScope } from "@/lib/operational-table";
 import type { StockSort, StockTableQuery } from "@/lib/stock/stock-table";
+import {
+  inventoryBucketLabel,
+  inventoryMovementLabel,
+} from "@/lib/inventory-labels";
 
 export interface StockRow {
   source: "owned" | "legacy";
@@ -78,26 +77,27 @@ export interface StockRow {
   derivedStatus?: string;
   ean: string;
   imageUrl: string | null;
+  imageUrls: string[];
+  itemCondition: ItemCondition | null;
+  location: string | null;
   listings: string[]; // platformIds
   notes: string;
   low: boolean; // niedriger Bestand (Zeilen-Markierung)
   availableQuantity: number;
   originalQuantity: number;
+  returnableQuantity: number;
+  purchaseNumber: string | null;
 }
 
 export function StockTable({
   rows,
   platforms,
-  zmOptions,
-  products,
   scope,
   tableQuery,
   currentQuery,
 }: {
   rows: StockRow[];
   platforms: Array<{ id: string; name: string }>;
-  zmOptions: string[];
-  products: PickerProduct[];
   scope: Omit<TablePreferenceScope, "tableKey">;
   tableQuery: StockTableQuery;
   currentQuery: string;
@@ -209,7 +209,7 @@ export function StockTable({
                         className="size-4"
                       />
                     ) : (
-                      <span className="text-xs text-muted-foreground">Neu</span>
+                      <span aria-hidden="true" />
                     )}
                   </TableCell>
                   <TableCell data-column data-column-key="number" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-sticky-1 font-mono text-xs">{row.sku}</TableCell>
@@ -329,19 +329,6 @@ export function StockTable({
                   <TableCell data-column data-column-key="actions" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all>
                     <div className="flex justify-end gap-1">
                       <StockDetailDrawer row={row} platforms={platforms} />
-                      {row.source === "owned" ? (
-                        <QuantityAdjustmentDialog row={row} />
-                      ) : (
-                        <StockItemDialog
-                          item={toEditable(row)}
-                          platforms={platforms}
-                          zmOptions={zmOptions}
-                          products={products}
-                          trigger={
-                            <ActionIconButton label="Lagerposition bearbeiten" icon={PencilIcon} />
-                          }
-                        />
-                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -362,12 +349,46 @@ function StockDetailDrawer({
   row: StockRow;
   platforms: Array<{ id: string; name: string }>;
 }) {
+  const [history, setHistory] = useState<StockHistoryPayload | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyPending, startHistoryTransition] = useTransition();
+  const historyRequestPending = useRef(false);
+  const historyRefreshQueued = useRef(false);
   const listingNames = platforms
     .filter((platform) => row.listings.includes(platform.id))
     .map((platform) => platform.name);
+  const refreshHistory = useCallback(() => {
+    if (historyRequestPending.current) {
+      historyRefreshQueued.current = true;
+      return;
+    }
+    historyRequestPending.current = true;
+    setHistoryError(null);
+    startHistoryTransition(async () => {
+      try {
+        const result = await loadStockHistoryAction(row.source, row.id);
+        if (result.error) setHistoryError(result.error);
+        if (result.data) setHistory(result.data);
+      } catch {
+        setHistoryError("Historie konnte nicht geladen werden.");
+      } finally {
+        historyRequestPending.current = false;
+        if (historyRefreshQueued.current) {
+          historyRefreshQueued.current = false;
+          refreshHistory();
+        }
+      }
+    });
+  }, [row.id, row.source]);
 
   return (
-    <DetailDrawer title={row.sku} description={row.title}>
+    <DetailDrawer
+      title={row.sku}
+      description={row.title}
+      onOpenChange={(open) => {
+        if (open) refreshHistory();
+      }}
+    >
       <DetailSection title="Artikel">
         <DetailGrid
           items={[
@@ -411,8 +432,79 @@ function StockDetailDrawer({
       <DetailSection title="Listings">
         <p>{listingNames.length ? listingNames.join(" · ") : "Keine Listings"}</p>
       </DetailSection>
+      <DetailSection title="Aktionen">
+        <div className="flex flex-wrap gap-2">
+          <StockMetadataDialog
+            source={row.source}
+            positionId={row.id}
+            inventoryNumber={row.sku}
+            itemCondition={row.itemCondition}
+            imageUrls={row.imageUrls}
+            location={row.location}
+            notes={row.notes}
+            onSaved={refreshHistory}
+          />
+          {row.source === "owned" && row.purchaseNumber && (
+            <StockSupplierReturnDialog
+              inventoryPositionId={row.id}
+              inventoryNumber={row.sku}
+              productName={row.title}
+              supplier={row.supplier}
+              purchaseNumber={row.purchaseNumber}
+              returnableQuantity={row.returnableQuantity}
+            />
+          )}
+        </div>
+        {row.source === "owned" && !row.purchaseNumber && (
+          <p className="text-xs">Keine Lieferantenretoure möglich: Der historischen Position fehlt die Verknüpfung zu einem Einkauf.</p>
+        )}
+      </DetailSection>
       <DetailSection title="Bestandsverlauf">
-        <p>Bewegungen liegen im InventoryMovement-Verlauf und bleiben prüfbar.</p>
+        {historyPending && <p>Verlauf wird geladen…</p>}
+        {historyError && <p className="text-destructive">{historyError}</p>}
+        {history && history.movements.length === 0 ? (
+          <p>Noch keine Bewegungen vorhanden.</p>
+        ) : (
+          <div className="space-y-3">
+            {history?.movements.map((movement) => (
+              <div key={movement.id} className="border-l-2 pl-3">
+                <div className="font-medium text-foreground">
+                  {inventoryMovementLabel(movement.movementType)} · {movement.quantity} Stück
+                </div>
+                <div className="text-xs">
+                  {[inventoryBucketLabel(movement.fromBucket), inventoryBucketLabel(movement.toBucket)]
+                    .filter(Boolean)
+                    .join(" → ") || "Bestandsbuchung"}
+                  {` · ${movement.createdAt} · ${movement.actor}`}
+                </div>
+                {movement.comment && <p className="text-xs">{movement.comment}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </DetailSection>
+      <DetailSection title="Metadatenänderungen">
+        {historyPending && <p>Änderungshistorie wird geladen…</p>}
+        {historyError && <p className="text-destructive">{historyError}</p>}
+        {history && history.auditLogs.length === 0 ? (
+          <p>Noch keine Metadatenänderungen vorhanden.</p>
+        ) : (
+          <div className="space-y-3">
+            {history?.auditLogs.map((entry) => (
+              <div key={entry.id} className="border-l-2 border-blue-400 pl-3">
+                <div className="font-medium text-foreground">Lagerposition bearbeitet</div>
+                <div className="text-xs">{entry.createdAt} · {entry.actor}</div>
+                <ul className="mt-1 space-y-1 text-xs">
+                  {Object.keys(entry.after ?? {}).map((field) => (
+                    <li key={field}>
+                      {metadataLabel(field)}: {metadataValue(entry.before?.[field])} → {metadataValue(entry.after?.[field])}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
       </DetailSection>
       {row.source === "legacy" && (
         <DetailSection title="Legacy-Importinformationen">
@@ -504,88 +596,19 @@ function Sort({
   );
 }
 
-function QuantityAdjustmentDialog({ row }: { row: StockRow }) {
-  const action = adjustOwnedInventoryQuantityAction.bind(null, row.id);
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    action,
-    null
-  );
-
-  useEffect(() => {
-    if (state?.success) toast.success(state.success);
-    if (state?.error) toast.error(state.error);
-  }, [state]);
-
-  return (
-    <details className="relative">
-      <summary className="inline-flex h-8 cursor-pointer list-none items-center rounded-md px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
-        Korrektur
-      </summary>
-      <form
-        action={formAction}
-        className="absolute right-0 z-20 mt-2 w-72 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow"
-      >
-        <div className="text-sm font-medium">Bestand korrigieren</div>
-        <select
-          name="direction"
-          defaultValue="IN"
-          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
-        >
-          <option value="IN">Differenz +</option>
-          <option value="OUT">Differenz -</option>
-        </select>
-        <select
-          name="bucket"
-          defaultValue="AVAILABLE"
-          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
-        >
-          <option value="AVAILABLE">Verfügbar</option>
-          <option value="INSPECTION">In Prüfung</option>
-          <option value="DEFECTIVE">Defekt</option>
-          <option value="RESERVED">Reserviert</option>
-        </select>
-        <input
-          name="quantity"
-          type="number"
-          min={1}
-          max={500}
-          defaultValue={1}
-          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
-        />
-        <input
-          name="comment"
-          required
-          placeholder="Grund / Kommentar"
-          className="border-input h-8 w-full rounded-md border bg-background px-2 text-xs"
-        />
-        <Button type="submit" size="sm" disabled={pending} className="w-full">
-          Buchen
-        </Button>
-      </form>
-    </details>
-  );
+function metadataLabel(value: string): string {
+  return {
+    itemCondition: "Artikelzustand",
+    imageUrls: "Bilder",
+    location: "Lagerplatz",
+    notes: "Notiz",
+  }[value] ?? value;
 }
 
-function toEditable(row: StockRow): EditableStockItem {
-  return {
-    id: row.id,
-    sku: row.sku,
-    purchaseDate: row.dateIso,
-    supplier: row.supplier,
-    title: row.title,
-    variant: row.variant,
-    size: row.size,
-    priceGross: (row.grossCents / 100).toFixed(2).replace(".", ","),
-    inputTaxDeductible: row.inputTaxDeductible,
-    paymentMethod: row.zm,
-    kaufStatus: row.kaufStatus,
-    retoureStatus: row.retoureStatus,
-    status: row.status,
-    ean: row.ean,
-    imageUrl: row.imageUrl ?? "",
-    notes: row.notes,
-    platformIds: row.listings,
-  };
+function metadataValue(value: unknown): string {
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "–";
+  if (value === null || value === undefined || value === "") return "–";
+  return String(value);
 }
 
 function ColoredSelect({

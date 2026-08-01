@@ -8,9 +8,12 @@ import { euroToCents } from "@/lib/calculations";
 import { requireOrg } from "@/lib/org";
 import { parseHttpUrlList } from "@/lib/url-list";
 import {
+  ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES,
+  calculateSupplierReturnableQuantity,
   createSupplierReturn,
   dispatchSupplierReturn,
   recordSupplierReturnRefund,
+  SupplierReturnDomainError,
   transitionSupplierReturn,
 } from "@/lib/services/supplier-return-service";
 
@@ -32,6 +35,7 @@ const optionalDate = z.string().refine(
 );
 
 const createSchema = z.object({
+  idempotencyKey: z.string().uuid().optional(),
   purchaseId: z.string().min(1, "Bitte einen Einkauf wählen."),
   requestedAt: z.coerce.date(),
   returnDeadline: optionalDate,
@@ -55,6 +59,7 @@ export async function createSupplierReturnAction(
 ): Promise<ActionState> {
   const { organization, userId } = await requireOrg("MEMBER");
   const parsed = createSchema.safeParse({
+    idempotencyKey: String(formData.get("idempotencyKey") ?? "") || undefined,
     purchaseId: formData.get("purchaseId"),
     requestedAt: formData.get("requestedAt") || new Date(),
     returnDeadline: String(formData.get("returnDeadline") ?? ""),
@@ -93,6 +98,7 @@ export async function createSupplierReturnAction(
       organizationId: organization.id,
       createdById: userId,
       purchaseId: data.purchaseId,
+      idempotencyKey: data.idempotencyKey,
       requestedAt: data.requestedAt,
       returnDeadline: data.returnDeadline ? new Date(data.returnDeadline) : null,
       rmaNumber: data.rmaNumber || null,
@@ -113,7 +119,145 @@ export async function createSupplierReturnAction(
     revalidateSupplierReturnViews();
     return { success: `Lieferantenretoure ${supplierReturn.returnNumber ?? ""} geplant.` };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Lieferantenretoure konnte nicht erstellt werden." };
+    return { error: supplierReturnErrorMessage(error) };
+  }
+}
+
+function supplierReturnErrorMessage(error: unknown): string {
+  if (error instanceof SupplierReturnDomainError) return error.message;
+  if (error instanceof Error && (
+    error.message.startsWith("UngÃ¼ltige URL:")
+    || error.message.startsWith("Nur HTTP-/HTTPS-URLs sind erlaubt:")
+  )) return error.message;
+  return "Lieferantenretoure konnte nicht erstellt werden.";
+}
+
+const stockSupplierReturnSchema = z.object({
+  mode: z.enum(["FULL", "PARTIAL"]),
+  quantity: z.coerce.number().int("Menge muss eine ganze Zahl sein.").min(1, "Menge muss mindestens 1 sein."),
+  reason: z.string().trim().min(1, "Rückgabegrund fehlt.").max(500),
+  idempotencyKey: z.string().uuid("Die Anfrage ist ungültig. Bitte Dialog erneut öffnen."),
+});
+
+export type StockSupplierReturnActionState = {
+  error?: string;
+  success?: string;
+  redirectTo?: string;
+} | null;
+
+export async function createSupplierReturnFromStockAction(
+  inventoryPositionId: string,
+  _previous: StockSupplierReturnActionState,
+  formData: FormData
+): Promise<StockSupplierReturnActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+  const parsed = stockSupplierReturnSchema.safeParse({
+    mode: formData.get("mode"),
+    quantity: formData.get("quantity"),
+    reason: formData.get("reason"),
+    idempotencyKey: formData.get("idempotencyKey"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Retourenmenge." };
+  }
+
+  const existing = await db.supplierReturn.findFirst({
+    where: {
+      organizationId: organization.id,
+      idempotencyKey: parsed.data.idempotencyKey,
+    },
+    select: {
+      id: true,
+      returnNumber: true,
+      lines: {
+        where: { inventoryPositionId },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+  if (existing) {
+    if (existing.lines.length === 0) {
+      return { error: "Diese Anfrage wurde bereits fÃ¼r eine andere Lagerposition verwendet. Bitte Dialog erneut Ã¶ffnen." };
+    }
+    return {
+      success: `Lieferantenretoure ${existing.returnNumber ?? existing.id} ist bereits geplant. Der Bestand bleibt bis zum Versand unverÃ¤ndert.`,
+      redirectTo: `/retouren/lieferanten?q=${encodeURIComponent(existing.returnNumber ?? existing.id)}`,
+    };
+  }
+
+  const position = await db.inventoryPosition.findFirst({
+    where: { id: inventoryPositionId, organizationId: organization.id },
+    select: {
+      id: true,
+      inventoryType: true,
+      itemCondition: true,
+      quantityAvailable: true,
+      ownedLot: {
+        select: {
+          purchaseLine: {
+            select: { id: true, purchase: { select: { id: true } } },
+          },
+        },
+      },
+      supplierReturnLines: {
+        where: {
+          outboundMovementId: null,
+          supplierReturn: { status: { in: ACTIVE_SUPPLIER_RETURN_PLAN_STATUSES } },
+        },
+        select: { quantity: true, sourceBucket: true },
+      },
+    },
+  });
+  if (!position) return { error: "Lagerposition wurde nicht gefunden." };
+  if (position.inventoryType !== "OWNED") {
+    return { error: "Lieferantenretouren können nur aus Eigenbestand erstellt werden." };
+  }
+  const purchaseLine = position.ownedLot?.purchaseLine;
+  if (!purchaseLine) {
+    return {
+      error: "Für diese historische Lagerposition ist kein Einkauf verknüpft.",
+    };
+  }
+
+  const returnableQuantity = calculateSupplierReturnableQuantity(
+    position.quantityAvailable,
+    position.supplierReturnLines
+  );
+  const quantity = parsed.data.mode === "FULL"
+    ? returnableQuantity
+    : parsed.data.quantity;
+  if (quantity < 1 || quantity > returnableQuantity) {
+    return {
+      error: `Menge muss zwischen 1 und ${returnableQuantity} Stück liegen.`,
+    };
+  }
+
+  try {
+    const supplierReturn = await createSupplierReturn({
+      organizationId: organization.id,
+      createdById: userId,
+      purchaseId: purchaseLine.purchase.id,
+      idempotencyKey: parsed.data.idempotencyKey,
+      requestedAt: new Date(),
+      selections: [{
+        purchaseLineId: purchaseLine.id,
+        inventoryPositionId: position.id,
+        sourceBucket: "AVAILABLE",
+        quantity,
+        reason: parsed.data.reason,
+        itemCondition: position.itemCondition ?? null,
+      }],
+    });
+    revalidateSupplierReturnViews();
+    return {
+      success: `Lieferantenretoure ${supplierReturn.returnNumber ?? ""} geplant. Der Bestand bleibt bis zum Versand unverändert.`,
+      redirectTo: `/retouren/lieferanten?q=${encodeURIComponent(supplierReturn.returnNumber ?? supplierReturn.id)}`,
+    };
+  } catch (error) {
+    return {
+      error: supplierReturnErrorMessage(error),
+    };
   }
 }
 

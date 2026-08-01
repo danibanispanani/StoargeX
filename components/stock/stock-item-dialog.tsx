@@ -2,18 +2,8 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  createStockItemAction,
-  updateStockItemAction,
-} from "@/lib/actions/stock";
+import { createStockItemAction } from "@/lib/actions/stock";
 import type { ActionState } from "@/lib/actions/team";
-import {
-  ENTRY_STATUS_TITLES,
-  KAUF_STATUS_OPTIONS,
-  RETOURE_STATUS_OPTIONS,
-  STOCK_STATUS,
-  STOCK_STATUS_OPTIONS,
-} from "@/lib/constants";
 import { ProductPicker, type PickerProduct } from "@/components/products/product-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,54 +18,27 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-export interface EditableStockItem {
-  id: string;
-  sku: string;
-  purchaseDate: string; // yyyy-mm-dd
-  supplier: string;
-  title: string;
-  variant: string;
-  size: string;
-  priceGross: string; // "12,34"
-  inputTaxDeductible: boolean;
-  paymentMethod: string;
-  kaufStatus: string;
-  retoureStatus: string;
-  status: string;
-  ean: string;
-  imageUrl: string;
-  notes: string;
-  platformIds: string[];
-}
-
 export function StockItemDialog({
-  item,
   platforms,
   zmOptions,
   products = [],
-  trigger,
 }: {
-  item?: EditableStockItem;
   platforms: Array<{ id: string; name: string }>;
   zmOptions: string[];
   products?: PickerProduct[];
-  trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [deductible, setDeductible] = useState(item?.inputTaxDeductible ?? false);
+  const [deductible, setDeductible] = useState(false);
   // Prefill-Felder (Produktkatalog) – überschreibbar
-  const [title, setTitle] = useState(item?.title ?? "");
-  const [variant, setVariant] = useState(item?.variant ?? "");
-  const [size, setSize] = useState(item?.size ?? "");
-  const [ean, setEan] = useState(item?.ean ?? "");
-  const [price, setPrice] = useState(item?.priceGross ?? "");
+  const [title, setTitle] = useState("");
+  const [variant, setVariant] = useState("");
+  const [size, setSize] = useState("");
+  const [ean, setEan] = useState("");
+  const [price, setPrice] = useState("");
   const [productId, setProductId] = useState("");
 
-  const action = item
-    ? updateStockItemAction.bind(null, item.id)
-    : createStockItemAction;
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    action,
+    createStockItemAction,
     null
   );
 
@@ -83,17 +46,15 @@ export function StockItemDialog({
     if (state?.success) {
       toast.success(state.success);
       setOpen(false);
-      if (!item) {
-        setTitle("");
-        setVariant("");
-        setSize("");
-        setEan("");
-        setPrice("");
-        setProductId("");
-        setDeductible(false);
-      }
+      setTitle("");
+      setVariant("");
+      setSize("");
+      setEan("");
+      setPrice("");
+      setProductId("");
+      setDeductible(false);
     }
-  }, [state, item]);
+  }, [state]);
 
   function applyProduct(product: PickerProduct) {
     setProductId(product.id);
@@ -111,17 +72,13 @@ export function StockItemDialog({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        {trigger ?? <Button>Wareneingang erfassen</Button>}
+        <Button>Wareneingang erfassen</Button>
       </SheetTrigger>
       <SheetContent className="sm:max-w-2xl">
         <SheetHeader>
-          <SheetTitle>
-            {item ? `Artikel ${item.sku} bearbeiten` : "Wareneingang erfassen"}
-          </SheetTitle>
+          <SheetTitle>Wareneingang erfassen</SheetTitle>
           <SheetDescription>
-            {item
-              ? "Alle Felder sind nachträglich änderbar."
-              : "Netto wird bei Vorsteuerabzug automatisch berechnet. Menge > 1 erzeugt eine Charge mit gemeinsamer Lagernummer."}
+            Netto wird bei Vorsteuerabzug automatisch berechnet. Menge &gt; 1 erzeugt eine Charge mit gemeinsamer Lagernummer.
           </SheetDescription>
         </SheetHeader>
         <form action={formAction} className="space-y-4">
@@ -131,7 +88,7 @@ export function StockItemDialog({
             </Alert>
           )}
 
-          {!item && products.length > 0 && (
+          {products.length > 0 && (
             <>
               <input type="hidden" name="productId" value={productId} />
               <ProductPicker products={products} onSelect={applyProduct} />
@@ -145,7 +102,7 @@ export function StockItemDialog({
                 id="si-date"
                 name="purchaseDate"
                 type="date"
-                defaultValue={item?.purchaseDate ?? today}
+                defaultValue={today}
                 required
               />
             </div>
@@ -154,7 +111,6 @@ export function StockItemDialog({
               <Input
                 id="si-supplier"
                 name="supplier"
-                defaultValue={item?.supplier}
                 placeholder="z.B. MediaMarkt, Amazon, privat"
               />
             </div>
@@ -218,7 +174,7 @@ export function StockItemDialog({
                 id="si-zm"
                 name="paymentMethod"
                 required
-                defaultValue={item?.paymentMethod ?? zmOptions[0] ?? ""}
+                defaultValue={zmOptions[0] ?? ""}
                 className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
                 {zmOptions.map((zm) => (
@@ -227,11 +183,9 @@ export function StockItemDialog({
                   </option>
                 ))}
               </select>
-              {!item && (
-                <p className="text-xs text-muted-foreground">
-                  Richard/Daniel erzeugen automatisch einen Schulden-Eintrag.
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Konfigurierte schuldrelevante Zahlungsmethoden erzeugen automatisch einen Schulden-Eintrag.
+              </p>
             </div>
           </div>
 
@@ -261,58 +215,9 @@ export function StockItemDialog({
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="si-status">Status</Label>
-              <select
-                id="si-status"
-                name="status"
-                defaultValue={item?.status ?? "IN_STOCK"}
-                className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                {STOCK_STATUS_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {STOCK_STATUS[value].label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="si-kauf">Kauf</Label>
-              <select
-                id="si-kauf"
-                name="kaufStatus"
-                defaultValue={item?.kaufStatus ?? "O"}
-                className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                {KAUF_STATUS_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value} – {ENTRY_STATUS_TITLES[value]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="si-retoure">Retoure</Label>
-              <select
-                id="si-retoure"
-                name="retoureStatus"
-                defaultValue={item?.retoureStatus ?? "NN"}
-                className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                {RETOURE_STATUS_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value} – {ENTRY_STATUS_TITLES[value]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {!item && (
-              <div className="space-y-2">
-                <Label htmlFor="si-qty">Menge</Label>
-                <Input id="si-qty" name="quantity" type="number" min={1} max={500} defaultValue={1} />
-              </div>
-            )}
+          <div className="space-y-2">
+            <Label htmlFor="si-qty">Menge</Label>
+            <Input id="si-qty" name="quantity" type="number" min={1} max={500} defaultValue={1} />
           </div>
 
           <div className="space-y-2">
@@ -324,7 +229,6 @@ export function StockItemDialog({
                     type="checkbox"
                     name="platformIds"
                     value={platform.id}
-                    defaultChecked={item?.platformIds.includes(platform.id)}
                     className="size-4"
                   />
                   {platform.name}
@@ -336,17 +240,17 @@ export function StockItemDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="si-image-url">Bildadresse</Label>
-              <Input id="si-image-url" name="imageUrl" type="url" defaultValue={item?.imageUrl} placeholder="https://…/artikelbild.jpg" />
+              <Input id="si-image-url" name="imageUrl" type="url" placeholder="https://…/artikelbild.jpg" />
               <p className="text-xs text-muted-foreground">Bild öffnen → Rechtsklick → „Bildadresse kopieren“. Bitte den direkten öffentlichen Bild-Link einfügen, nicht die Shop-Seite.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="si-notes">Notizen</Label>
-              <Input id="si-notes" name="notes" defaultValue={item?.notes} placeholder="optional" />
+              <Input id="si-notes" name="notes" placeholder="optional" />
             </div>
           </div>
 
           <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Speichert…" : item ? "Änderungen speichern" : "Artikel eintragen"}
+            {pending ? "Speichert…" : "Artikel eintragen"}
           </Button>
         </form>
       </SheetContent>
