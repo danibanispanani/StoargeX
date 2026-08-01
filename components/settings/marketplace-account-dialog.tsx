@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { saveMarketplaceAccountAction, toggleMarketplaceAccountAction } from "@/lib/actions/marketplace-accounts";
 import type { ActionState } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +36,7 @@ export function MarketplaceAccountDialog({ account }: { account?: MarketplaceAcc
   const [state, formAction, pending] = useActionState<ActionState, FormData>(action, null);
   useEffect(() => { if (state?.success) { toast.success(state.success); setOpen(false); } }, [state]);
   const isEbay = marketplaceCode === "EBAY_DE";
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button size="sm" variant={account ? "outline" : "default"}>{account ? <Pencil /> : <Plus />}{account ? "Bearbeiten" : "Konto anlegen"}</Button></DialogTrigger><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{account ? account.displayName : "Marktplatzkonto anlegen"}</DialogTitle><DialogDescription>Keine Secrets: Zugangsdaten bleiben ausschließlich im Credential-Tresor.</DialogDescription></DialogHeader><form action={formAction} className="grid gap-4 sm:grid-cols-2">
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild>{account ? <ActionIconButton label="Marktplatzkonto bearbeiten" icon={Pencil} variant="outline" /> : <Button><Plus />Konto anlegen</Button>}</DialogTrigger><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{account ? account.displayName : "Marktplatzkonto anlegen"}</DialogTitle><DialogDescription>Keine Secrets: Zugangsdaten bleiben ausschließlich im Credential-Tresor.</DialogDescription></DialogHeader><form action={formAction} className="grid gap-4 sm:grid-cols-2">
     {state?.error ? <p className="text-sm text-destructive sm:col-span-2">{state.error}</p> : null}
     {account ? <input type="hidden" name="marketplaceCode" value={marketplaceCode} /> : null}
     <SelectField label="Marktplatz" name="marketplaceCode" value={marketplaceCode} onChange={setMarketplaceCode} disabled={Boolean(account)}><option value="EBAY_DE">eBay.de</option><option value="KAUFLAND_DE">Kaufland.de</option></SelectField>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import type { DebtEntry, DebtStatus } from "@prisma/client";
 import {
@@ -10,7 +11,7 @@ import {
 } from "@/lib/actions/debts";
 import { DEBT_ENTRY, DEBT_STATUS, DEBT_STATUS_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 
 export function DebtStatusSelect({
   debtId,
@@ -87,9 +88,9 @@ export function DeleteDebtButton({ debtId }: { debtId: string }) {
   const [pending, startTransition] = useTransition();
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
+    <ActionIconButton
+      label="Schulden-Eintrag löschen"
+      icon={Trash2Icon}
       className="text-destructive"
       disabled={pending}
       onClick={() => {
@@ -100,8 +101,6 @@ export function DeleteDebtButton({ debtId }: { debtId: string }) {
           else if (result?.success) toast.success(result.success);
         });
       }}
-    >
-      Löschen
-    </Button>
+    />
   );
 }

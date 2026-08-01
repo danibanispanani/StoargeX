@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/operational-table";
 import { requireOrg } from "@/lib/org";
 import { PageHeader } from "@/components/app/page-header";
 import { getFeatureAccess } from "@/lib/feature-access";
@@ -8,7 +9,6 @@ import { formatEuro } from "@/lib/calculations";
 import { SaleDialog, type EditableSale, type SellableItem } from "@/components/sales/sale-dialog";
 import { LazySaleDialog } from "@/components/sales/lazy-sale-dialog";
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { InvoiceSelect, SaleStatusSelect } from "@/components/sales/sale-inline-selects";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Badge } from "@/components/ui/badge";
@@ -307,11 +307,8 @@ export default async function SalesPage({
     ...params,
     preset: requestedView === "standard" ? undefined : requestedView,
     page: page > 1 ? String(page) : undefined,
-    pageSize: pageSize === 50 ? undefined : String(pageSize),
+    pageSize: pageSize === DEFAULT_TABLE_PAGE_SIZE ? undefined : String(pageSize),
   });
-  const hasActiveFilters = Object.entries(params).some(
-    ([key, value]) => Boolean(value) && key !== "page" && key !== "pageSize"
-  );
   const marketplaceAccountOptions = marketplaceAccounts.map((account) => ({
     id: account.id,
     platformId: account.platformId,
@@ -419,17 +416,8 @@ export default async function SalesPage({
       <PageHeader
         eyebrow="Handel"
         title="Verkauf"
-        description={
-          <>
-            {totalResults} Verkäufe {hasActiveFilters ? "(gefiltert)" : ""}
-          </>
-        }
-        actions={
-          <>
-            <ImportExportBar table="verkauf" />
-            <SaleDialog items={sellable} platforms={platforms} marketplaceAccounts={marketplaceAccountOptions} payoutOptions={payoutOptions} shippingRates={rates} />
-          </>
-        }
+        description="Verkäufe, Zahlungen, Versand und Abschluss in einem Ablauf steuern."
+        actions={<SaleDialog items={sellable} platforms={platforms} marketplaceAccounts={marketplaceAccountOptions} payoutOptions={payoutOptions} shippingRates={rates} />}
       />
 
       <SaleFilterBar
@@ -445,12 +433,13 @@ export default async function SalesPage({
         platforms={platforms}
         shippingMethods={shippingMethodOptions}
         activeView={requestedView}
+        pageSize={pageSize}
       />
 
       <CompactTableShell
         definition={OPERATIONAL_MODULES.sales}
+        clientPagination={false}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={requestedView}
         currentQuery={currentQuery}
         totalResults={totalResults}
       >

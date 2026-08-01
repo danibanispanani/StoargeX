@@ -1,10 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { PencilIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { createProductAction, updateProductAction } from "@/lib/actions/products";
 import type { ActionState } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -57,11 +59,9 @@ export function ProductDialog({ product, ebayCategories = [], kauflandCategories
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {product ? (
-          <Button variant="ghost" size="sm">
-            Bearbeiten
-          </Button>
+          <ActionIconButton label="Produkt bearbeiten" icon={PencilIcon} />
         ) : (
-          <Button>Produkt anlegen</Button>
+          <Button><PlusIcon /> Produkt anlegen</Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">

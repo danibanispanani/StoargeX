@@ -1,7 +1,6 @@
 import type { Prisma, SupplierReturnStatus } from "@prisma/client";
 import { CreateSupplierReturnDialog, type SupplierReturnPurchaseOption } from "@/components/returns/create-supplier-return-dialog";
 import { SupplierReturnActions } from "@/components/returns/supplier-return-actions";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
 import { PageHeader } from "@/components/app/page-header";
 import { DetailDrawer, DetailGrid, DetailSection } from "@/components/table/detail-drawer";
@@ -10,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatEuro } from "@/lib/calculations";
 import { requireOrg } from "@/lib/org";
+import { MAX_TABLE_PAGE_SIZE } from "@/lib/operational-table";
 import { getSupplierReturnDeadlineState } from "@/lib/services/supplier-return-service";
 import { cn } from "@/lib/utils";
 import {
@@ -96,7 +96,7 @@ export default async function SupplierReturnsPage({
         },
       },
       orderBy: [{ requestedAt: "desc" }, { createdAt: "desc" }],
-      take: 300,
+      take: MAX_TABLE_PAGE_SIZE,
     }),
     db.purchase.findMany({
       where: { purchaseStatus: { not: "CANCELLED" }, lines: { some: { ownedLots: { some: {} } } } },
@@ -109,7 +109,7 @@ export default async function SupplierReturnsPage({
         },
       },
       orderBy: { purchaseDate: "desc" },
-      take: 300,
+      take: MAX_TABLE_PAGE_SIZE,
     }),
   ]);
 
@@ -135,12 +135,6 @@ export default async function SupplierReturnsPage({
     })).filter((line) => line.positions.length > 0),
   })).filter((purchase) => purchase.lines.length > 0);
 
-  const boundCapital = supplierReturns
-    .filter((ret) => !["COMPLETED", "CANCELLED", "REJECTED"].includes(ret.status))
-    .reduce((sum, ret) => sum + ret.lines.reduce(
-      (lineSum, line) => lineSum + Math.round(Number(line.purchaseLine.unitPriceNet) * 100) * line.quantity,
-      0
-    ), 0);
   const visibleReturnCount = supplierReturns.filter((ret) => {
     if (requestedView === "deadlines") {
       return Boolean(ret.returnDeadline) && !["COMPLETED", "CANCELLED", "REJECTED"].includes(ret.status);
@@ -163,17 +157,8 @@ export default async function SupplierReturnsPage({
       <PageHeader
         eyebrow="Handel · Retouren"
         title="Lieferantenretouren"
-        description={
-          <>
-            {supplierReturns.length} Vorgänge · gebundenes Kapital {formatEuro(boundCapital)}
-          </>
-        }
-        actions={
-          <>
-            <ImportExportBar table="lieferantenretouren" />
-            <CreateSupplierReturnDialog purchases={purchaseOptions} />
-          </>
-        }
+        description="Rücksendungen an Lieferanten und erwartete Erstattungen steuern."
+        actions={<CreateSupplierReturnDialog purchases={purchaseOptions} />}
       />
       <OperationalSearchToolbar
         basePath="/retouren/lieferanten"
@@ -185,7 +170,6 @@ export default async function SupplierReturnsPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.supplierReturns}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={requestedView}
         currentQuery={operationalSearchParams({
           preset: requestedView === "standard" ? undefined : requestedView,
           q,

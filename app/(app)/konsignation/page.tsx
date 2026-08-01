@@ -3,8 +3,8 @@ import { getFeatureAccess } from "@/lib/feature-access";
 import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { formatEuro } from "@/lib/calculations";
 import { deriveConsignmentStockStatus } from "@/lib/services/consignment-service";
+import { MAX_TABLE_PAGE_SIZE } from "@/lib/operational-table";
 import { CreateConsignmentDialog } from "@/components/consignment/create-consignment-dialog";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { ConsignmentRowActions } from "@/components/consignment/consignment-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -80,7 +80,7 @@ export default async function ConsignmentPage({
         consignmentLot: true,
       },
       orderBy: { receivedAt: "desc" },
-      take: 200,
+      take: MAX_TABLE_PAGE_SIZE,
     }),
     db.consignmentInventory.findMany({
       where: q
@@ -93,7 +93,7 @@ export default async function ConsignmentPage({
           }
         : undefined,
       orderBy: { createdAt: "desc" },
-      take: 200,
+      take: MAX_TABLE_PAGE_SIZE,
     }),
   ]);
 
@@ -257,13 +257,8 @@ export default async function ConsignmentPage({
       <PageHeader
         eyebrow="Betrieb · Add-on"
         title="Konsignation"
-        description="Fremdbestand mit K-Nummer, InventoryPosition, ConsignmentLot und vollständiger Movement-Historie."
-        actions={
-          <>
-            <ImportExportBar table="konsignation" />
-            <CreateConsignmentDialog />
-          </>
-        }
+        description="Kommissionsbestand vom Eingang bis zur Abrechnung verwalten."
+        actions={<CreateConsignmentDialog />}
       />
       <OperationalSearchToolbar
         basePath="/konsignation"
@@ -275,7 +270,6 @@ export default async function ConsignmentPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.consignment}
         scope={{ organizationId: context.organization.id, userId: context.userId }}
-        requestedView={requestedView}
         currentQuery={operationalSearchParams({
           preset: requestedView === "standard" ? undefined : requestedView,
           q,

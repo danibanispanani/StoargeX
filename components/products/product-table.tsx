@@ -99,16 +99,12 @@ export function ProductTable({
   ebayCategories: Array<{ id: string; label: string; externalId: string }>;
   kauflandCategories: Array<{ id: string; label: string; externalId: string }>;
 }) {
-  const presetVisibleColumns = query.preset === "pricing"
-    ? ["name", "defaultPrice", "condition", "ebayCategory", "ebayBreakEven", "ebayProfit", "kauflandCategory", "kauflandBreakEven", "kauflandProfit", "calculationStatus"]
-    : defaultVisibleColumns;
   return (
     <div className="overflow-hidden border bg-card shadow-xs">
       <OperationalTableWorkspace
         scope={scope}
-        basePath={PRODUCT_TABLE_DEFINITION.path}
         columns={columns}
-        defaultVisibleColumns={presetVisibleColumns}
+        defaultVisibleColumns={defaultVisibleColumns}
         pageRowIds={rows.map((row) => row.id)}
         totalResults={totalResults}
         currentQuery={queryString}
@@ -139,27 +135,27 @@ export function ProductTable({
                       />
                     </TableHead>
                     {state.visibleColumns.has("name") ? (
-                      <TableHead className="sx-sticky-1 min-w-64">
+                      <TableHead data-column-key="name" className="sx-sticky-1 min-w-64">
                         <TableSortHeader label="Produkt" column="name" currentSort={query.sort} direction={query.direction} query={queryString} />
                       </TableHead>
                     ) : null}
                     {state.visibleColumns.has("variant") ? <SortableHead label="Variante" column="variant" query={query} queryString={queryString} /> : null}
                     {state.visibleColumns.has("category") ? <SortableHead label="Kategorie" column="category" query={query} queryString={queryString} /> : null}
                     {state.visibleColumns.has("brand") ? <SortableHead label="Marke" column="brand" query={query} queryString={queryString} /> : null}
-                    {state.visibleColumns.has("usage") ? <TableHead>Nutzung</TableHead> : null}
+                    {state.visibleColumns.has("usage") ? <TableHead data-column-key="usage">Nutzung</TableHead> : null}
                     {state.visibleColumns.has("ean") ? <SortableHead label="EAN" column="ean" query={query} queryString={queryString} /> : null}
                     {state.visibleColumns.has("defaultPrice") ? <SortableHead label="Standard-EK" column="defaultPrice" query={query} queryString={queryString} className="text-right" /> : null}
                     {state.visibleColumns.has("size") ? <SortableHead label="Größe" column="size" query={query} queryString={queryString} /> : null}
-                    {state.visibleColumns.has("images") ? <TableHead>Bilder</TableHead> : null}
+                    {state.visibleColumns.has("images") ? <TableHead data-column-key="images">Bilder</TableHead> : null}
                     {state.visibleColumns.has("updatedAt") ? <SortableHead label="Geändert" column="updatedAt" query={query} queryString={queryString} /> : null}
-                    {state.visibleColumns.has("condition") ? <TableHead>Zustand</TableHead> : null}
-                    {state.visibleColumns.has("ebayCategory") ? <TableHead>eBay-Kategorie</TableHead> : null}
-                    {state.visibleColumns.has("ebayBreakEven") ? <TableHead className="text-right">eBay-Mindestpreis</TableHead> : null}
-                    {state.visibleColumns.has("ebayProfit") ? <TableHead className="text-right">eBay-Gewinn</TableHead> : null}
-                    {state.visibleColumns.has("kauflandCategory") ? <TableHead>Kaufland-Kategorie</TableHead> : null}
-                    {state.visibleColumns.has("kauflandBreakEven") ? <TableHead className="text-right">Kaufland-Mindestpreis</TableHead> : null}
-                    {state.visibleColumns.has("kauflandProfit") ? <TableHead className="text-right">Kaufland-Gewinn</TableHead> : null}
-                    {state.visibleColumns.has("calculationStatus") ? <TableHead>Kalkulationsstatus</TableHead> : null}
+                    {state.visibleColumns.has("condition") ? <TableHead data-column-key="condition">Zustand</TableHead> : null}
+                    {state.visibleColumns.has("ebayCategory") ? <TableHead data-column-key="ebayCategory">eBay-Kategorie</TableHead> : null}
+                    {state.visibleColumns.has("ebayBreakEven") ? <TableHead data-column-key="ebayBreakEven" className="text-right">eBay-Mindestpreis</TableHead> : null}
+                    {state.visibleColumns.has("ebayProfit") ? <TableHead data-column-key="ebayProfit" className="text-right">eBay-Gewinn</TableHead> : null}
+                    {state.visibleColumns.has("kauflandCategory") ? <TableHead data-column-key="kauflandCategory">Kaufland-Kategorie</TableHead> : null}
+                    {state.visibleColumns.has("kauflandBreakEven") ? <TableHead data-column-key="kauflandBreakEven" className="text-right">Kaufland-Mindestpreis</TableHead> : null}
+                    {state.visibleColumns.has("kauflandProfit") ? <TableHead data-column-key="kauflandProfit" className="text-right">Kaufland-Gewinn</TableHead> : null}
+                    {state.visibleColumns.has("calculationStatus") ? <TableHead data-column-key="calculationStatus">Kalkulationsstatus</TableHead> : null}
                     <TableHead className="w-64">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -176,7 +172,7 @@ export function ProductTable({
                   ) : rows.map((row) => {
                     const selected = state.isSelected(row.id);
                     return (
-                      <TableRow key={row.id} data-state={selected ? "selected" : undefined} data-selected={selected}>
+                      <TableRow key={row.id} data-row-id={row.id} data-state={selected ? "selected" : undefined} data-selected={selected}>
                         <TableCell className="sx-sticky-0">
                           <TableSelectionCheckbox
                             checked={selected}
@@ -185,7 +181,7 @@ export function ProductTable({
                           />
                         </TableCell>
                         {state.visibleColumns.has("name") ? (
-                          <TableCell className="sx-sticky-1 sx-cell-primary">
+                          <TableCell data-column-key="name" className="sx-sticky-1 sx-cell-primary">
                             <div className="flex items-center gap-2">
                               {row.imageUrls[0] ? (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -200,27 +196,27 @@ export function ProductTable({
                             </div>
                           </TableCell>
                         ) : null}
-                        {state.visibleColumns.has("variant") ? <TableCell>{row.variant || "–"}</TableCell> : null}
-                        {state.visibleColumns.has("category") ? <TableCell>{row.category || "–"}</TableCell> : null}
-                        {state.visibleColumns.has("brand") ? <TableCell>{row.brand || "–"}</TableCell> : null}
+                        {state.visibleColumns.has("variant") ? <TableCell data-column-key="variant">{row.variant || "–"}</TableCell> : null}
+                        {state.visibleColumns.has("category") ? <TableCell data-column-key="category">{row.category || "–"}</TableCell> : null}
+                        {state.visibleColumns.has("brand") ? <TableCell data-column-key="brand">{row.brand || "–"}</TableCell> : null}
                         {state.visibleColumns.has("usage") ? (
-                          <TableCell className="font-mono text-xs">
+                          <TableCell data-column-key="usage" className="font-mono text-xs">
                             {row.usage.inventory} Lager · {row.usage.purchases} EK · {row.usage.sales} VK
                           </TableCell>
                         ) : null}
-                        {state.visibleColumns.has("ean") ? <TableCell className="font-mono text-xs">{row.ean || "–"}</TableCell> : null}
-                        {state.visibleColumns.has("defaultPrice") ? <TableCell className="text-right font-mono">{row.defaultPriceCents == null ? "–" : formatEuro(row.defaultPriceCents)}</TableCell> : null}
-                        {state.visibleColumns.has("size") ? <TableCell>{row.size || "–"}</TableCell> : null}
-                        {state.visibleColumns.has("images") ? <TableCell>{row.imageUrls.length}</TableCell> : null}
-                        {state.visibleColumns.has("updatedAt") ? <TableCell className="whitespace-nowrap">{formatDate(row.updatedAt)}</TableCell> : null}
-                        {state.visibleColumns.has("condition") ? <TableCell>{row.defaultCondition ?? "–"}</TableCell> : null}
-                        {state.visibleColumns.has("ebayCategory") ? <TableCell className="max-w-64 truncate">{row.ebayMapping?.label ?? "Unvollständig"}</TableCell> : null}
-                        {state.visibleColumns.has("ebayBreakEven") ? <TableCell className="text-right font-mono">{row.ebayCalculation ? formatEuro(row.ebayCalculation.breakEvenCents) : "–"}</TableCell> : null}
-                        {state.visibleColumns.has("ebayProfit") ? <TableCell className="text-right font-mono">{row.ebayCalculation ? formatEuro(row.ebayCalculation.profitCents) : "–"}</TableCell> : null}
-                        {state.visibleColumns.has("kauflandCategory") ? <TableCell className="max-w-64 truncate">{row.kauflandMapping?.label ?? "Unvollständig"}</TableCell> : null}
-                        {state.visibleColumns.has("kauflandBreakEven") ? <TableCell className="text-right font-mono">{row.kauflandCalculation ? formatEuro(row.kauflandCalculation.breakEvenCents) : "–"}</TableCell> : null}
-                        {state.visibleColumns.has("kauflandProfit") ? <TableCell className="text-right font-mono">{row.kauflandCalculation ? formatEuro(row.kauflandCalculation.profitCents) : "–"}</TableCell> : null}
-                        {state.visibleColumns.has("calculationStatus") ? <TableCell>{row.ebayCalculation?.stale || row.kauflandCalculation?.stale ? "Veraltet" : row.ebayCalculation?.status ?? row.kauflandCalculation?.status ?? "Unvollständig"}</TableCell> : null}
+                        {state.visibleColumns.has("ean") ? <TableCell data-column-key="ean" className="font-mono text-xs">{row.ean || "–"}</TableCell> : null}
+                        {state.visibleColumns.has("defaultPrice") ? <TableCell data-column-key="defaultPrice" className="text-right font-mono">{row.defaultPriceCents == null ? "–" : formatEuro(row.defaultPriceCents)}</TableCell> : null}
+                        {state.visibleColumns.has("size") ? <TableCell data-column-key="size">{row.size || "–"}</TableCell> : null}
+                        {state.visibleColumns.has("images") ? <TableCell data-column-key="images">{row.imageUrls.length}</TableCell> : null}
+                        {state.visibleColumns.has("updatedAt") ? <TableCell data-column-key="updatedAt" className="whitespace-nowrap">{formatDate(row.updatedAt)}</TableCell> : null}
+                        {state.visibleColumns.has("condition") ? <TableCell data-column-key="condition">{row.defaultCondition ?? "–"}</TableCell> : null}
+                        {state.visibleColumns.has("ebayCategory") ? <TableCell data-column-key="ebayCategory" className="max-w-64 truncate">{row.ebayMapping?.label ?? "Unvollständig"}</TableCell> : null}
+                        {state.visibleColumns.has("ebayBreakEven") ? <TableCell data-column-key="ebayBreakEven" className="text-right font-mono">{row.ebayCalculation ? formatEuro(row.ebayCalculation.breakEvenCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("ebayProfit") ? <TableCell data-column-key="ebayProfit" className="text-right font-mono">{row.ebayCalculation ? formatEuro(row.ebayCalculation.profitCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("kauflandCategory") ? <TableCell data-column-key="kauflandCategory" className="max-w-64 truncate">{row.kauflandMapping?.label ?? "Unvollständig"}</TableCell> : null}
+                        {state.visibleColumns.has("kauflandBreakEven") ? <TableCell data-column-key="kauflandBreakEven" className="text-right font-mono">{row.kauflandCalculation ? formatEuro(row.kauflandCalculation.breakEvenCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("kauflandProfit") ? <TableCell data-column-key="kauflandProfit" className="text-right font-mono">{row.kauflandCalculation ? formatEuro(row.kauflandCalculation.profitCents) : "–"}</TableCell> : null}
+                        {state.visibleColumns.has("calculationStatus") ? <TableCell data-column-key="calculationStatus">{row.ebayCalculation?.stale || row.kauflandCalculation?.stale ? "Veraltet" : row.ebayCalculation?.status ?? row.kauflandCalculation?.status ?? "Unvollständig"}</TableCell> : null}
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <ProductDetail row={row} />
@@ -269,12 +265,12 @@ function PricingRecalculationButton({ productIds, marketplaceCode, label, compac
 }
 
 function SortableHead({ label, column, query, queryString, className }: { label: string; column: ProductSortKey; query: ProductTableQuery; queryString: string; className?: string }) {
-  return <TableHead className={className}><TableSortHeader label={label} column={column} currentSort={query.sort} direction={query.direction} query={queryString} /></TableHead>;
+  return <TableHead data-column-key={column} className={className}><TableSortHeader label={label} column={column} currentSort={query.sort} direction={query.direction} query={queryString} /></TableHead>;
 }
 
 function ProductDetail({ row }: { row: ProductOperationalRow }) {
   return (
-    <DetailDrawer title={row.name} description="Katalogdaten und aktuelle Verwendung" triggerLabel="Details">
+    <DetailDrawer title={row.name} description="Katalogdaten und aktuelle Verwendung">
       <DetailSection title="Stammdaten">
         <DetailGrid items={[
           { label: "Variante", value: row.variant || "–" },

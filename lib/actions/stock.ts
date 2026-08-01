@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { EntryStatus, InventoryBucket, StockItemStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
@@ -8,9 +9,9 @@ import { assertFeatureAccess } from "@/lib/feature-access";
 import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { writeAuditLog } from "@/lib/audit";
 import { calcPurchaseNetCents, euroToCents } from "@/lib/calculations";
-import { saveImage } from "@/lib/uploads";
 import { createOwnedPurchase } from "@/lib/services/owned-purchase-service";
 import { adjust } from "@/lib/services/inventory-service";
+import { httpImageUrlSchema } from "@/lib/validation/http-image-url";
 import type { ActionState } from "@/lib/actions/team";
 
 const stockItemSchema = z.object({
@@ -30,6 +31,7 @@ const stockItemSchema = z.object({
   ean: z.string().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional().or(z.literal("")),
   quantity: z.coerce.number().int().min(1).max(500).default(1),
   notes: z.string().max(2000).optional().or(z.literal("")),
+  imageUrl: httpImageUrlSchema.optional().or(z.literal("")),
   platformIds: z.array(z.string().min(1)).default([]),
 });
 
@@ -51,6 +53,7 @@ function parseStockForm(formData: FormData) {
     ean: formData.get("ean"),
     quantity: formData.get("quantity") || 1,
     notes: formData.get("notes"),
+    imageUrl: formData.get("imageUrl") || "",
     platformIds: formData.getAll("platformIds").map(String),
   });
   if (!parsed.success) {
@@ -80,15 +83,7 @@ export async function createStockItemAction(
   if ("error" in result) return { error: result.error };
   const { data, grossCents } = result;
 
-  let imageUrls: string[] = [];
-  const image = formData.get("image");
-  if (image instanceof File && image.size > 0) {
-    try {
-      imageUrls = [await saveImage(image, organization.id)];
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Bild-Upload fehlgeschlagen." };
-    }
-  }
+  const imageUrls = data.imageUrl ? [data.imageUrl] : [];
 
   const platforms = data.platformIds.length
     ? await db.platform.findMany({ where: { id: { in: data.platformIds } } })
@@ -201,7 +196,7 @@ export async function updateOwnedLotEntryStatusAction(
   });
 
   revalidatePath("/lager");
-  return { success: `Status von \${lot.inventoryPosition.inventoryNumber} geÃ¤ndert âœ“` };
+  return { success: `Status von ${lot.inventoryPosition.inventoryNumber} geändert ✓` };
 }
 
 export async function toggleInventoryPositionListingAction(
@@ -213,8 +208,14 @@ export async function toggleInventoryPositionListingAction(
   const { db, organization } = context;
 
   const [position, platform] = await Promise.all([
-    db.inventoryPosition.findFirst({ where: { id: inventoryPositionId } }),
-    db.platform.findFirst({ where: { id: platformId } }),
+    db.inventoryPosition.findFirst({
+      where: { id: inventoryPositionId },
+      select: { inventoryNumber: true, inventoryType: true },
+    }),
+    db.platform.findFirst({
+      where: { id: platformId },
+      select: { name: true },
+    }),
   ]);
   if (!position || !platform) return { error: "Charge oder Plattform nicht gefunden." };
 
@@ -251,13 +252,13 @@ export async function toggleInventoryPositionListingAction(
 
   revalidatePath("/lager");
   return {
-    success: `\${position.inventoryNumber}: \${platform.name} \${listed ? "gelistet" : "entfernt"} âœ“`,
+    success: `${position.inventoryNumber}: ${platform.name} ${listed ? "gelistet" : "entfernt"} ✓`,
   };
 }
 
 const inventoryAdjustmentSchema = z.object({
   direction: z.enum(["IN", "OUT"]),
-  bucket: z.nativeEnum(InventoryBucket).default("AVAILABLE"),
+  bucket: z.nativeEnum(InventoryBucket).default(InventoryBucket.AVAILABLE),
   quantity: z.coerce.number().int().min(1).max(500),
   comment: z.string().min(1, "Grund/Kommentar fehlt.").max(500),
 });
@@ -267,25 +268,20 @@ export async function adjustOwnedInventoryQuantityAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { db, organization, userId } = await requireOrg("MEMBER");
+  const { organization, userId } = await requireOrg("MEMBER");
 
   const parsed = inventoryAdjustmentSchema.safeParse({
     direction: formData.get("direction"),
-    bucket: formData.get("bucket") || "AVAILABLE",
+    bucket: formData.get("bucket") || InventoryBucket.AVAILABLE,
     quantity: formData.get("quantity"),
     comment: formData.get("comment"),
   });
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "UngÃ¼ltige Korrektur." };
+    return { error: parsed.error.issues[0]?.message ?? "Ungültige Korrektur." };
   }
 
-  const position = await db.inventoryPosition.findFirst({
-    where: { id: inventoryPositionId, inventoryType: "OWNED" },
-  });
-  if (!position) return { error: "Charge nicht gefunden." };
-
   try {
-    await adjust({
+    const result = await adjust({
       organizationId: organization.id,
       inventoryPositionId,
       quantity: parsed.data.quantity,
@@ -295,18 +291,24 @@ export async function adjustOwnedInventoryQuantityAction(
       referenceType: "ManualStockAdjustment",
       referenceId: inventoryPositionId,
       referenceAction: parsed.data.direction === "IN" ? "adjustment_in" : "adjustment_out",
-      idempotencyKey: `manual-adjust:\${inventoryPositionId}:\${Date.now()}`,
+      idempotencyKey: `manual-adjust:${inventoryPositionId}:${randomUUID()}`,
       createdById: userId,
       requiredInventoryType: "OWNED",
     });
+    revalidatePath("/lager");
+    return { success: `Bestand von ${result.position.inventoryNumber} korrigiert ✓` };
   } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "POSITION_NOT_FOUND" || error.code === "INVENTORY_TYPE_MISMATCH")
+    ) {
+      return { error: "Charge nicht gefunden." };
+    }
     return {
       error: error instanceof Error ? error.message : "Bestand konnte nicht korrigiert werden.",
     };
   }
-
-  revalidatePath("/lager");
-  return { success: `Bestand von \${position.inventoryNumber} korrigiert âœ“` };
 }
 
 
@@ -328,15 +330,7 @@ export async function updateStockItemAction(
   if ("error" in result) return { error: result.error };
   const { data, grossCents } = result;
 
-  let imageUrls = existing.imageUrls;
-  const image = formData.get("image");
-  if (image instanceof File && image.size > 0) {
-    try {
-      imageUrls = [await saveImage(image, organization.id)];
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Bild-Upload fehlgeschlagen." };
-    }
-  }
+  const imageUrls = data.imageUrl ? [data.imageUrl] : [];
 
   const platforms = data.platformIds.length
     ? await db.platform.findMany({ where: { id: { in: data.platformIds } } })

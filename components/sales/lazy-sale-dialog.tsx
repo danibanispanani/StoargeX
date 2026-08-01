@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type ComponentProps } from "react";
-import { Button } from "@/components/ui/button";
+import { PencilIcon } from "lucide-react";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { SaleDialog } from "@/components/sales/sale-dialog";
 
 type LazySaleDialogProps = Omit<
@@ -14,9 +15,7 @@ export function LazySaleDialog(props: LazySaleDialogProps) {
 
   if (!mounted) {
     return (
-      <Button variant="ghost" size="sm" onClick={() => setMounted(true)}>
-        Bearbeiten
-      </Button>
+      <ActionIconButton label="Verkauf bearbeiten" icon={PencilIcon} onClick={() => setMounted(true)} />
     );
   }
 
@@ -26,9 +25,7 @@ export function LazySaleDialog(props: LazySaleDialogProps) {
       initialOpen
       items={[]}
       trigger={
-        <Button variant="ghost" size="sm">
-          Bearbeiten
-        </Button>
+        <ActionIconButton label="Verkauf bearbeiten" icon={PencilIcon} />
       }
     />
   );

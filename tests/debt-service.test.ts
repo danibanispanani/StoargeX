@@ -5,6 +5,7 @@ import {
   ensurePurchaseDebt,
   ensureSaleDebt,
   purchaseDebtPayload,
+  reconcilePurchaseDebt,
   resolvePurchaseDebtCreditor,
   resolveSaleDebtDebtor,
   saleDebtPayload,
@@ -46,6 +47,8 @@ function createDebtTx() {
   const auditLogs: Record<string, unknown>[] = [];
 
   const tx = {
+    $executeRaw: async () => 0,
+    $queryRaw: async () => [],
     documentSequence: {
       upsert: async () => ({ value: ++sequence }),
     },
@@ -81,7 +84,9 @@ function createDebtTx() {
       findFirst: async ({ where, include }: MockFindArgs) => {
         const link = purchaseLinks.find(
           (item) =>
-            item.organizationId === where.organizationId && item.purchaseId === where.purchaseId
+            item.organizationId === where.organizationId
+            && (!where.purchaseId || item.purchaseId === where.purchaseId)
+            && (!where.debtId || item.debtId === where.debtId)
         );
         if (!link) return null;
         return include?.debt ? { ...link, debt: debts.find((debt) => debt.id === link.debtId) } : link;
@@ -206,6 +211,69 @@ describe("debt domain service", () => {
     expect(first?.id).toBe(second?.id);
     expect(state.debts).toHaveLength(1);
     expect(state.purchaseLinks).toHaveLength(1);
+  });
+
+  it("synchronisiert eine offene Purchase-Schuld nach bearbeiteten Einkaufsdaten", async () => {
+    const state = createDebtTx();
+    await ensurePurchaseDebt({
+      organizationId: "org-a",
+      createdById: "user-a",
+      purchaseId: "purchase-a",
+      purchaseNumber: "E-26-0001",
+      purchaseDate: new Date("2026-01-05T00:00:00.000Z"),
+      vendor: "Alter Lieferant",
+      paymentMethod: "Daniel",
+      totalGrossCents: 49900,
+      tx: state.tx,
+    });
+
+    const updated = await reconcilePurchaseDebt({
+      organizationId: "org-a",
+      createdById: "user-a",
+      purchaseId: "purchase-a",
+      purchaseNumber: "E-26-0001",
+      purchaseDate: new Date("2026-02-06T00:00:00.000Z"),
+      vendor: "Neuer Lieferant",
+      paymentMethod: "Richard",
+      totalGrossCents: 49900,
+      tx: state.tx,
+    });
+
+    expect(updated).toEqual(expect.objectContaining({
+      debtDate: new Date("2026-02-06T00:00:00.000Z"),
+      creditorName: "Richard",
+      description: "Einkauf E-26-0001 bei Neuer Lieferant",
+      status: "OPEN",
+    }));
+  });
+
+  it("schließt eine offene Purchase-Schuld, wenn die Zahlungsmethode keine Schuld mehr erzeugt", async () => {
+    const state = createDebtTx();
+    await ensurePurchaseDebt({
+      organizationId: "org-a",
+      createdById: "user-a",
+      purchaseId: "purchase-a",
+      purchaseNumber: "E-26-0001",
+      purchaseDate: new Date("2026-01-05T00:00:00.000Z"),
+      vendor: "Lieferant",
+      paymentMethod: "Daniel",
+      totalGrossCents: 49900,
+      tx: state.tx,
+    });
+
+    const updated = await reconcilePurchaseDebt({
+      organizationId: "org-a",
+      createdById: "user-a",
+      purchaseId: "purchase-a",
+      purchaseNumber: "E-26-0001",
+      purchaseDate: new Date("2026-01-05T00:00:00.000Z"),
+      vendor: "Lieferant",
+      paymentMethod: "Firma",
+      totalGrossCents: 49900,
+      tx: state.tx,
+    });
+
+    expect(updated).toEqual(expect.objectContaining({ status: "OTHER", paidCents: 0 }));
   });
 
   it("mehrere PurchaseLines bleiben eine Purchase Debt", () => {

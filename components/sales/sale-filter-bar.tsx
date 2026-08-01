@@ -3,6 +3,10 @@
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  type TablePageSize,
+} from "@/lib/operational-table";
 
 export interface SaleFilters {
   q: string;
@@ -19,18 +23,19 @@ export function SaleFilterBar({
   platforms,
   shippingMethods,
   activeView,
+  pageSize,
 }: {
   filters: SaleFilters;
   platforms: Array<{ id: string; name: string }>;
   shippingMethods: string[];
   activeView?: string;
+  pageSize: TablePageSize;
 }) {
   const router = useRouter();
   const hasFilters = Object.values(filters).some(Boolean);
 
   function apply(formData: FormData) {
-    const params = new URLSearchParams();
-    if (activeView && activeView !== "standard") params.set("preset", activeView);
+    const params = createBaseParams(activeView, pageSize);
     for (const key of ["q", "status", "rechnung", "platform", "versandart", "von", "bis"]) {
       const value = String(formData.get(key) ?? "").trim();
       if (value) params.set(key, value);
@@ -87,10 +92,20 @@ export function SaleFilterBar({
         Filtern
       </Button>
       {hasFilters && (
-        <Button type="button" variant="ghost" onClick={() => router.push(activeView && activeView !== "standard" ? `/verkauf?preset=${activeView}` : "/verkauf")}>
+        <Button type="button" variant="ghost" onClick={() => {
+          const params = createBaseParams(activeView, pageSize);
+          router.push(`/verkauf${params.size ? `?${params}` : ""}`);
+        }}>
           Zurücksetzen
         </Button>
       )}
     </form>
   );
+}
+
+function createBaseParams(activeView: string | undefined, pageSize: TablePageSize) {
+  const params = new URLSearchParams();
+  if (activeView && activeView !== "standard") params.set("preset", activeView);
+  if (pageSize !== DEFAULT_TABLE_PAGE_SIZE) params.set("pageSize", String(pageSize));
+  return params;
 }

@@ -308,29 +308,12 @@
   }
 }
 
-@keyframes sx-route-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 /* Scroll-Reveals: sichtbar erst mit .is-visible (IntersectionObserver) */
 .sx-reveal {
   opacity: 0;
 }
 .sx-reveal.is-visible {
   animation: sx-fade-up 0.72s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Routenlinie: zeichnet sich beim Laden selbst */
-.sx-route-path {
-  stroke-dasharray: var(--route-length, 1200);
-  stroke-dashoffset: var(--route-length, 1200);
-  animation: sx-route-draw 1.8s ease-out 0.2s forwards;
-}
-.sx-route-station {
-  opacity: 0;
-  animation: sx-fade 0.5s ease forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -342,14 +325,6 @@
   /* Nur Opacity-Übergänge, keine Bewegung */
   .sx-reveal.is-visible {
     animation: sx-fade 0.4s ease forwards;
-  }
-  .sx-route-path {
-    stroke-dasharray: none;
-    stroke-dashoffset: 0;
-    animation: none;
-  }
-  .sx-route-station {
-    animation: sx-fade 0.3s ease forwards;
   }
 }
 
@@ -1598,17 +1573,79 @@
   max-height: min(68vh, 48rem);
   scrollbar-gutter: stable both-edges;
 }
-.operational-table-workspace[data-density="compact"] .sx-datatable td,
-.operational-table-workspace[data-density="compact"] .sx-datatable th {
-  padding-top: 0.22rem;
-  padding-bottom: 0.22rem;
-  font-size: 0.75rem;
-}
 .operational-table-workspace .sx-datatable thead th {
   box-shadow: inset 0 -1px var(--border);
 }
+.sx-column-filter-anchor {
+  display: inline-flex;
+  vertical-align: middle;
+}
+.operational-table-workspace [data-slot="table-head"] {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+}
+.operational-table-workspace [data-slot="table-head"] > a,
+.operational-table-workspace [data-slot="table-head"] > span:not(.sx-column-filter-anchor) {
+  color: var(--foreground);
+}
 .operational-table-workspace .sx-sticky-1 {
   box-shadow: 1px 0 color-mix(in oklab, var(--border) 75%, transparent);
+}
+
+/* Datumsfelder folgen dem App-Theme; der native Picker bleibt vollständig
+   tastatur- und browserkompatibel. */
+.sx-date-input {
+  min-width: 8.75rem;
+  color-scheme: light;
+  font-variant-numeric: tabular-nums;
+}
+.dark .sx-date-input {
+  color-scheme: dark;
+}
+.sx-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 0.25rem;
+  opacity: 0.7;
+  transition: background-color 120ms ease, opacity 120ms ease;
+}
+.sx-date-input:hover::-webkit-calendar-picker-indicator,
+.sx-date-input:focus-visible::-webkit-calendar-picker-indicator {
+  background-color: color-mix(in oklab, var(--accent) 72%, transparent);
+  opacity: 1;
+}
+
+/* Scrollbars im geschützten Arbeitsbereich bleiben dezent und werden bei
+   Interaktion sichtbar. Das erhält die Orientierung ohne visuelles Rauschen. */
+.sx-app-shell,
+.sx-app-shell * {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.sx-app-shell:hover,
+.sx-app-shell *:hover {
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 48%, transparent) transparent;
+}
+.sx-app-shell::-webkit-scrollbar,
+.sx-app-shell *::-webkit-scrollbar {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+.sx-app-shell::-webkit-scrollbar-track,
+.sx-app-shell *::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sx-app-shell::-webkit-scrollbar-thumb,
+.sx-app-shell *::-webkit-scrollbar-thumb {
+  border: 0.2rem solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+.sx-app-shell:hover::-webkit-scrollbar-thumb,
+.sx-app-shell *:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--muted-foreground) 48%, transparent);
+  background-clip: padding-box;
 }
 @media (max-width: 640px) {
   .operational-table-workspace [data-slot="table-container"] {

@@ -1,21 +1,14 @@
 import type { Prisma } from "@prisma/client";
-
-export const SALE_PAGE_SIZES = [25, 50, 100] as const;
+import { parseTablePageSize } from "@/lib/operational-table";
 
 export function parseSalePagination(params: {
   page?: string;
   pageSize?: string;
 }) {
   const requestedPage = positiveInteger(params.page);
-  const requestedPageSize = positiveInteger(params.pageSize);
-
   return {
     page: requestedPage || 1,
-    pageSize: SALE_PAGE_SIZES.includes(
-      requestedPageSize as (typeof SALE_PAGE_SIZES)[number]
-    )
-      ? requestedPageSize
-      : 50,
+    pageSize: parseTablePageSize(params.pageSize),
   };
 }
 

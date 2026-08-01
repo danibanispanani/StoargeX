@@ -7,7 +7,6 @@ import {
   productQueryToSearchParams,
 } from "@/lib/products/product-table";
 import { PageHeader } from "@/components/app/page-header";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { ProductDialog } from "@/components/products/product-dialog";
 import { ProductFilterBar } from "@/components/products/product-filter-bar";
 import {
@@ -127,13 +126,8 @@ export default async function ProductsPage({
       <PageHeader
         eyebrow="Handel / Katalog"
         title="Produkte"
-        description={`${totalResults} Treffer · serverseitig gefiltert und sortiert`}
-        actions={
-          <>
-            <ImportExportBar table="produkte" />
-            <ProductDialog ebayCategories={ebayCategories} kauflandCategories={kauflandCategories} />
-          </>
-        }
+        description="Produktstammdaten, Kategorien und Kalkulationsgrundlagen verwalten."
+        actions={<ProductDialog ebayCategories={ebayCategories} kauflandCategories={kauflandCategories} />}
       />
 
       <ProductFilterBar query={query} categories={categories} brands={brands} />

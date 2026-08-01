@@ -1,5 +1,10 @@
 import type { Prisma } from "@prisma/client";
-import type { TableSelection } from "@/lib/operational-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+  type TableSelection,
+} from "@/lib/operational-table";
 
 export const PRODUCT_TABLE_DEFINITION = {
   key: "products",
@@ -31,7 +36,6 @@ export const PRODUCT_TABLE_DEFINITION = {
     { key: "low-stock", label: "Niedriger Bestand" },
     { key: "pricing", label: "Kalkulation" },
   ],
-  pageSizes: [25, 50, 100],
 } as const;
 
 export type ProductColumnKey = (typeof PRODUCT_TABLE_DEFINITION.columns)[number]["key"];
@@ -52,7 +56,7 @@ export interface ProductTableQuery {
   sort: ProductSortKey;
   direction: SortDirection;
   page: number;
-  pageSize: (typeof PRODUCT_TABLE_DEFINITION.pageSizes)[number];
+  pageSize: TablePageSize;
 }
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -66,8 +70,6 @@ export function parseProductTableQuery(params: SearchParams): ProductTableQuery 
   const presets = new Set<string>(
     PRODUCT_TABLE_DEFINITION.presets.map((preset) => preset.key)
   );
-  const requestedPageSize = positiveInt(valueOf(params.pageSize));
-
   return {
     q: valueOf(params.q).trim(),
     category: valueOf(params.category).trim(),
@@ -82,11 +84,7 @@ export function parseProductTableQuery(params: SearchParams): ProductTableQuery 
       : "name",
     direction: valueOf(params.direction) === "desc" ? "desc" : "asc",
     page: positiveInt(valueOf(params.page)) || 1,
-    pageSize: PRODUCT_TABLE_DEFINITION.pageSizes.includes(
-      requestedPageSize as ProductTableQuery["pageSize"]
-    )
-      ? (requestedPageSize as ProductTableQuery["pageSize"])
-      : 25,
+    pageSize: parseTablePageSize(valueOf(params.pageSize)),
   };
 }
 
@@ -198,7 +196,7 @@ export function productQueryToSearchParams(query: ProductTableQuery): URLSearchP
   if (query.sort !== "name") params.set("sort", query.sort);
   if (query.direction !== "asc") params.set("direction", query.direction);
   if (query.page !== 1) params.set("page", String(query.page));
-  if (query.pageSize !== 25) params.set("pageSize", String(query.pageSize));
+  if (query.pageSize !== DEFAULT_TABLE_PAGE_SIZE) params.set("pageSize", String(query.pageSize));
   return params;
 }
 

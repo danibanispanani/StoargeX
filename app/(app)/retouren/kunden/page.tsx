@@ -1,7 +1,7 @@
 import { requireOrg } from "@/lib/org";
 import { formatEuro } from "@/lib/calculations";
+import { MAX_TABLE_PAGE_SIZE } from "@/lib/operational-table";
 import { CreateReturnDialog, type ReturnableSaleOption } from "@/components/returns/create-return-dialog";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { EditReturnDialog } from "@/components/returns/edit-return-dialog";
 import { ReturnStatusSelect } from "@/components/returns/return-status-select";
 import { ReturnWorkflowActions } from "@/components/returns/return-workflow-actions";
@@ -96,7 +96,7 @@ export default async function CustomerReturnsPage({
         },
       },
       orderBy: { requestedAt: "desc" },
-      take: 200,
+      take: MAX_TABLE_PAGE_SIZE,
     }),
     db.sale.findMany({
       where: { status: { not: "CANCELLED" }, saleLines: { some: {} } },
@@ -174,7 +174,6 @@ export default async function CustomerReturnsPage({
     })
     .filter((sale) => sale.lines.length > 0);
 
-  const totalLoss = returns.reduce((sum, ret) => sum + ret.lossCents, 0);
   const visibleReturnCount = returns.filter((ret) => {
     if (requestedView === "inspection") {
       return ["RECEIVED", "INSPECTION", "DEFECTIVE", "CONFLICT"].includes(ret.status);
@@ -284,18 +283,8 @@ export default async function CustomerReturnsPage({
       <PageHeader
         eyebrow="Handel · Retouren"
         title="Kundenretouren"
-        description={
-          <>
-            {returns.length} Retoure(n)
-            {returns.length > 0 && <> · Gesamtverlust {formatEuro(totalLoss)}</>}
-          </>
-        }
-        actions={
-          <>
-            <ImportExportBar table="kundenretouren" />
-            <CreateReturnDialog sales={saleOptions} />
-          </>
-        }
+        description="Kundenretouren prüfen, bewerten und finanziell abschließen."
+        actions={<CreateReturnDialog sales={saleOptions} />}
       />
       <OperationalSearchToolbar
         basePath="/retouren/kunden"
@@ -307,7 +296,6 @@ export default async function CustomerReturnsPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.customerReturns}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={requestedView}
         currentQuery={currentQuery}
         totalResults={visibleReturnCount}
       >

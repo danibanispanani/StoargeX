@@ -1,12 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useTransition } from "react";
+import { Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { deleteTaxRateAction, upsertTaxRateAction } from "@/lib/actions/tax-rates";
 import type { ActionState } from "@/lib/actions/team";
 import { COUNTRIES } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -77,15 +79,13 @@ export function TaxRatesCard({
               </TableCell>
               {!readOnly && (
                 <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <ActionIconButton
+                    label="Steuersatz löschen"
+                    icon={Trash2Icon}
                     className="text-destructive"
                     disabled={deleting}
                     onClick={() => remove(rate)}
-                  >
-                    Löschen
-                  </Button>
+                  />
                 </TableCell>
               )}
             </TableRow>

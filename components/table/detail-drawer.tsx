@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { EyeIcon } from "lucide-react";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import {
   Sheet,
   SheetContent,
@@ -13,7 +14,7 @@ import {
 export function DetailDrawer({
   title,
   description,
-  triggerLabel = "Details",
+  triggerLabel = "Details anzeigen",
   children,
 }: {
   title: string;
@@ -24,9 +25,7 @@ export function DetailDrawer({
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="sm">
-          {triggerLabel}
-        </Button>
+        <ActionIconButton label={triggerLabel} icon={EyeIcon} />
       </SheetTrigger>
       <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-2xl">
         <SheetHeader className="sticky top-0 z-10 border-b bg-background px-5 py-4 text-left">

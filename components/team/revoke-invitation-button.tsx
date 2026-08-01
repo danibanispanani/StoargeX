@@ -1,9 +1,10 @@
 "use client";
 
 import { useTransition } from "react";
+import { MailXIcon } from "lucide-react";
 import { toast } from "sonner";
 import { revokeInvitationAction } from "@/lib/actions/team";
-import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 
 export function RevokeInvitationButton({
   invitationId,
@@ -13,9 +14,9 @@ export function RevokeInvitationButton({
   const [pending, startTransition] = useTransition();
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
+    <ActionIconButton
+      label="Einladung zurückziehen"
+      icon={MailXIcon}
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
@@ -24,8 +25,6 @@ export function RevokeInvitationButton({
           else if (result?.success) toast.success(result.success);
         })
       }
-    >
-      Zurückziehen
-    </Button>
+    />
   );
 }

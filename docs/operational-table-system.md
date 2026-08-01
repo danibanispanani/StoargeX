@@ -13,7 +13,7 @@ Das System verkleinert Tabellen nicht blind. Primäre Identität, operativer Zus
 
 ```text
 URL / Server Query                    Browserpräferenz
-Suche · Filter · Sort · Seite         Spalten · Dichte · benannte Ansicht
+Suche · Filter · Sort · Seite         Spalten · Filter · benannte Ansicht
              \                         /
               \                       /
           Operational Table Interface
@@ -46,13 +46,13 @@ Die Suche ist für Name, Variante, Kategorie und Marke groß-/kleinschreibungsun
 
 ### Gespeicherte Benutzeransichten
 
-Spalten, Dichte und benannte Ansichten werden unter
+Seitengröße und benannte Ansichten werden unter
 
 ```text
 storagex:table:<organizationId>:<userId>:<tableKey>:v1
 ```
 
-im Browser gespeichert. Der Adapter validiert jede geladene Struktur gegen freigegebene Spalten und zulässige Dichtewerte. Eine benannte Ansicht speichert URL-Query, Spalten und Dichte. Der Scope verhindert, dass eine Ansicht beim Wechsel von Organisation oder Benutzer übernommen wird.
+im Browser gespeichert. Der Adapter validiert jede geladene Struktur gegen freigegebene Spalten. Die feste Ansicht `Standard` verwendet immer die Standardspalten ohne Spaltenfilter. Eine benannte Benutzeransicht speichert ihre Spalten und Spaltenfilter. Der Scope verhindert, dass eine Ansicht beim Wechsel von Organisation oder Benutzer übernommen wird.
 
 Pro Scope werden höchstens 20 benannte Ansichten behalten. Ein Wechsel von Query, Preset, gespeicherter Ansicht oder Organisation hebt eine bestehende Zeilenauswahl auf, damit eine `all`-Auswahl nie still auf eine andere Ergebnismenge umgedeutet wird.
 
@@ -76,7 +76,6 @@ Zwei Zustände decken große Treffermengen ohne tausende Client-IDs ab:
 | Filter | Kombinierbar; Produkte: Kategorie, Marke, Änderungszeitraum |
 | Presets | Pro Modul konfiguriert, nicht global erzwungen |
 | Spalten | Validierte Auswahl; primäre Identität kann geschützt werden |
-| Dichte | Komfortabel oder kompakt |
 | Auswahl | Seite, einzelne Zeile, gesamte gefilterte Ergebnismenge, Ausschlüsse |
 | Bulk | Server löst Tenant und Filter erneut auf; sichere Bestätigung erforderlich |
 | Row Actions | Fachlich benannte Details, Bearbeiten und referenzgeprüftes Löschen |
@@ -132,7 +131,7 @@ Produkt-CSV-Zellen mit formelfähigen Präfixen werden neutralisiert. Der synchr
 - Auswahl verwendet Radix-Checkboxen mit benannten Controls und Indeterminate-State.
 - Sortierlinks beschreiben die nächste Richtung per `aria-label`.
 - Dialoge und Drawer verwenden Radix-Fokusfalle, Escape und Fokus-Rückgabe.
-- Dichte, Spalten und benannte Ansichten sind native beziehungsweise semantische Controls.
+- Spalten und benannte Ansichten sind semantische Controls.
 - Reduced Motion deaktiviert Drawer-/Dialog-Animationen über die bestehenden Primitives.
 
 ## Testoberfläche
@@ -150,7 +149,7 @@ Produkt-CSV-Zellen mit formelfähigen Präfixen werden neutralisiert. Der synchr
 
 Die authentifizierte Produktansicht wurde mit Chrome DevTools bei 1440, 1280, 768 und exakt 390 Pixeln geprüft. Die Seite erzeugt keinen horizontalen Dokument-Overflow; nur der dafür vorgesehene Tabellenbereich scrollt. Bei 1280 Pixeln wurde dabei ein zu breites Filter-Aktionsraster gefunden und responsiv korrigiert. Desktop-Sidebar, mobile Navigation, Sticky Header, Sticky-Identität, Vollbild-Drawer und Fokus-Rückgabe funktionieren in den vorgesehenen Zuständen.
 
-Browsergeprüft sind außerdem case-insensitive Suche, kombinierte Kategorie-/Markenfilter, bidirektionale Sortierung, modulspezifische Presets, Pagination, optionale Spalten, Dichtepersistenz, gespeicherte Ansichten, Einzel-/Seiten-/Gesamtmengenauswahl, der geschützte Einstieg in die Bulk-Kategorisierung sowie CSV-/XLSX-Vorlagen und gefilterter Export. Die Prüfung hinterließ keine fachliche Datenänderung und setzte temporäre Tabellenpräferenzen anschließend zurück.
+Browsergeprüft sind außerdem case-insensitive Suche, kombinierte Kategorie-/Markenfilter, bidirektionale Sortierung, Pagination, optionale Spalten, gespeicherte Ansichten, Einzel-/Seiten-/Gesamtmengenauswahl, der geschützte Einstieg in die Bulk-Kategorisierung sowie CSV-/XLSX-Vorlagen und gefilterter Export. Die Prüfung hinterließ keine fachliche Datenänderung und setzte temporäre Tabellenpräferenzen anschließend zurück.
 
 Der finale 390-Pixel-Lauf hatte eine leere Console/Issues-Liste und 34 von 34 erfolgreiche Requests. Tastaturfokus bewegt sich in DOM-Reihenfolge und erhält einen sichtbaren teal-farbenen `:focus-visible`-Rahmen. Zwei zunächst unbenannte Select-Felder wurden mit tabellenspezifischen `id`-/`name`-Attributen korrigiert.
 

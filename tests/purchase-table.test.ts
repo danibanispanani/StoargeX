@@ -38,6 +38,12 @@ describe("purchase operational table", () => {
     }));
   });
 
+  it("verwendet einheitlich 100 Zeilen und akzeptiert bis zu 500", () => {
+    expect(parsePurchaseTableQuery({}).pageSize).toBe(100);
+    expect(parsePurchaseTableQuery({ pageSize: "500" }).pageSize).toBe(500);
+    expect(parsePurchaseTableQuery({ pageSize: "50" }).pageSize).toBe(100);
+  });
+
   it("kombiniert Rückgabefrist-, Lieferanten- und Suchfilter tenant-neutral", () => {
     const query = parsePurchaseTableQuery({
       q: "E-26",
@@ -58,7 +64,7 @@ describe("purchase operational table", () => {
     expect(where.OR).toBeUndefined();
     expect(where.AND).toEqual([
       { OR: expect.any(Array) },
-      { OR: [{ paymentAccountId: { not: null } }, { debtLinks: { some: {} } }] },
+      { debtLinks: { some: {} } },
     ]);
   });
 });

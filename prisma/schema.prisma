@@ -1328,6 +1328,7 @@ model Purchase {
   shippingStatus      PurchaseShippingStatus @default(NOT_SHIPPED) @map("shipping_status")
   returnDeadline      DateTime?              @map("return_deadline")
   documentReference   String?                @map("document_reference")
+  imageUrl             String?                @map("image_url")
   purchaseStatus      PurchaseStatus         @default(DRAFT) @map("purchase_status")
   comment             String?
   createdById         String                 @map("created_by_id")
@@ -1392,6 +1393,7 @@ model PurchaseReceipt {
   trackingNumber    String?  @map("tracking_number")
   documentReference String?  @map("document_reference")
   notes             String?
+  cancelledAt       DateTime? @map("cancelled_at")
   createdById       String   @map("created_by_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
@@ -1402,7 +1404,7 @@ model PurchaseReceipt {
 
   @@index([organizationId])
   @@index([organizationId, receivedAt])
-  @@index([purchaseId])
+  @@index([purchaseId, cancelledAt])
   @@index([createdById])
   @@map("purchase_receipts")
 }

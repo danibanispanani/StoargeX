@@ -75,7 +75,7 @@ export default async function CredentialsPage({
       <PageHeader
         eyebrow="Verwaltung · Sicherheit"
         title="Zugangsdaten-Tresor"
-        description="AES-256 Envelope Encryption · Entschlüsselung nur serverseitig · jeder Abruf wird protokolliert."
+        description="Geschützte Zugangsdaten verwalten, kontrolliert anzeigen und Abrufe nachvollziehen."
         actions={<CreateCredentialDialog platforms={platforms} />}
       />
       <OperationalSearchToolbar
@@ -88,7 +88,6 @@ export default async function CredentialsPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.credentials}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={requestedView}
         currentQuery={operationalSearchParams({
           preset: requestedView === "standard" ? undefined : requestedView,
           q,
@@ -97,7 +96,7 @@ export default async function CredentialsPage({
       >
       <Card className="rounded-none border-0 shadow-none">
         <CardContent>
-          <Table>
+          <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
                 <TableHead data-column data-column-key="label" data-view-standard data-view-platform data-view-rotation data-view-all>Label</TableHead>

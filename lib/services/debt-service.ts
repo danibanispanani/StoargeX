@@ -8,6 +8,8 @@ type TxMethod<Args, Result> = {
 type DebtLinkWithDebt = { debt: Debt } & Record<string, unknown>;
 
 type DebtTransaction = {
+  $executeRaw: Prisma.TransactionClient["$executeRaw"];
+  $queryRaw: Prisma.TransactionClient["$queryRaw"];
   documentSequence: {
     upsert: TxMethod<unknown, { value: number }>;
   };
@@ -183,6 +185,64 @@ export async function ensurePurchaseDebt(input: PurchaseDebtInput): Promise<Debt
   return debt;
 }
 
+export async function reconcilePurchaseDebt(input: PurchaseDebtInput): Promise<Debt | null> {
+  const payload = purchaseDebtPayload(input);
+  const link = await input.tx.debtPurchaseLink.findFirst({
+    where: { organizationId: input.organizationId, purchaseId: input.purchaseId },
+    include: { debt: true },
+  }) as DebtLinkWithDebt | null;
+
+  if (!link) {
+    return payload ? ensurePurchaseDebt(input) : null;
+  }
+
+  const linkedDebt = link.debt;
+  await input.tx.$queryRaw`SELECT "id" FROM "debts" WHERE "id" = ${linkedDebt.id} AND "organization_id" = ${input.organizationId} FOR UPDATE`;
+  const current = await input.tx.debt.findFirst({
+    where: { id: linkedDebt.id, organizationId: input.organizationId },
+  }) as Debt | null;
+  if (!current) return null;
+
+  if (current.status === "SETTLED" || current.status === "PARTIALLY_PAID") {
+    throw new Error("Lieferant, Bestelldatum oder Zahlungsmethode können bei einer bereits bezahlten Schuld nicht geändert werden.");
+  }
+  if (!payload) {
+    if (current.status === "OTHER") return current;
+    return settleDebt({
+      organizationId: input.organizationId,
+      debtId: current.id,
+      status: "OTHER",
+      userId: input.createdById,
+      tx: input.tx,
+    });
+  }
+
+  const updated = await input.tx.debt.update({
+    where: { id: current.id },
+    data: {
+      debtDate: payload.date,
+      refId: payload.legacyRefId,
+      description: payload.description,
+      quantity: payload.quantity,
+      amountCents: payload.amountCents,
+      debtorName: payload.debtorName,
+      creditorName: payload.creditorName,
+      status: "OPEN",
+      paidCents: 0,
+      settledAt: null,
+    },
+  }) as Debt;
+  await writeDebtAudit(input.tx, {
+    organizationId: input.organizationId,
+    userId: input.createdById ?? null,
+    action: "debt.update_purchase",
+    entityId: updated.id,
+    before: auditAfter(current),
+    after: auditAfter(updated),
+  });
+  return updated;
+}
+
 export async function ensureSaleDebt(input: SaleDebtInput): Promise<Debt | null> {
   const payload = saleDebtPayload(input);
   if (!payload) return null;
@@ -219,10 +279,32 @@ export async function settleDebt(input: {
   userId?: string | null;
   tx: DebtTransaction;
 }): Promise<Debt | null> {
+  const purchaseLink = await input.tx.debtPurchaseLink.findFirst({
+    where: { organizationId: input.organizationId, debtId: input.debtId },
+    select: { purchaseId: true },
+  }) as { purchaseId: string } | null;
+  if (purchaseLink) {
+    await input.tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`storagex:purchase-receipt:${input.organizationId}:${purchaseLink.purchaseId}`}))`;
+  }
+  await input.tx.$queryRaw`SELECT "id" FROM "debts" WHERE "id" = ${input.debtId} AND "organization_id" = ${input.organizationId} FOR UPDATE`;
   const existing = await input.tx.debt.findFirst({
     where: { id: input.debtId, organizationId: input.organizationId },
   }) as Debt | null;
   if (!existing) return null;
+
+  if (purchaseLink && input.status !== "OTHER") {
+    const currentLink = await input.tx.debtPurchaseLink.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        debtId: input.debtId,
+        purchaseId: purchaseLink.purchaseId,
+      },
+      include: { purchase: { select: { purchaseStatus: true } } },
+    }) as { purchase: { purchaseStatus: string } } | null;
+    if (currentLink?.purchase.purchaseStatus === "CANCELLED") {
+      throw new Error("Die Schuld einer stornierten Bestellung kann nicht wieder geöffnet oder beglichen werden.");
+    }
+  }
 
   const settledAt =
     input.status === "SETTLED" ? input.settledAt ?? existing.settledAt ?? new Date() : null;

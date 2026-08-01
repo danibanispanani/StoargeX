@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
+import { PencilIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
   adjustConsignmentStockAction,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/actions/consignment";
 import type { ActionState } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -81,7 +83,7 @@ function EditDialog({ item }: { item: ConsignmentRow }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">Bearbeiten</Button>
+        <ActionIconButton label="Konsignationsartikel bearbeiten" icon={PencilIcon} />
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
@@ -167,7 +169,11 @@ function DeleteDialog({ item }: { item: ConsignmentRow }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-destructive">Loeschen</Button>
+        <ActionIconButton
+          label="Konsignationsartikel löschen"
+          icon={Trash2Icon}
+          className="text-destructive"
+        />
       </DialogTrigger>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>

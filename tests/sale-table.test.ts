@@ -6,14 +6,14 @@ import {
 
 describe("sale table query configuration", () => {
   it("parses safe pagination boundaries", () => {
-    expect(parseSalePagination({})).toEqual({ page: 1, pageSize: 50 });
-    expect(parseSalePagination({ page: "2", pageSize: "100" })).toEqual({
+    expect(parseSalePagination({})).toEqual({ page: 1, pageSize: 100 });
+    expect(parseSalePagination({ page: "2", pageSize: "200" })).toEqual({
       page: 2,
-      pageSize: 100,
+      pageSize: 200,
     });
     expect(parseSalePagination({ page: "-1", pageSize: "500" })).toEqual({
       page: 1,
-      pageSize: 50,
+      pageSize: 500,
     });
   });
 

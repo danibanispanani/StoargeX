@@ -1,7 +1,6 @@
 import { requireOrg } from "@/lib/org";
 import { getOptions } from "@/lib/options";
 import { PageHeader } from "@/components/app/page-header";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { PurchaseOrderDialog } from "@/components/purchases/purchase-dialogs";
 import { PurchaseFilterBar } from "@/components/purchases/purchase-filter-bar";
 import { PurchaseTable, type PurchaseOperationalRow } from "@/components/purchases/purchase-table";
@@ -19,10 +18,21 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
   const { db, organization, userId } = await requireOrg();
   const requested = parsePurchaseTableQuery(await searchParams);
   const where = buildPurchaseWhere(requested);
+  const optionsPromise = Promise.all([
+    db.businessPartner.findMany({
+      where: { active: true, roles: { some: { role: "SUPPLIER" } } },
+      select: { id: true, displayName: true },
+      orderBy: { displayName: "asc" },
+    }),
+    db.product.findMany({
+      select: { id: true, name: true, variant: true, imageUrls: true }, orderBy: { name: "asc" }, take: 1000,
+    }),
+    getOptions(db, organization.id, "PAYMENT_METHOD"),
+  ]);
   const totalResults = await db.purchase.count({ where });
   const totalPages = Math.max(1, Math.ceil(totalResults / requested.pageSize));
   const query = { ...requested, page: Math.min(requested.page, totalPages) };
-  const [purchases, suppliers, paymentAccounts, products, paymentMethods] = await Promise.all([
+  const [purchases, [suppliers, products, paymentMethods]] = await Promise.all([
     db.purchase.findMany({
       where,
       orderBy: buildPurchaseOrderBy(query),
@@ -30,19 +40,20 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
       take: query.pageSize,
       include: {
         businessPartner: { select: { displayName: true } },
-        paymentAccount: { select: { displayName: true } },
         debtLinks: { select: { id: true } },
         lines: {
           include: {
-            product: { select: { name: true, variant: true, defaultCondition: true } },
+            product: { select: { name: true, variant: true, defaultCondition: true, imageUrls: true } },
             receiptLines: {
               include: {
+                purchaseReceipt: { select: { id: true, cancelledAt: true, receivedAt: true } },
                 inventoryPosition: { select: { inventoryNumber: true, receivedAt: true } },
                 inboundMovement: { select: { id: true } },
               },
             },
             ownedLots: {
               select: {
+                inventoryPositionId: true,
                 inventoryPosition: {
                   select: {
                     inventoryNumber: true,
@@ -62,21 +73,25 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
         },
       },
     }),
-    db.businessPartner.findMany({
-      where: { active: true, roles: { some: { role: "SUPPLIER" } } },
-      select: { id: true, displayName: true },
-      orderBy: { displayName: "asc" },
-    }),
-    db.payoutAccount.findMany({
-      where: { active: true }, select: { id: true, displayName: true }, orderBy: { displayName: "asc" },
-    }),
-    db.product.findMany({
-      select: { id: true, name: true, variant: true }, orderBy: { name: "asc" }, take: 1000,
-    }),
-    getOptions(db, organization.id, "PAYMENT_METHOD"),
+    optionsPromise,
   ]);
 
-  const rows: PurchaseOperationalRow[] = purchases.map((purchase) => ({
+  const rows: PurchaseOperationalRow[] = purchases.map((purchase) => {
+    const receipts = new Map<string, PurchaseOperationalRow["receipts"][number]>();
+    for (const line of purchase.lines) {
+      const product = [line.product.name, line.product.variant].filter(Boolean).join(" · ");
+      for (const receiptLine of line.receiptLines) {
+        const receipt = receipts.get(receiptLine.purchaseReceipt.id) ?? {
+          id: receiptLine.purchaseReceipt.id,
+          receivedAt: receiptLine.purchaseReceipt.receivedAt.toISOString(),
+          cancelledAt: receiptLine.purchaseReceipt.cancelledAt?.toISOString() ?? null,
+          lines: [],
+        };
+        receipt.lines.push({ product, quantity: receiptLine.quantity });
+        receipts.set(receipt.id, receipt);
+      }
+    }
+    return {
     id: purchase.id,
     purchaseNumber: purchase.purchaseNumber,
     purchaseDate: purchase.purchaseDate.toISOString(),
@@ -91,51 +106,64 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
     returnDeadline: purchase.returnDeadline?.toISOString() ?? null,
     grossCents: purchase.lines.reduce((sum, line) => sum + decimalToCents(line.totalGross), 0),
     netCents: purchase.lines.reduce((sum, line) => sum + decimalToCents(line.totalNet), 0),
-    paymentAccount: purchase.paymentAccount?.displayName ?? "",
     paymentMethod: purchase.paymentMethod,
-    documentReference: purchase.documentReference ?? "",
     comment: purchase.comment ?? "",
     debtCount: purchase.debtLinks.length,
     lines: purchase.lines.map((line) => ({
       id: line.id,
       productId: line.productId,
       product: [line.product.name, line.product.variant].filter(Boolean).join(" · "),
+      imageUrl: line.product.imageUrls[0] ?? null,
       condition: line.product.defaultCondition,
       quantity: line.quantity,
       received: effectiveReceivedQuantity({
-        receiptQuantities: line.receiptLines.map((receipt) => receipt.quantity),
+        receiptQuantities: line.receiptLines.map((receipt) =>
+          receipt.purchaseReceipt.cancelledAt ? 0 : receipt.quantity
+        ),
         legacyLotQuantities: line.ownedLots.map((lot) => lot.inventoryPosition.quantityReceived),
+        receiptInventoryPositionIds: line.receiptLines.map((receipt) => receipt.inventoryPositionId),
+        legacyLots: line.ownedLots.map((lot) => ({
+          inventoryPositionId: lot.inventoryPositionId,
+          quantity: lot.inventoryPosition.quantityReceived,
+        })),
       }),
       grossCents: decimalToCents(line.totalGross),
       unitGrossCents: decimalToCents(line.unitPriceGross),
       netCents: decimalToCents(line.totalNet),
     })),
-    lots: purchase.lines.flatMap((line) => line.receiptLines.length > 0
-      ? line.receiptLines.map((receipt) => ({
+    receipts: [...receipts.values()].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
+    lots: purchase.lines.flatMap((line) => {
+      const receiptPositionIds = new Set(line.receiptLines.map((receipt) => receipt.inventoryPositionId));
+      return [
+        ...line.receiptLines.map((receipt) => ({
           inventoryNumber: receipt.inventoryPosition.inventoryNumber,
           quantity: receipt.quantity,
           receivedAt: receipt.inventoryPosition.receivedAt.toISOString(),
           movementId: receipt.inboundMovement.id,
-        }))
-      : line.ownedLots.map((lot) => ({
+          cancelled: Boolean(receipt.purchaseReceipt.cancelledAt),
+        })),
+        ...line.ownedLots.filter((lot) => !receiptPositionIds.has(lot.inventoryPositionId)).map((lot) => ({
           inventoryNumber: lot.inventoryPosition.inventoryNumber,
           quantity: lot.inventoryPosition.quantityReceived,
           receivedAt: lot.inventoryPosition.receivedAt.toISOString(),
           movementId: lot.inventoryPosition.movements[0]?.id ?? "Legacy",
-        }))),
-  }));
+          cancelled: false,
+        })),
+      ];
+    }),
+    };
+  });
   const supplierOptions = suppliers.map((item) => ({ id: item.id, label: item.displayName }));
-  const accountOptions = paymentAccounts.map((item) => ({ id: item.id, label: item.displayName }));
 
   return <div className="space-y-4">
     <PageHeader
       eyebrow="Handel / Beschaffung"
       title="Einkauf"
-      description={`${totalResults} Einkaufsvorgänge · Bestellung, Versand und Wareneingang getrennt nachvollziehbar`}
-      actions={<><ImportExportBar table="einkauf" /><PurchaseOrderDialog suppliers={supplierOptions} paymentAccounts={accountOptions} paymentMethods={paymentMethods} products={products.map((item) => ({ id: item.id, name: item.name, label: [item.name, item.variant].filter(Boolean).join(" · ") }))} /></>}
+      description="Bestellungen vom Einkauf über den Versand bis zum Wareneingang steuern."
+      actions={<PurchaseOrderDialog suppliers={supplierOptions} paymentMethods={paymentMethods} products={products.map((item) => ({ id: item.id, name: item.name, imageUrl: item.imageUrls[0] ?? "", label: [item.name, item.variant].filter(Boolean).join(" · ") }))} />}
     />
-    <PurchaseFilterBar query={query} suppliers={supplierOptions} paymentAccounts={accountOptions} />
-    <PurchaseTable rows={rows} totalResults={totalResults} query={query} queryString={purchaseQueryToSearchParams(query).toString()} scope={{ organizationId: organization.id, userId, tableKey: "purchases" }} nowIso={new Date().toISOString()} />
+    <PurchaseFilterBar query={query} suppliers={supplierOptions} />
+    <PurchaseTable rows={rows} totalResults={totalResults} query={query} queryString={purchaseQueryToSearchParams(query).toString()} scope={{ organizationId: organization.id, userId, tableKey: "purchases" }} nowIso={new Date().toISOString()} suppliers={supplierOptions} paymentMethods={paymentMethods} />
   </div>;
 }
 

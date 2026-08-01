@@ -32,8 +32,7 @@ Der frühere `CompactTableShell` ist jetzt ein Kompatibilitätsadapter auf den b
 
 - organisations- und benutzerbezogene Einstellungen,
 - Spaltensteuerung,
-- kompakte oder komfortable Dichte,
-- gespeicherte Ansichten inklusive Query-String,
+- eigene gespeicherte Ansichten mit Spalten und Spaltenfiltern,
 - Trefferzahl,
 - URL-basierte Modulansichten.
 
@@ -84,7 +83,7 @@ Die bestehenden serverseitigen Konsignationsaktionen prüfen das Entitlement zus
 - Toolbar, Suche, Ansichten und Header umbrechen auf Tablet und Mobile.
 - Drawer werden auf Mobile vollbreit und bleiben vertikal scrollbar.
 - Selects, Buttons, Checkboxen und Suchfelder behalten sichtbare Labels beziehungsweise `aria-label`.
-- Dichte- und Spalteneinstellungen verändern nur die Darstellung, nicht die Datenbasis.
+- Spalteneinstellungen verändern nur die Darstellung, nicht die Datenbasis.
 - Modulansichten und Filter sind URL-basiert; Zurücknavigation und gespeicherte Ansichten bleiben reproduzierbar.
 
 ## Verifikation

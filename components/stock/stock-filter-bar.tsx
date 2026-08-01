@@ -1,124 +1,65 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import {
-  ENTRY_STATUS_TITLES,
-  KAUF_STATUS_OPTIONS,
-  RETOURE_STATUS_OPTIONS,
-  STOCK_STATUS,
-  STOCK_STATUS_OPTIONS,
-} from "@/lib/constants";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { operationalSearchParams } from "@/lib/operational-modules";
+import type { StockView } from "@/lib/stock/stock-views";
+import type { StockTableQuery } from "@/lib/stock/stock-table";
 
-export interface StockFilters {
+interface StockFilters {
   q: string;
-  status: string;
-  kauf: string;
-  retoure: string;
-  zm: string;
-  plattform: string;
   von: string;
   bis: string;
-  bestand: string;
 }
 
-/** Filter fürs Lager: Status, Kauf, Retoure, Datum, Plattform, ZM, Suche. */
 export function StockFilterBar({
   filters,
-  platforms,
-  zmOptions,
   activeView,
+  tableQuery,
 }: {
   filters: StockFilters;
-  platforms: Array<{ id: string; name: string }>;
-  zmOptions: string[];
-  activeView?: string;
+  activeView: StockView;
+  tableQuery: StockTableQuery;
 }) {
   const router = useRouter();
-  const hasFilters = Object.values(filters).some(Boolean);
 
   function apply(formData: FormData) {
-    const params = new URLSearchParams();
-    if (activeView && activeView !== "standard") params.set("view", activeView);
-    for (const key of ["q", "status", "kauf", "retoure", "zm", "plattform", "von", "bis", "bestand"]) {
-      const value = String(formData.get(key) ?? "").trim();
-      if (value) params.set(key, value);
-    }
-    router.push(`/lager${params.size ? `?${params}` : ""}`);
+    const query = operationalSearchParams({
+      view: activeView === "standard" ? undefined : activeView,
+      sort: tableQuery.sort === "number" ? undefined : tableQuery.sort,
+      direction: tableQuery.direction === "desc" ? undefined : tableQuery.direction,
+      q: String(formData.get("q") ?? "").trim() || undefined,
+      von: String(formData.get("von") ?? "").trim() || undefined,
+      bis: String(formData.get("bis") ?? "").trim() || undefined,
+    });
+
+    router.push(`/lager${query ? `?${query}` : ""}`);
   }
 
-  const selectClass =
-    "border-input h-9 rounded-md border bg-background px-2 text-sm";
-
   return (
-    <form action={apply} className="flex flex-wrap items-end gap-2">
+    <form
+      action={apply}
+      className="grid gap-2 border bg-card p-3 md:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_10rem_10rem_auto]"
+    >
       <Input
         name="q"
         defaultValue={filters.q}
-        placeholder="Suche: Model, Händler, LagerID, EAN…"
-        className="w-56"
+        placeholder="Artikel, Händler, Lager-Nr. oder EAN…"
+        aria-label="Lager durchsuchen"
+        className="self-end"
       />
-      <select name="status" defaultValue={filters.status} className={selectClass}>
-        <option value="">Alle Status</option>
-        {STOCK_STATUS_OPTIONS.map((value) => (
-          <option key={value} value={value}>
-            {STOCK_STATUS[value].label}
-          </option>
-        ))}
-      </select>
-      <select name="kauf" defaultValue={filters.kauf} className={selectClass}>
-        <option value="">Kauf: alle</option>
-        {KAUF_STATUS_OPTIONS.map((value) => (
-          <option key={value} value={value}>
-            Kauf: {value} ({ENTRY_STATUS_TITLES[value]})
-          </option>
-        ))}
-      </select>
-      <select name="retoure" defaultValue={filters.retoure} className={selectClass}>
-        <option value="">Retoure: alle</option>
-        {RETOURE_STATUS_OPTIONS.map((value) => (
-          <option key={value} value={value}>
-            Retoure: {value} ({ENTRY_STATUS_TITLES[value]})
-          </option>
-        ))}
-      </select>
-      <select name="zm" defaultValue={filters.zm} className={selectClass}>
-        <option value="">ZM: alle</option>
-        {zmOptions.map((zm) => (
-          <option key={zm} value={zm}>
-            ZM: {zm}
-          </option>
-        ))}
-      </select>
-      <select name="plattform" defaultValue={filters.plattform} className={selectClass}>
-        <option value="">Gelistet: egal</option>
-        {platforms.map((p) => (
-          <option key={p.id} value={p.id}>
-            Gelistet auf {p.name}
-          </option>
-        ))}
-      </select>
-      <select name="bestand" defaultValue={filters.bestand} className={selectClass}>
-        <option value="">Bestand: alle</option>
-        <option value="niedrig">Bestand: niedrig</option>
-      </select>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+      <label className="grid gap-1 text-xs text-muted-foreground">
         Von
-        <Input name="von" type="date" defaultValue={filters.von} className="w-36" />
+        <Input name="von" type="date" defaultValue={filters.von} />
       </label>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+      <label className="grid gap-1 text-xs text-muted-foreground">
         Bis
-        <Input name="bis" type="date" defaultValue={filters.bis} className="w-36" />
+        <Input name="bis" type="date" defaultValue={filters.bis} />
       </label>
-      <Button type="submit" variant="secondary">
+      <Button type="submit" variant="outline" className="self-end">
         Filtern
       </Button>
-      {hasFilters && (
-        <Button type="button" variant="ghost" onClick={() => router.push(activeView && activeView !== "standard" ? `/lager?view=${activeView}` : "/lager")}>
-          Zurücksetzen
-        </Button>
-      )}
     </form>
   );
 }

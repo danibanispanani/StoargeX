@@ -43,6 +43,7 @@ export interface EditableStockItem {
   retoureStatus: string;
   status: string;
   ean: string;
+  imageUrl: string;
   notes: string;
   platformIds: string[];
 }
@@ -334,8 +335,9 @@ export function StockItemDialog({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="si-image">Bild (JPG/PNG/WebP, max. 5 MB)</Label>
-              <Input id="si-image" name="image" type="file" accept="image/jpeg,image/png,image/webp" />
+              <Label htmlFor="si-image-url">Bildadresse</Label>
+              <Input id="si-image-url" name="imageUrl" type="url" defaultValue={item?.imageUrl} placeholder="https://…/artikelbild.jpg" />
+              <p className="text-xs text-muted-foreground">Bild öffnen → Rechtsklick → „Bildadresse kopieren“. Bitte den direkten öffentlichen Bild-Link einfügen, nicht die Shop-Seite.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="si-notes">Notizen</Label>

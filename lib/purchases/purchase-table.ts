@@ -1,4 +1,9 @@
 import type { Prisma } from "@prisma/client";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/lib/operational-table";
 
 export const PURCHASE_TABLE_DEFINITION = {
   key: "purchases",
@@ -11,7 +16,7 @@ export const PURCHASE_TABLE_DEFINITION = {
     { key: "shipping", label: "Versand", defaultVisible: true, sortable: true },
     { key: "lines", label: "Positionen", defaultVisible: true, sortable: false },
     { key: "amounts", label: "Brutto / Netto", defaultVisible: true, sortable: true },
-    { key: "paymentAccount", label: "Zahlungskonto", defaultVisible: true, sortable: false },
+    { key: "paymentMethod", label: "Zahlungsmethode", defaultVisible: true, sortable: false },
     { key: "expectedDelivery", label: "Erwartet", defaultVisible: false, sortable: true },
     { key: "receivedAt", label: "Eingetroffen", defaultVisible: false, sortable: true },
     { key: "returnDeadline", label: "Rückgabefrist", defaultVisible: false, sortable: true },
@@ -30,7 +35,6 @@ export const PURCHASE_TABLE_DEFINITION = {
     { key: "finance", label: "Finanzen" },
     { key: "all", label: "Alle" },
   ],
-  pageSizes: [25, 50, 100],
 } as const;
 
 export type PurchasePreset = (typeof PURCHASE_TABLE_DEFINITION.presets)[number]["key"];
@@ -38,14 +42,13 @@ export type PurchaseSort = "purchaseNumber" | "purchaseDate" | "supplier" | "sta
 export interface PurchaseTableQuery {
   q: string;
   supplier: string;
-  paymentAccount: string;
   from: string;
   to: string;
   preset: PurchasePreset;
   sort: PurchaseSort;
   direction: "asc" | "desc";
   page: number;
-  pageSize: 25 | 50 | 100;
+  pageSize: TablePageSize;
 }
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -56,19 +59,17 @@ export function parsePurchaseTableQuery(params: SearchParams): PurchaseTableQuer
     "purchaseNumber", "purchaseDate", "supplier", "status", "shipping", "amounts",
     "expectedDelivery", "receivedAt", "returnDeadline", "supplierOrder",
   ]);
-  const pageSize = Number.parseInt(valueOf(params.pageSize), 10);
   const requestedPreset = valueOf(params.preset) as PurchasePreset;
   return {
     q: valueOf(params.q).trim(),
     supplier: valueOf(params.supplier).trim(),
-    paymentAccount: valueOf(params.paymentAccount).trim(),
     from: validDate(valueOf(params.from)),
     to: validDate(valueOf(params.to)),
     preset: presetKeys.has(requestedPreset) ? requestedPreset : "standard",
     sort: sortKeys.has(valueOf(params.sort) as PurchaseSort) ? valueOf(params.sort) as PurchaseSort : "purchaseDate",
     direction: valueOf(params.direction) === "asc" ? "asc" : "desc",
     page: positiveInt(valueOf(params.page)) || 1,
-    pageSize: [25, 50, 100].includes(pageSize) ? pageSize as 25 | 50 | 100 : 25,
+    pageSize: parseTablePageSize(valueOf(params.pageSize)),
   };
 }
 
@@ -86,7 +87,6 @@ export function buildPurchaseWhere(query: PurchaseTableQuery, now = new Date()):
       ],
     } : {}),
     ...(query.supplier ? { businessPartnerId: query.supplier } : {}),
-    ...(query.paymentAccount ? { paymentAccountId: query.paymentAccount } : {}),
     ...(query.from || query.to ? {
       purchaseDate: {
         ...(query.from ? { gte: new Date(`${query.from}T00:00:00.000Z`) } : {}),
@@ -108,7 +108,7 @@ export function buildPurchaseWhere(query: PurchaseTableQuery, now = new Date()):
     delete where.OR;
     where.AND = [
       ...(search ? [{ OR: search }] : []),
-      { OR: [{ paymentAccountId: { not: null } }, { debtLinks: { some: {} } }] },
+      { debtLinks: { some: {} } },
     ];
   }
   return where;
@@ -129,14 +129,13 @@ export function purchaseQueryToSearchParams(query: PurchaseTableQuery): URLSearc
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.supplier) params.set("supplier", query.supplier);
-  if (query.paymentAccount) params.set("paymentAccount", query.paymentAccount);
   if (query.from) params.set("from", query.from);
   if (query.to) params.set("to", query.to);
   if (query.preset !== "standard") params.set("preset", query.preset);
   if (query.sort !== "purchaseDate") params.set("sort", query.sort);
   if (query.direction !== "desc") params.set("direction", query.direction);
   if (query.page !== 1) params.set("page", String(query.page));
-  if (query.pageSize !== 25) params.set("pageSize", String(query.pageSize));
+  if (query.pageSize !== DEFAULT_TABLE_PAGE_SIZE) params.set("pageSize", String(query.pageSize));
   return params;
 }
 

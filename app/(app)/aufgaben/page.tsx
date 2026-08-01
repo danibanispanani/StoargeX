@@ -7,7 +7,6 @@ import { canPerformTaskAction } from "@/lib/services/task-permission-policy";
 import { deriveTaskProgress } from "@/lib/services/task-workflow-service";
 import { CreateTaskDialog, type TaskDomainOption } from "@/components/tasks/create-task-dialog";
 import { TaskWorkspace, type TeamTaskRow } from "@/components/tasks/task-workspace";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { PageHeader } from "@/components/app/page-header";
 import { PageToolbar } from "@/components/app/page-toolbar";
 import { InsightStrip } from "@/components/app/insight-strip";
@@ -199,7 +198,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const notifications = recentActivities.filter((activity) => activity.actorId !== userId && activityRecipientIds(activity.details).includes(userId)).slice(0, 12);
 
   return <div className="space-y-4">
-    <PageHeader eyebrow="Betrieb / Zusammenarbeit" title="Aufgaben" description="Verantwortung, Fristen und Fortschritt für persönliche Arbeit und das gesamte Team." actions={<>{canCreate ? <CreateTaskDialog members={memberOptions} areaOptions={areaOptions} domainOptions={domainOptions} /> : null}<ImportExportBar table="aufgaben" /></>} />
+    <PageHeader eyebrow="Betrieb / Zusammenarbeit" title="Aufgaben" description="Persönliche und gemeinsame Aufgaben mit Verantwortung, Fristen und Fortschritt steuern." actions={canCreate ? <CreateTaskDialog members={memberOptions} areaOptions={areaOptions} domainOptions={domainOptions} /> : null} />
     <InsightStrip items={[
       { label: "Meine offenen", value: String(myOpenCount), detail: "mir zugewiesen", href: "/aufgaben?view=meine" },
       { label: "Team offen", value: String(teamOpenCount), detail: "gemeinsamer Arbeitsvorrat", href: "/aufgaben?view=team" },

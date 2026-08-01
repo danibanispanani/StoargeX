@@ -1,13 +1,14 @@
 "use client";
 
 import { useTransition } from "react";
+import { UserMinusIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Role } from "@prisma/client";
 import {
   removeMemberAction,
   updateMemberRoleAction,
 } from "@/lib/actions/team";
-import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 
 export function MemberActions({
   membershipId,
@@ -53,15 +54,13 @@ export function MemberActions({
         <option value="MEMBER">Mitglied</option>
         <option value="READONLY">Nur Lesen</option>
       </select>
-      <Button
-        variant="ghost"
-        size="sm"
+      <ActionIconButton
+        label="Mitglied entfernen"
+        icon={UserMinusIcon}
         className="text-destructive"
         disabled={pending || (!actorIsOwner && currentRole === "OWNER")}
         onClick={remove}
-      >
-        Entfernen
-      </Button>
+      />
     </div>
   );
 }

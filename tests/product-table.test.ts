@@ -58,11 +58,15 @@ describe("product table configuration", () => {
       sort: "name",
       direction: "desc",
       page: 1,
-      pageSize: 25,
+      pageSize: 100,
       preset: "unused",
       category: "Elektronik",
       brand: "Amazon",
     });
+  });
+
+  it("accepts the standardized large page sizes", () => {
+    expect(parseProductTableQuery({ pageSize: "500" }).pageSize).toBe(500);
   });
 
   it("builds combined case-insensitive search, filters and date range", () => {

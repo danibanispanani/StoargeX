@@ -66,7 +66,7 @@ Verbindliche Invarianten:
 - `Finanzen`: Zahlungs- oder Debt-Bezug;
 - `Alle`: keine Statusprojektion.
 
-Standardspalten folgen der Table View Matrix: Einkaufsnummer, Bestelldatum, Lieferant, Bestell- und Versandstatus, Position/Fortschritt, Brutto/Netto und Zahlungskonto. Lieferanten-Bestellnummer, erwartetes/tatsächliches Datum, Rückgabefrist, Tracking, Steuer, Debt, Dokument und Notiz sind schaltbar beziehungsweise im Drawer sichtbar. Suche, Sortierung, kombinierte Filter, URL-Zustand, Auswahl, Spalten/Dichte, gespeicherte Ansichten, Pagination, Detail-Drawer und gefilterter Export verwenden den Prompt-3-Table-Seam.
+Standardspalten folgen der Table View Matrix: Einkaufsnummer, Bestelldatum, Lieferant, Bestell- und Versandstatus, Position/Fortschritt, Brutto/Netto und Zahlungskonto. Lieferanten-Bestellnummer, erwartetes/tatsächliches Datum, Rückgabefrist, Tracking, Steuer, Debt, Dokument und Notiz sind schaltbar beziehungsweise im Drawer sichtbar. Suche, Sortierung, kombinierte Filter, URL-Zustand, Auswahl, Spalten, gespeicherte Ansichten, Pagination, Detail-Drawer und gefilterter Export verwenden den Prompt-3-Table-Seam.
 
 ### Lager
 

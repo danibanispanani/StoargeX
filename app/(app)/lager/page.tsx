@@ -4,11 +4,14 @@ import { getOptions } from "@/lib/options";
 import { loadLowStockAlerts, lowStockKey } from "@/lib/reporting";
 import { EntryStatus, StockItemStatus } from "@prisma/client";
 import { StockItemDialog } from "@/components/stock/stock-item-dialog";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
 import { StockTable, type StockRow } from "@/components/stock/stock-table";
 import { deriveOwnedStockStatus } from "@/lib/services/owned-purchase-service";
 import { matchesLowStockFilter, parseStockView } from "@/lib/stock/stock-views";
+import {
+  parseStockTableQuery,
+  sortStockRows,
+} from "@/lib/stock/stock-table";
 import {
   operationalSearchParams,
   parseOperationalSearchQuery,
@@ -29,6 +32,8 @@ export default async function StockPage({
     view?: string;
     alter?: string;
     bestand?: string;
+    sort?: string;
+    direction?: string;
   }>;
 }) {
   const { db, organization, userId } = await requireOrg();
@@ -36,6 +41,7 @@ export default async function StockPage({
   const normalizedQuery = parseOperationalSearchQuery(rawParams.q);
   const params = { ...rawParams, q: normalizedQuery || undefined };
   const view = parseStockView(params.view);
+  const tableQuery = parseStockTableQuery(params);
 
   const statusFilter =
     params.status && params.status in StockItemStatus
@@ -57,6 +63,7 @@ export default async function StockPage({
     db.inventoryPosition.findMany({
       where: {
         inventoryType: "OWNED",
+        quantityReceived: { gt: 0 },
         ...(view === "stock" ? { quantityAvailable: { gt: 0 } } : {}),
         ...(params.alter === "langsam"
           ? {
@@ -230,46 +237,29 @@ export default async function StockPage({
   }));
 
   const allRows = [...ownedRows, ...legacyRows];
-  const rows =
+  const filteredRows =
     params.bestand === "niedrig"
       ? allRows.filter(matchesLowStockFilter)
       : allRows;
+  const rows = sortStockRows(filteredRows, tableQuery);
 
   return (
     <div className="space-y-4">
       <PageHeader
         eyebrow="Handel"
         title="Lager"
-        description={
-          <>
-            {ownedRows.length} Charge(n), {legacyRows.length} Legacy-Einheit(en){" "}
-            {Object.values(params).some(Boolean) ? "(gefiltert)" : ""}
-          </>
-        }
-        actions={
-          <>
-            <ImportExportBar table="lager" />
-            <ImportExportBar table="wareneingang" />
-            <StockItemDialog platforms={platforms} zmOptions={zmOptions} products={products} />
-          </>
-        }
+        description="Bestände, Lagerpositionen und Warenbewegungen zentral nachvollziehen."
+        actions={<StockItemDialog platforms={platforms} zmOptions={zmOptions} products={products} />}
       />
 
       <StockFilterBar
         filters={{
           q: params.q ?? "",
-          status: params.status ?? "",
-          kauf: params.kauf ?? "",
-          retoure: params.retoure ?? "",
-          zm: params.zm ?? "",
-          plattform: params.plattform ?? "",
           von: params.von ?? "",
           bis: params.bis ?? "",
-          bestand: params.bestand ?? "",
         }}
-        platforms={platforms}
-        zmOptions={zmOptions}
         activeView={view}
+        tableQuery={tableQuery}
       />
 
       <StockTable
@@ -278,7 +268,7 @@ export default async function StockPage({
         zmOptions={zmOptions}
         products={products}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={view}
+        tableQuery={tableQuery}
         currentQuery={operationalSearchParams({
           ...params,
           view: view === "standard" ? undefined : view,

@@ -27,12 +27,7 @@ export default async function DashboardPage({
       <PageHeader
         eyebrow="Operations & Performance"
         title={organization.name}
-        description={
-          <>
-            Insight Cockpit · {dashboard.period.current.label} · Vergleich mit
-            unmittelbar vorherigem Zeitraum
-          </>
-        }
+        description="Geschäftsentwicklung, operative Risiken und nächste Maßnahmen im Blick behalten."
       />
 
       <PageToolbar

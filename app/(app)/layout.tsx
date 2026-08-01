@@ -52,7 +52,7 @@ export default async function AppLayout({
   const featureAccess = { [FEATURE_KEYS.CONSIGNMENT]: consignmentAccess };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="sx-app-shell flex min-h-screen bg-background">
       <ThemeSync dbTheme={dbUser?.theme ?? null} />
       <AppSidebar featureAccess={featureAccess} />
 

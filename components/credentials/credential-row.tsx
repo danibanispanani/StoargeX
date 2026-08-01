@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { CopyIcon, EyeIcon, EyeOffIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteCredentialAction,
   revealCredentialAction,
 } from "@/lib/actions/credentials";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { TableCell, TableRow } from "@/components/ui/table";
 
 const HIDE_AFTER_MS = 30_000;
@@ -82,35 +83,32 @@ export function CredentialRow({
             <code className="rounded bg-muted px-2 py-0.5 font-mono text-xs">
               {secret}
             </code>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={copyToClipboard}>
-              Kopieren
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
+            <ActionIconButton label="Zugangsdaten kopieren" icon={CopyIcon} onClick={copyToClipboard} />
+            <ActionIconButton
+              label="Zugangsdaten verbergen"
+              icon={EyeOffIcon}
               onClick={() => setSecret(null)}
-            >
-              Verbergen
-            </Button>
+            />
           </span>
         ) : (
-          <Button variant="outline" size="sm" disabled={pending} onClick={reveal}>
-            {pending ? "…" : "Anzeigen"}
-          </Button>
+          <ActionIconButton
+            label={pending ? "Zugangsdaten werden geladen" : "Zugangsdaten anzeigen"}
+            icon={EyeIcon}
+            variant="outline"
+            disabled={pending}
+            onClick={reveal}
+          />
         )}
       </TableCell>
       <TableCell data-column data-column-key="rotated" data-view-standard data-view-rotation data-view-all>{credential.lastRotatedAt}</TableCell>
       <TableCell data-column data-column-key="actions" data-view-standard data-view-platform data-view-rotation data-view-all>
-        <Button
-          variant="ghost"
-          size="sm"
+        <ActionIconButton
+          label="Zugangsdaten löschen"
+          icon={Trash2Icon}
           className="text-destructive"
           disabled={pending}
           onClick={remove}
-        >
-          Löschen
-        </Button>
+        />
       </TableCell>
     </TableRow>
   );

@@ -1,18 +1,18 @@
 import Link from "next/link";
+import { PencilIcon } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
 import { hasMinRole } from "@/lib/roles";
 import { formatEuro } from "@/lib/calculations";
 import { DEBT_TYPE_LABELS } from "@/lib/constants";
 import { DebtDialog, type EditableDebt } from "@/components/debts/debt-dialog";
-import { ImportExportBar } from "@/components/import-export/import-export-bar";
 import {
   DebtEntrySelect,
   DebtStatusSelect,
   DeleteDebtButton,
 } from "@/components/debts/debt-inline-selects";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
 import { PageHeader } from "@/components/app/page-header";
@@ -99,10 +99,6 @@ export default async function DebtsPage({
     }),
   ]);
 
-  const openCents = debts
-    .filter((debt) => debt.status === "OPEN" || debt.status === "PARTIALLY_PAID")
-    .reduce((sum, debt) => sum + debt.amountCents - debt.paidCents, 0);
-
   const memberNames = members.map((member) => member.user.name ?? member.user.email);
   const visibleDebtCount = debts.filter((debt) => {
     if (requestedView === "due") return debt.status !== "SETTLED" && Boolean(debt.dueDate);
@@ -133,18 +129,8 @@ export default async function DebtsPage({
       <PageHeader
         eyebrow="Finanzen"
         title="Schulden"
-        description={
-          <>
-            Kauf-/Verkaufs-Einträge entstehen automatisch · offen:{" "}
-            {formatEuro(openCents)}
-          </>
-        }
-        actions={
-          <>
-            <ImportExportBar table="schulden" />
-            <DebtDialog memberNames={memberNames} />
-          </>
-        }
+        description="Offene Verpflichtungen, Fälligkeiten und Zahlungen nachvollziehen."
+        actions={<DebtDialog memberNames={memberNames} />}
       />
       <OperationalSearchToolbar
         basePath="/schulden"
@@ -156,7 +142,6 @@ export default async function DebtsPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.debts}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={requestedView}
         currentQuery={operationalSearchParams({
           preset: requestedView === "standard" ? undefined : requestedView,
           q,
@@ -249,9 +234,7 @@ export default async function DebtsPage({
                         debt={toEditable(debt)}
                         memberNames={memberNames}
                         trigger={
-                          <Button variant="ghost" size="sm">
-                            Bearbeiten
-                          </Button>
+                          <ActionIconButton label="Schulden-Eintrag bearbeiten" icon={PencilIcon} />
                         }
                       />
                       {canDelete && <DeleteDebtButton debtId={debt.id} />}

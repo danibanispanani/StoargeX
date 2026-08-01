@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { SearchIcon, XIcon } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  PRODUCT_TABLE_DEFINITION,
-  productQueryToSearchParams,
   type ProductTableQuery,
 } from "@/lib/products/product-table";
-import { cn } from "@/lib/utils";
+import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/operational-table";
 
 export function ProductFilterBar({
   query,
@@ -23,27 +21,6 @@ export function ProductFilterBar({
   );
 
   return (
-    <div className="space-y-2">
-      <nav className="flex gap-1 overflow-x-auto pb-1" aria-label="Produktansichten">
-        {PRODUCT_TABLE_DEFINITION.presets.map((preset) => {
-          const params = productQueryToSearchParams({ ...query, preset: preset.key, page: 1 });
-          if (preset.key === "catalog") params.delete("preset");
-          return (
-            <Link
-              key={preset.key}
-              href={`/produkte${params.size ? `?${params}` : ""}`}
-              aria-current={query.preset === preset.key ? "page" : undefined}
-              className={cn(
-                buttonVariants({ variant: query.preset === preset.key ? "secondary" : "ghost", size: "sm" }),
-                "shrink-0"
-              )}
-            >
-              {preset.label}
-            </Link>
-          );
-        })}
-      </nav>
-
       <form
         method="GET"
         className="grid gap-2 sm:grid-cols-2 sm:items-end xl:grid-cols-3 min-[1360px]:grid-cols-[minmax(15rem,1fr)_repeat(2,minmax(9rem,0.45fr))_auto_auto_auto]"
@@ -72,16 +49,7 @@ export function ProductFilterBar({
           <input type="hidden" name="preset" value={query.preset} />
           <input type="hidden" name="sort" value={query.sort} />
           <input type="hidden" name="direction" value={query.direction} />
-          <select
-            name="pageSize"
-            defaultValue={String(query.pageSize)}
-            aria-label="Treffer pro Seite"
-            className="border-input h-9 rounded-md border bg-background px-2 text-sm"
-          >
-            {PRODUCT_TABLE_DEFINITION.pageSizes.map((size) => (
-              <option key={size} value={size}>{size} / Seite</option>
-            ))}
-          </select>
+          {query.pageSize !== DEFAULT_TABLE_PAGE_SIZE ? <input type="hidden" name="pageSize" value={query.pageSize} /> : null}
           <Button type="submit" variant="secondary">Anwenden</Button>
           {hasFilters ? (
             <Button asChild variant="ghost" size="icon" title="Filter zurücksetzen">
@@ -90,7 +58,6 @@ export function ProductFilterBar({
           ) : null}
         </div>
       </form>
-    </div>
   );
 }
 

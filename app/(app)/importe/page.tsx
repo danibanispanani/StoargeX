@@ -3,6 +3,7 @@ import { requireOrg } from "@/lib/org";
 import { PageHeader } from "@/components/app/page-header";
 import { PageToolbar } from "@/components/app/page-toolbar";
 import { EmptyState } from "@/components/app/states";
+import { CompactTableShell } from "@/components/table/compact-table-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,13 +19,18 @@ import {
   importTargetHref,
   importTargetLabel,
 } from "@/lib/imports/import-review";
+import {
+  OPERATIONAL_MODULES,
+  operationalSearchParams,
+} from "@/lib/operational-modules";
+import { MAX_TABLE_PAGE_SIZE } from "@/lib/operational-table";
 
 export default async function ImportReviewPage({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string; status?: string }>;
 }) {
-  const { db } = await requireOrg();
+  const { db, organization, userId } = await requireOrg();
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
   const where = {
@@ -50,7 +56,7 @@ export default async function ImportReviewPage({
         },
       },
       orderBy: [{ createdAt: "desc" }, { rowNumber: "asc" }],
-      take: 100,
+      take: MAX_TABLE_PAGE_SIZE,
     }),
   ]);
 
@@ -59,7 +65,7 @@ export default async function ImportReviewPage({
       <PageHeader
         eyebrow="Verwaltung / Datenqualität"
         title="Importkonflikte"
-        description={`${totalResults} Review-Fälle · tenant-sicher aus ImportBatch und SourceReference`}
+        description="Importkonflikte prüfen, zuordnen und nachvollziehbar abschließen."
       />
       <PageToolbar
         primary={
@@ -79,41 +85,46 @@ export default async function ImportReviewPage({
         }
         secondary={
           <span className="text-[11px] text-muted-foreground">
-            {rows.length} von {totalResults} · maximal 100 aktuelle Fälle
+            {rows.length} von {totalResults} · maximal {MAX_TABLE_PAGE_SIZE} aktuelle Fälle
           </span>
         }
       />
 
-      {rows.length === 0 ? (
-        <EmptyState
-          title="Keine Importkonflikte in dieser Ansicht"
-          description="Es liegen keine Konflikte, Fehler, ungeklärten oder prüfpflichtigen SourceReferences für den aktuellen Filter vor."
-        />
-      ) : (
-        <div className="overflow-x-auto border-y">
-          <Table>
+      <CompactTableShell
+        definition={OPERATIONAL_MODULES.imports}
+        scope={{ organizationId: organization.id, userId }}
+        currentQuery={operationalSearchParams({ q: query || undefined, status: params.status })}
+        totalResults={totalResults}
+      >
+        {rows.length === 0 ? (
+          <EmptyState
+            title="Keine Importkonflikte in dieser Ansicht"
+            description="Es liegen keine Konflikte, Fehler, ungeklärten oder prüfpflichtigen SourceReferences für den aktuellen Filter vor."
+          />
+        ) : (
+          <Table className="sx-datatable">
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Importquelle</TableHead>
-                <TableHead>Zeile</TableHead>
-                <TableHead>Ziel</TableHead>
-                <TableHead>Legacyreferenz</TableHead>
-                <TableHead>Prüfhinweis</TableHead>
-                <TableHead className="text-right">Aktion</TableHead>
+                <TableHead data-column-key="status">Status</TableHead>
+                <TableHead data-column-key="source">Importquelle</TableHead>
+                <TableHead data-column-key="row">Zeile</TableHead>
+                <TableHead data-column-key="target">Ziel</TableHead>
+                <TableHead data-column-key="legacyReference">Legacyreferenz</TableHead>
+                <TableHead data-column-key="message">Prüfhinweis</TableHead>
+                <TableHead data-column-key="actions" className="text-right">Aktion</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((row) => {
                 const messages = [...row.errors, ...row.warnings];
                 return (
-                  <TableRow key={row.id}>
-                    <TableCell>
+                  <TableRow key={row.id} data-row-id={row.id}>
+                    <TableCell data-column-key="status">
                       <span className="border border-cargo-amber/50 bg-cargo-amber/10 px-2 py-0.5 font-mono text-[10px] font-semibold">
                         {row.status}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-column-key="source">
                       <span className="block max-w-56 truncate text-sm font-medium">
                         {row.importBatch.fileName}
                       </span>
@@ -121,15 +132,15 @@ export default async function ImportReviewPage({
                         {row.importBatch.importType}
                       </span>
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell data-column-key="row" className="font-mono text-xs">
                       {row.sheetName ? `${row.sheetName} · ` : ""}
                       {row.rowNumber}
                     </TableCell>
-                    <TableCell>{importTargetLabel(row.targetEntity)}</TableCell>
-                    <TableCell className="max-w-48 truncate font-mono text-xs">
+                    <TableCell data-column-key="target">{importTargetLabel(row.targetEntity)}</TableCell>
+                    <TableCell data-column-key="legacyReference" className="max-w-48 truncate font-mono text-xs">
                       {row.legacyReference ?? "–"}
                     </TableCell>
-                    <TableCell className="max-w-80">
+                    <TableCell data-column-key="message" className="max-w-80">
                       <span className="block truncate text-xs">
                         {messages[0] ?? "Manuelle Zuordnung oder Prüfung erforderlich"}
                       </span>
@@ -139,7 +150,7 @@ export default async function ImportReviewPage({
                         </span>
                       ) : null}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell data-column-key="actions" className="text-right">
                       <Button asChild size="sm" variant="ghost">
                         <Link
                           href={importTargetHref(
@@ -156,8 +167,8 @@ export default async function ImportReviewPage({
               })}
             </TableBody>
           </Table>
-        </div>
-      )}
+        )}
+      </CompactTableShell>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   centsToDecimalString,
   classifyReturnDeadline,
+  derivePurchaseProgress,
   deriveOwnedStockStatus,
   effectiveReceivedQuantity,
   planPurchaseReceipt,
@@ -83,7 +84,46 @@ describe("owned purchase planning", () => {
   it("behandelt Legacy-Lots ohne Receipt-Lines als bereits eingegangenen Bestand", () => {
     expect(effectiveReceivedQuantity({ receiptQuantities: [], legacyLotQuantities: [5] })).toBe(5);
     expect(effectiveReceivedQuantity({ receiptQuantities: [2, 3], legacyLotQuantities: [2, 3] })).toBe(5);
+    expect(effectiveReceivedQuantity({ receiptQuantities: [0], legacyLotQuantities: [5] })).toBe(0);
     expect(effectiveReceivedQuantity({ receiptQuantities: [], legacyLotQuantities: [] })).toBe(0);
+  });
+
+  it("zählt gemischte Legacy-Lots und neue Receipt-Lines ohne Doppelzählung", () => {
+    expect(effectiveReceivedQuantity({
+      receiptQuantities: [2],
+      legacyLotQuantities: [5, 2],
+      receiptInventoryPositionIds: ["receipt-position"],
+      legacyLots: [
+        { inventoryPositionId: "legacy-position", quantity: 5 },
+        { inventoryPositionId: "receipt-position", quantity: 2 },
+      ],
+    })).toBe(7);
+    expect(effectiveReceivedQuantity({
+      receiptQuantities: [0],
+      legacyLotQuantities: [5, 0],
+      receiptInventoryPositionIds: ["receipt-position"],
+      legacyLots: [
+        { inventoryPositionId: "legacy-position", quantity: 5 },
+        { inventoryPositionId: "receipt-position", quantity: 0 },
+      ],
+    })).toBe(5);
+  });
+
+  it("leitet den Einkaufsstatus nach Wareneingang oder Storno aus aktiven Mengen ab", () => {
+    expect(derivePurchaseProgress([
+      { orderedQuantity: 5, receivedQuantity: 0 },
+      { orderedQuantity: 2, receivedQuantity: 0 },
+    ])).toEqual({ purchaseStatus: "ORDERED", shippingStatus: "NOT_SHIPPED" });
+
+    expect(derivePurchaseProgress([
+      { orderedQuantity: 5, receivedQuantity: 3 },
+      { orderedQuantity: 2, receivedQuantity: 0 },
+    ])).toEqual({ purchaseStatus: "PARTIALLY_RECEIVED", shippingStatus: "PARTIALLY_RECEIVED" });
+
+    expect(derivePurchaseProgress([
+      { orderedQuantity: 5, receivedQuantity: 5 },
+      { orderedQuantity: 2, receivedQuantity: 2 },
+    ])).toEqual({ purchaseStatus: "RECEIVED", shippingStatus: "DELIVERED" });
   });
 
   it("weist Überlieferung und mandantenfremde Bestellpositionen zurück", () => {

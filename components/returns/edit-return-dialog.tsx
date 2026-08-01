@@ -1,10 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import { updateReturnAction } from "@/lib/actions/returns";
 import type { ActionState } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -46,9 +48,7 @@ export function EditReturnDialog({ ret }: { ret: EditableReturn }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          Bearbeiten
-        </Button>
+        <ActionIconButton label="Retoure bearbeiten" icon={PencilIcon} />
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

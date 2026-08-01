@@ -83,7 +83,6 @@ export default async function ShippingPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.shipping}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={requestedView}
         currentQuery={operationalSearchParams({
           preset: requestedView === "standard" ? undefined : requestedView,
           q,

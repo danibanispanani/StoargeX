@@ -18,6 +18,7 @@ describe("operational module definitions", () => {
       "consignment",
       "debts",
       "shipping",
+      "imports",
       "credentials",
       "team",
     ]);

@@ -1,9 +1,10 @@
 "use client";
 
 import { useTransition } from "react";
+import { Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { deleteProductAction } from "@/lib/actions/products";
-import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { ConfirmActionDialog } from "@/components/table/confirm-action-dialog";
 
 export function DeleteProductButton({
@@ -18,14 +19,12 @@ export function DeleteProductButton({
   return (
     <ConfirmActionDialog
       trigger={
-        <Button
-          variant="ghost"
-          size="sm"
+        <ActionIconButton
+          label={pending ? "Produkt wird gelöscht" : "Produkt löschen"}
+          icon={Trash2Icon}
           className="text-destructive"
           disabled={pending}
-        >
-          {pending ? "Löscht…" : "Löschen"}
-        </Button>
+        />
       }
       title="Produkt löschen?"
       description={`„${name}“ wird nur gelöscht, wenn keine Einkaufs-, Lager- oder Verkaufsposition darauf verweist.`}

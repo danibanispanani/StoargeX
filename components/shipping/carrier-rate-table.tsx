@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { PencilIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteShippingRateAction,
@@ -13,6 +14,7 @@ import {
 } from "@/components/shipping/shipping-rate-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -68,7 +70,7 @@ export function CarrierRateTable({
         />
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <Table>
+        <Table className="sx-datatable">
           <TableHeader>
             <TableRow>
               <TableHead data-column data-column-key="carrier" data-view-standard data-view-active data-view-inactive data-view-all>Dienstleister</TableHead>
@@ -128,9 +130,7 @@ export function CarrierRateTable({
                     <ShippingRateDialog
                       rate={toEditable(rate)}
                       trigger={
-                        <Button variant="ghost" size="sm">
-                          Bearbeiten
-                        </Button>
+                        <ActionIconButton label="Versandtarif bearbeiten" icon={PencilIcon} />
                       }
                     />
                     <Button
@@ -143,18 +143,16 @@ export function CarrierRateTable({
                     >
                       {rate.active ? "Deaktivieren" : "Aktivieren"}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <ActionIconButton
+                      label="Versandtarif löschen"
+                      icon={Trash2Icon}
                       className="text-destructive"
                       disabled={pending}
                       onClick={() => {
                         if (!confirm(`Tarif "${rate.name}" wirklich löschen?`)) return;
                         run(() => deleteShippingRateAction(rate.id));
                       }}
-                    >
-                      Löschen
-                    </Button>
+                    />
                   </div>
                 </TableCell>
               </TableRow>

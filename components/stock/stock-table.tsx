@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
+import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { EntryStatus, StockItemStatus } from "@prisma/client";
 import {
@@ -23,8 +24,16 @@ import {
 import { formatEuro } from "@/lib/calculations";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ActionIconButton } from "@/components/ui/action-icon-button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
+import { TableSortHeader } from "@/components/table/table-sort-header";
 import {
   DetailDrawer,
   DetailGrid,
@@ -46,6 +55,7 @@ import type { PickerProduct } from "@/components/products/product-picker";
 import type { ActionState } from "@/lib/actions/team";
 import { OPERATIONAL_MODULES } from "@/lib/operational-modules";
 import type { TablePreferenceScope } from "@/lib/operational-table";
+import type { StockSort, StockTableQuery } from "@/lib/stock/stock-table";
 
 export interface StockRow {
   source: "owned" | "legacy";
@@ -81,7 +91,7 @@ export function StockTable({
   zmOptions,
   products,
   scope,
-  requestedView,
+  tableQuery,
   currentQuery,
 }: {
   rows: StockRow[];
@@ -89,7 +99,7 @@ export function StockTable({
   zmOptions: string[];
   products: PickerProduct[];
   scope: Omit<TablePreferenceScope, "tableKey">;
-  requestedView: string;
+  tableQuery: StockTableQuery;
   currentQuery: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -138,8 +148,6 @@ export function StockTable({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.stock}
         scope={scope}
-        requestedView={requestedView}
-        viewParam="view"
         currentQuery={currentQuery}
         totalResults={rows.length}
       >
@@ -157,17 +165,17 @@ export function StockTable({
                     className="size-4"
                   />
                 </TableHead>
-                <TableHead data-column data-column-key="number" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-sticky-1">Lager-Nr.</TableHead>
-                <TableHead data-column data-column-key="date" data-view-standard data-view-purchasing data-view-all>Datum</TableHead>
-                <TableHead data-column data-column-key="product" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all>Artikel</TableHead>
-                <TableHead data-column data-column-key="quantity" data-view-standard data-view-stock data-view-inspection data-view-all className="text-right">Bestand</TableHead>
-                <TableHead data-column data-column-key="cost" data-view-standard data-view-purchasing data-view-all className="text-right">EK netto</TableHead>
-                <TableHead data-column data-column-key="payment" data-view-standard data-view-purchasing data-view-all>ZM</TableHead>
-                <TableHead data-column data-column-key="purchase" data-view-purchasing data-view-all>Kauf</TableHead>
-                <TableHead data-column data-column-key="return" data-view-purchasing data-view-all>Retoure</TableHead>
-                <TableHead data-column data-column-key="status" data-view-standard data-view-stock data-view-inspection data-view-all>Bestandsstatus</TableHead>
-                <TableHead data-column data-column-key="listings" data-view-standard data-view-listings data-view-all>Listings</TableHead>
-                <TableHead data-column data-column-key="ean" data-view-purchasing data-view-listings data-view-all>EAN</TableHead>
+                <TableHead data-column data-column-key="number" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="sx-sticky-1"><Sort label="Lager-Nr." column="number" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="date" data-view-standard data-view-purchasing data-view-all><Sort label="Datum" column="date" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="product" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all><Sort label="Artikel" column="product" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="quantity" data-view-standard data-view-stock data-view-inspection data-view-all className="text-right"><Sort label="Bestand" column="quantity" tableQuery={tableQuery} query={currentQuery} className="justify-end" /></TableHead>
+                <TableHead data-column data-column-key="cost" data-view-standard data-view-purchasing data-view-all className="text-right"><Sort label="EK netto" column="cost" tableQuery={tableQuery} query={currentQuery} className="justify-end" /></TableHead>
+                <TableHead data-column data-column-key="payment" data-view-standard data-view-purchasing data-view-all><Sort label="ZM" column="payment" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="purchase" data-view-purchasing data-view-all><Sort label="Kauf" column="purchase" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="return" data-view-purchasing data-view-all><Sort label="Retoure" column="return" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="status" data-view-standard data-view-stock data-view-inspection data-view-all><Sort label="Bestandsstatus" column="status" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="listings" data-view-standard data-view-listings data-view-all><Sort label="Listings" column="listings" tableQuery={tableQuery} query={currentQuery} /></TableHead>
+                <TableHead data-column data-column-key="ean" data-view-purchasing data-view-listings data-view-all><Sort label="EAN" column="ean" tableQuery={tableQuery} query={currentQuery} /></TableHead>
                 <TableHead data-column data-column-key="image" data-view-listings data-view-all>Bilder</TableHead>
                 <TableHead data-column data-column-key="actions" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all className="w-36">Aktionen</TableHead>
               </TableRow>
@@ -330,9 +338,7 @@ export function StockTable({
                           zmOptions={zmOptions}
                           products={products}
                           trigger={
-                            <Button variant="ghost" size="sm">
-                              Bearbeiten
-                            </Button>
+                            <ActionIconButton label="Lagerposition bearbeiten" icon={PencilIcon} />
                           }
                         />
                       )}
@@ -433,13 +439,15 @@ function ListingDetails({
   disabled: boolean;
   onToggle: (platformId: string, listed: boolean) => void;
 }) {
-  const listed = platforms.filter((platform) => row.listings.includes(platform.id));
+  const listingIds = new Set(row.listings);
+  const listed = platforms.filter((platform) => listingIds.has(platform.id));
   const visible = listed.slice(0, 2);
   const extra = Math.max(0, listed.length - visible.length);
 
   return (
-    <details className="relative">
-      <summary className="flex cursor-pointer list-none flex-wrap gap-1">
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="flex cursor-pointer flex-wrap gap-1 text-left">
         {visible.length === 0 ? (
           <span className="text-xs text-muted-foreground">Keine</span>
         ) : (
@@ -452,22 +460,47 @@ function ListingDetails({
         {extra > 0 && (
           <span className="rounded bg-muted px-1.5 py-0.5 text-xs">+{extra}</span>
         )}
-      </summary>
-      <div className="absolute z-20 mt-2 min-w-48 rounded-md border bg-popover p-2 text-popover-foreground shadow">
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-48">
         {platforms.map((platform) => (
-          <label key={platform.id} className="flex items-center gap-2 py-1 text-xs">
-            <input
-              type="checkbox"
-              checked={row.listings.includes(platform.id)}
-              disabled={disabled}
-              onChange={(event) => onToggle(platform.id, event.target.checked)}
-              className="size-4"
-            />
+          <DropdownMenuCheckboxItem
+            key={platform.id}
+            checked={listingIds.has(platform.id)}
+            disabled={disabled}
+            onCheckedChange={(checked) => onToggle(platform.id, checked === true)}
+            onSelect={(event) => event.preventDefault()}
+          >
             {platform.name}
-          </label>
+          </DropdownMenuCheckboxItem>
         ))}
-      </div>
-    </details>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function Sort({
+  label,
+  column,
+  tableQuery,
+  query,
+  className,
+}: {
+  label: string;
+  column: StockSort;
+  tableQuery: StockTableQuery;
+  query: string;
+  className?: string;
+}) {
+  return (
+    <TableSortHeader
+      label={label}
+      column={column}
+      currentSort={tableQuery.sort}
+      direction={tableQuery.direction}
+      query={query}
+      className={className}
+    />
   );
 }
 
@@ -485,10 +518,8 @@ function QuantityAdjustmentDialog({ row }: { row: StockRow }) {
 
   return (
     <details className="relative">
-      <summary className="cursor-pointer list-none">
-        <Button variant="ghost" size="sm" type="button">
-          Korrektur
-        </Button>
+      <summary className="inline-flex h-8 cursor-pointer list-none items-center rounded-md px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
+        Korrektur
       </summary>
       <form
         action={formAction}
@@ -551,6 +582,7 @@ function toEditable(row: StockRow): EditableStockItem {
     retoureStatus: row.retoureStatus,
     status: row.status,
     ean: row.ean,
+    imageUrl: row.imageUrl ?? "",
     notes: row.notes,
     platformIds: row.listings,
   };

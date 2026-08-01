@@ -88,7 +88,6 @@ export default async function TeamPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.team}
         scope={{ organizationId: organization.id, userId }}
-        requestedView={requestedView}
         currentQuery={operationalSearchParams({
           preset: requestedView === "members" ? undefined : requestedView,
           q,
@@ -107,7 +106,7 @@ export default async function TeamPage({
           <CardDescription>{members.length} Mitglied(er)</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table className="sx-datatable">
             <TableHeader>
               <TableRow>
                 <TableHead data-column data-column-key="name" data-view-members data-view-roles data-view-all>Name</TableHead>
@@ -164,7 +163,7 @@ export default async function TeamPage({
             <CardTitle>Offene Einladungen</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table className="sx-datatable">
               <TableHeader>
                 <TableRow>
                   <TableHead data-column data-column-key="email" data-view-invitations data-view-all>E-Mail</TableHead>
