@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ITEM_CONDITION_OPTIONS } from "@/lib/item-condition-options";
 import {
   Sheet,
   SheetContent,
@@ -21,13 +22,19 @@ import {
 export function StockItemDialog({
   platforms,
   zmOptions,
+  storageLocations,
   products = [],
+  initialOpen = false,
+  onOpenChange,
 }: {
   platforms: Array<{ id: string; name: string }>;
   zmOptions: string[];
+  storageLocations: string[];
   products?: PickerProduct[];
+  initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [deductible, setDeductible] = useState(false);
   // Prefill-Felder (Produktkatalog) – überschreibbar
   const [title, setTitle] = useState("");
@@ -46,6 +53,7 @@ export function StockItemDialog({
     if (state?.success) {
       toast.success(state.success);
       setOpen(false);
+      onOpenChange?.(false);
       setTitle("");
       setVariant("");
       setSize("");
@@ -54,7 +62,12 @@ export function StockItemDialog({
       setProductId("");
       setDeductible(false);
     }
-  }, [state]);
+  }, [state, onOpenChange]);
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  }
 
   function applyProduct(product: PickerProduct) {
     setProductId(product.id);
@@ -70,7 +83,7 @@ export function StockItemDialog({
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
         <Button>Wareneingang erfassen</Button>
       </SheetTrigger>
@@ -169,6 +182,22 @@ export function StockItemDialog({
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="si-condition">Artikelzustand</Label>
+              <select
+                id="si-condition"
+                name="itemCondition"
+                defaultValue=""
+                className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Nicht festgelegt</option>
+                {ITEM_CONDITION_OPTIONS.map((condition) => (
+                  <option key={condition.value} value={condition.value}>
+                    {condition.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="si-zm">Zahlungsmethode (ZM) *</Label>
               <select
                 id="si-zm"
@@ -218,6 +247,26 @@ export function StockItemDialog({
           <div className="space-y-2">
             <Label htmlFor="si-qty">Menge</Label>
             <Input id="si-qty" name="quantity" type="number" min={1} max={500} defaultValue={1} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="si-location">Lagerstandort</Label>
+            <select
+              id="si-location"
+              name="location"
+              defaultValue=""
+              className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">Nicht festgelegt</option>
+              {storageLocations.map((location) => (
+                <option key={location} value={location}>{location}</option>
+              ))}
+            </select>
+            {storageLocations.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Lagerstandorte lassen sich unter Einstellungen → Organisation anlegen.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

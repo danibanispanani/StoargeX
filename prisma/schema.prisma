@@ -60,6 +60,7 @@ enum OptionKind {
   PAYMENT_METHOD
   PAYOUT_RECIPIENT
   TASK_AREA
+  STORAGE_LOCATION
 }
 
 enum SaleStatus {
@@ -1418,6 +1419,7 @@ model PurchaseReceiptLine {
   inventoryPositionId String                  @unique @map("inventory_position_id")
   inboundMovementId   String                  @unique @map("inbound_movement_id")
   quantity            Int
+  cancelledQuantity   Int                     @default(0) @map("cancelled_quantity")
   itemCondition       ItemCondition?          @map("item_condition")
   legacyCondition     String?                 @map("legacy_condition")
   inspectionStatus    ReceiptInspectionStatus @default(PASSED) @map("inspection_status")
@@ -1453,6 +1455,8 @@ model InventoryPosition {
   inventoryType      InventoryType  @map("inventory_type")
   inventoryNumber    String         @map("inventory_number") // z.B. "L-26-0001" oder "K-26-0001"
   itemCondition      ItemCondition? @map("item_condition")
+  location           String?
+  notes              String?
   quantityReceived   Int            @default(0) @map("quantity_received")
   quantityAvailable  Int            @default(0) @map("quantity_available")
   quantityReserved   Int            @default(0) @map("quantity_reserved")

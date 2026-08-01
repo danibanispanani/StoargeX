@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   assertFeatureAccess: vi.fn(),
   inventoryPositionFindFirst: vi.fn(),
   platformFindFirst: vi.fn(),
+  platformFindMany: vi.fn(),
   inventoryPositionListingUpsert: vi.fn(),
   inventoryPositionListingDeleteMany: vi.fn(),
   updateInventoryPositionMetadata: vi.fn(),
@@ -13,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   inventoryMovementFindMany: vi.fn(),
   auditLogFindMany: vi.fn(),
   stockItemFindFirst: vi.fn(),
+  selectOptionFindFirst: vi.fn(),
+  createOwnedPurchase: vi.fn(),
 }));
 
 vi.mock("@/lib/org", () => ({ requireOrg: mocks.requireOrg }));
@@ -22,13 +25,14 @@ vi.mock("@/lib/feature-access", () => ({
   assertFeatureAccess: mocks.assertFeatureAccess,
 }));
 vi.mock("@/lib/services/owned-purchase-service", () => ({
-  createOwnedPurchase: vi.fn(),
+  createOwnedPurchase: mocks.createOwnedPurchase,
 }));
 vi.mock("@/lib/stock/stock-metadata-service", () => ({
   updateInventoryPositionMetadata: mocks.updateInventoryPositionMetadata,
   updateLegacyStockItemMetadata: mocks.updateLegacyStockItemMetadata,
 }));
 import {
+  createStockItemAction,
   loadStockHistoryAction,
   toggleInventoryPositionListingAction,
   updateInventoryPositionMetadataAction,
@@ -46,10 +50,14 @@ describe("stock actions", () => {
           upsert: mocks.inventoryPositionListingUpsert,
           deleteMany: mocks.inventoryPositionListingDeleteMany,
         },
-        platform: { findFirst: mocks.platformFindFirst },
+        platform: {
+          findFirst: mocks.platformFindFirst,
+          findMany: mocks.platformFindMany,
+        },
         inventoryMovement: { findMany: mocks.inventoryMovementFindMany },
         auditLog: { findMany: mocks.auditLogFindMany },
         stockItem: { findFirst: mocks.stockItemFindFirst },
+        selectOption: { findFirst: mocks.selectOptionFindFirst },
       },
     });
     mocks.inventoryPositionFindFirst.mockResolvedValue({
@@ -64,6 +72,14 @@ describe("stock actions", () => {
     mocks.updateInventoryPositionMetadata.mockResolvedValue({ changed: true });
     mocks.inventoryMovementFindMany.mockResolvedValue([]);
     mocks.auditLogFindMany.mockResolvedValue([]);
+    mocks.selectOptionFindFirst.mockResolvedValue({ id: "location-a" });
+    mocks.platformFindMany.mockResolvedValue([]);
+    mocks.createOwnedPurchase.mockResolvedValue({
+      purchase: { id: "purchase-a" },
+      purchaseNumber: "E-26-0001",
+      lines: [{ inventoryNumber: "L-26-0001" }],
+      debt: null,
+    });
   });
 
   it("returns a readable toast after changing an owned listing", async () => {
@@ -76,10 +92,47 @@ describe("stock actions", () => {
     expect(result?.success).toBe("L-26-0236: Kaufland.de gelistet ✓");
   });
 
+  it("passes condition, managed location and image to manual goods receipt", async () => {
+    const form = new FormData();
+    form.set("purchaseDate", "2026-08-01");
+    form.set("supplier", "Lieferant A");
+    form.set("productId", "");
+    form.set("title", "Produkt A");
+    form.set("variant", "");
+    form.set("size", "");
+    form.set("priceGross", "19,99");
+    form.set("paymentMethod", "Firma");
+    form.set("quantity", "3");
+    form.set("itemCondition", "OPEN_BOX");
+    form.set("location", "Regal A-1");
+    form.set("imageUrl", "https://example.test/product.jpg");
+    form.set("ean", "");
+    form.set("notes", "");
+
+    const result = await createStockItemAction(null, form);
+
+    expect(mocks.createOwnedPurchase).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-a",
+      lines: [expect.objectContaining({
+        quantity: 3,
+        itemCondition: "OPEN_BOX",
+        location: "Regal A-1",
+        imageUrls: ["https://example.test/product.jpg"],
+      })],
+    }));
+    expect(result?.success).toContain("Wareneingang E-26-0001");
+  });
+
   it("passes only safe metadata fields and ignores protected form fields", async () => {
     const form = new FormData();
     form.set("itemCondition", "USED");
     form.set("imageUrls", "https://example.test/image.jpg");
+    form.set("productName", "Produkt neu");
+    form.set("variant", "Blau");
+    form.set("size", "L");
+    form.set("ean", "1234567890123");
+    form.set("location", "Regal B-2");
+    form.set("notes", "GeprÃ¼ft");
     form.set("quantityAvailable", "999");
     form.set("purchaseLineId", "foreign-line");
     form.set("inventoryNumber", "changed-number");
@@ -95,8 +148,14 @@ describe("stock actions", () => {
       organizationId: "org-a",
       inventoryPositionId: "position-a",
       userId: "user-a",
+      productName: "Produkt neu",
+      variant: "Blau",
+      size: "L",
+      ean: "1234567890123",
       itemCondition: "USED",
       imageUrls: ["https://example.test/image.jpg"],
+      location: "Regal B-2",
+      notes: "GeprÃ¼ft",
     });
     expect(result?.success).toMatch(/gespeichert/);
   });
@@ -129,6 +188,7 @@ describe("stock actions", () => {
   it("does not invalidate the stock page for an unchanged metadata save", async () => {
     mocks.updateInventoryPositionMetadata.mockResolvedValue({ changed: false });
     const form = new FormData();
+    form.set("productName", "Produkt");
     form.set("itemCondition", "NEW");
 
     const result = await updateInventoryPositionMetadataAction("position-a", null, form);

@@ -18,9 +18,11 @@ type ActiveOrgLookup =
   | { ok: true; context: OrgContext }
   | { ok: false; reason: "unauthenticated" | "no-organization" | "no-membership" };
 
+export const getRequestSession = cache(auth);
+
 /** Autoritative, request-lokale Grundlage für UI, Actions und API-Routen. */
 const loadActiveOrgContext = cache(async (): Promise<ActiveOrgLookup> => {
-  const session = await auth();
+  const session = await getRequestSession();
   if (!session?.user?.id) return { ok: false, reason: "unauthenticated" };
   if (!session.activeOrgId) return { ok: false, reason: "no-organization" };
 

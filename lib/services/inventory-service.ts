@@ -246,6 +246,20 @@ export async function reverseMovement(input: {
   prisma?: InventoryPrismaClient;
   audit?: boolean;
 }): Promise<InventoryMutationResult> {
+  return reverseMovementQuantity(input);
+}
+
+export async function reverseMovementQuantity(input: {
+  organizationId: string;
+  movementId: string;
+  quantity?: number;
+  idempotencyKey?: string;
+  comment?: string;
+  createdById?: string;
+  tx?: InventoryTransaction;
+  prisma?: InventoryPrismaClient;
+  audit?: boolean;
+}): Promise<InventoryMutationResult> {
   return withInventoryTransaction(input.organizationId, input, async (tx) => {
     const original = await tx.inventoryMovement.findFirst({
       where: { id: input.movementId, organizationId: input.organizationId },
@@ -265,9 +279,47 @@ export async function reverseMovement(input: {
       );
     }
 
+    const existing = input.idempotencyKey
+      ? await tx.inventoryMovement.findUnique({
+          where: {
+            organizationId_idempotencyKey: {
+              organizationId: input.organizationId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
+        })
+      : null;
+    const previousReversals = await tx.inventoryMovement.findMany({
+      where: {
+        organizationId: input.organizationId,
+        movementType: "REVERSAL",
+        referenceType: "InventoryMovement",
+        referenceId: original.id,
+      },
+      select: { quantity: true },
+    });
+    const reversedQuantity = previousReversals.reduce(
+      (sum, movement) => sum + movement.quantity,
+      0
+    );
+    const remainingQuantity = original.quantity - reversedQuantity;
+    const quantity = input.quantity ?? existing?.quantity ?? remainingQuantity;
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      throw new InventoryDomainError(
+        "INVALID_QUANTITY",
+        "Die Stornomenge muss eine positive ganze Zahl sein."
+      );
+    }
+    if (!existing && quantity > remainingQuantity) {
+      throw new InventoryDomainError(
+        "INVALID_QUANTITY",
+        `Es können höchstens noch ${Math.max(0, remainingQuantity)} Stück storniert werden.`
+      );
+    }
+
     const originalCounterDeltas = getCounterDeltas(
       original.movementType,
-      original.quantity
+      quantity
     );
     const counterDeltas = invertCounterDeltas(originalCounterDeltas);
 
@@ -275,7 +327,7 @@ export async function reverseMovement(input: {
       organizationId: input.organizationId,
       inventoryPositionId: original.inventoryPositionId,
       movementType: "REVERSAL",
-      quantity: original.quantity,
+      quantity,
       fromBucket: original.toBucket,
       toBucket: original.fromBucket,
       referenceType: "InventoryMovement",

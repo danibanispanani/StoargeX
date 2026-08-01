@@ -9,13 +9,16 @@ import { describe, expect, it } from "vitest";
 import {
   cancelPurchase,
   cancelPurchaseReceipt,
+  cancelPurchaseReceiptLineQuantity,
 } from "@/lib/services/owned-purchase-service";
 
 interface ReceiptLineState {
   id: string;
   purchaseLineId: string;
+  inventoryPositionId: string;
   quantity: number;
   inboundMovementId: string;
+  cancelledQuantity: number;
 }
 
 interface ReceiptState {
@@ -69,8 +72,10 @@ class MemoryPurchaseCancellationClient {
         lines: [{
           id: `receipt-line-${index + 1}`,
           purchaseLineId: "purchase-line-a",
+          inventoryPositionId: `position-${index + 1}`,
           quantity,
           inboundMovementId: `inbound-${index + 1}`,
+          cancelledQuantity: 0,
         }],
       })),
       positions: receiptQuantities.map((quantity, index) =>
@@ -118,7 +123,7 @@ class MemoryPurchaseCancellationClient {
     return this.state.receipts
       .filter((receipt) => !receipt.cancelledAt)
       .flatMap((receipt) => receipt.lines)
-      .reduce((sum, line) => sum + line.quantity, 0);
+      .reduce((sum, line) => sum + line.quantity - line.cancelledQuantity, 0);
   }
 
   movementTypes(): string[] {
@@ -165,6 +170,42 @@ class MemoryPurchaseCancellationTransaction {
       if (!receipt) throw new Error("missing receipt");
       receipt.cancelledAt = args.data.cancelledAt;
       return cloneReceipt(receipt);
+    },
+  };
+
+  purchaseReceiptLine = {
+    findFirst: async (args: {
+      where: { inventoryPositionId: string; organizationId: string };
+    }) => {
+      if (args.where.organizationId !== this.state.purchase.organizationId) return null;
+      for (const receipt of this.state.receipts) {
+        const line = receipt.lines.find(
+          (item) => item.inventoryPositionId === args.where.inventoryPositionId
+        );
+        if (!line) continue;
+        return {
+          ...line,
+          inboundMovement: this.state.movements.find(
+            (movement) => movement.id === line.inboundMovementId
+          ),
+          purchaseReceipt: {
+            ...cloneReceipt(receipt),
+            purchase: this.purchaseWithReceiptLines(),
+          },
+        };
+      }
+      return null;
+    },
+    update: async (args: {
+      where: { id: string };
+      data: { cancelledQuantity: number };
+    }) => {
+      const line = this.state.receipts
+        .flatMap((receipt) => receipt.lines)
+        .find((item) => item.id === args.where.id);
+      if (!line) throw new Error("missing receipt line");
+      line.cancelledQuantity = args.data.cancelledQuantity;
+      return { ...line };
     },
   };
 
@@ -243,6 +284,20 @@ class MemoryPurchaseCancellationTransaction {
           movement.idempotencyKey === key.idempotencyKey
       ) ?? null;
     },
+    findMany: async (args: {
+      where: {
+        organizationId: string;
+        movementType: string;
+        referenceType: string;
+        referenceId: string;
+      };
+    }) => this.state.movements.filter(
+      (movement) =>
+        movement.organizationId === args.where.organizationId
+        && movement.movementType === args.where.movementType
+        && movement.referenceType === args.where.referenceType
+        && movement.referenceId === args.where.referenceId
+    ).map((movement) => ({ quantity: movement.quantity })),
     create: async (args: { data: Omit<InventoryMovement, "id" | "createdAt"> }) => {
       const movement = {
         ...args.data,
@@ -277,6 +332,8 @@ class MemoryPurchaseCancellationTransaction {
           receipt.lines.map((line) => ({
             id: line.id,
             quantity: line.quantity,
+            cancelledQuantity: line.cancelledQuantity,
+            inventoryPositionId: line.inventoryPositionId,
             purchaseReceipt: {
               id: receipt.id,
               cancelledAt: receipt.cancelledAt,
@@ -306,6 +363,8 @@ function makePosition(id: string, quantity: number, receivedAt: Date): Inventory
     inventoryType: "OWNED",
     inventoryNumber: `L-${id}`,
     itemCondition: null,
+    location: null,
+    notes: null,
     quantityReceived: quantity,
     quantityAvailable: quantity,
     quantityReserved: 0,
@@ -378,6 +437,71 @@ function cloneState(state: CancellationState): CancellationState {
 }
 
 describe("purchase cancellation service", () => {
+  it("storniert eine frei gewählte Teilmenge und hält die Restmenge aktiv", async () => {
+    const client = new MemoryPurchaseCancellationClient([5]);
+
+    const result = await cancelPurchaseReceiptLineQuantity({
+      organizationId: "org-a",
+      createdById: "user-a",
+      inventoryPositionId: "position-1",
+      quantity: 2,
+      idempotencyKey: "position-1:cancel:2:first",
+      prisma: client.asPrisma(),
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      cancelledQuantity: 2,
+      remainingQuantity: 3,
+      idempotent: false,
+    }));
+    expect(client.position(0)).toEqual(expect.objectContaining({
+      quantityReceived: 3,
+      quantityAvailable: 3,
+    }));
+    expect(client.receipt(0).lines[0].cancelledQuantity).toBe(2);
+    expect(client.purchase()).toEqual(expect.objectContaining({
+      purchaseStatus: "PARTIALLY_RECEIVED",
+      shippingStatus: "PARTIALLY_RECEIVED",
+    }));
+    expect(client.movementTypes()).toEqual(["PURCHASE_RECEIPT", "REVERSAL"]);
+  });
+
+  it("bucht eine wiederholte Teilstornierung nicht doppelt", async () => {
+    const client = new MemoryPurchaseCancellationClient([5]);
+    const input = {
+      organizationId: "org-a",
+      createdById: "user-a",
+      inventoryPositionId: "position-1",
+      quantity: 2,
+      idempotencyKey: "position-1:cancel:2:repeat",
+      prisma: client.asPrisma(),
+    };
+
+    await cancelPurchaseReceiptLineQuantity(input);
+    const repeated = await cancelPurchaseReceiptLineQuantity(input);
+
+    expect(repeated.idempotent).toBe(true);
+    expect(repeated.remainingQuantity).toBe(3);
+    expect(client.position(0).quantityAvailable).toBe(3);
+    expect(client.movementTypes()).toEqual(["PURCHASE_RECEIPT", "REVERSAL"]);
+  });
+
+  it("weist eine Teilstornierung oberhalb der noch gebuchten Menge ab", async () => {
+    const client = new MemoryPurchaseCancellationClient([5]);
+
+    await expect(cancelPurchaseReceiptLineQuantity({
+      organizationId: "org-a",
+      createdById: "user-a",
+      inventoryPositionId: "position-1",
+      quantity: 6,
+      idempotencyKey: "position-1:cancel:too-many",
+      prisma: client.asPrisma(),
+    })).rejects.toThrow("höchstens noch 5 Stück");
+
+    expect(client.position(0).quantityAvailable).toBe(5);
+    expect(client.movementTypes()).toEqual(["PURCHASE_RECEIPT"]);
+  });
+
   it("storniert einen Wareneingang, reversiert Bestand und Ã¶ffnet die Bestellmenge wieder", async () => {
     const client = new MemoryPurchaseCancellationClient([5]);
 

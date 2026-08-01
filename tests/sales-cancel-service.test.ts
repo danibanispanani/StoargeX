@@ -30,6 +30,8 @@ class MemoryCancelClient {
         quantitySold: 2,
         active: true,
         itemCondition: null,
+        location: null,
+        notes: null,
         receivedAt: now,
         createdAt: now,
         updatedAt: now,
@@ -138,6 +140,20 @@ class MemoryCancelTransaction {
           movement.idempotencyKey ===
           args.where.organizationId_idempotencyKey.idempotencyKey
       ) ?? null,
+    findMany: async (args: {
+      where: {
+        organizationId: string;
+        movementType: string;
+        referenceType: string;
+        referenceId: string;
+      };
+    }) => this.state.movements.filter(
+      (movement) =>
+        movement.organizationId === args.where.organizationId
+        && movement.movementType === args.where.movementType
+        && movement.referenceType === args.where.referenceType
+        && movement.referenceId === args.where.referenceId
+    ).map((movement) => ({ quantity: movement.quantity })),
     create: async (args: { data: Omit<InventoryMovement, "id" | "createdAt"> }) => {
       const movement = {
         ...args.data,

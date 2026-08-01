@@ -112,6 +112,7 @@ export const INVOICE_STATUS: Record<"done" | "open", StatusStyle> = {
 
 export const DEFAULT_PAYMENT_METHODS = ["Firma", "Firma D", "Firma R", "Richard", "Daniel"];
 export const DEFAULT_PAYOUT_RECIPIENTS = ["Firma", "Richard", "Daniel", "PayPal R", "Bar D", "Bar R"];
+export const DEFAULT_STORAGE_LOCATIONS: string[] = [];
 export const DEFAULT_PLATFORMS = ["eBay R", "eBay D", "Vinted", "KA", "StockX", "Discord", "Sonstiges"];
 
 /** ZM-Werte, die KEINEN automatischen Schulden-Eintrag auslösen. */

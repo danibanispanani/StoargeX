@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { requireOrg } from "@/lib/org";
+import { getRequestSession, requireOrg } from "@/lib/org";
 import { ThemeSync } from "@/components/theme/theme-sync";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
@@ -18,15 +17,11 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const [session, orgContext] = await Promise.all([
+    getRequestSession(),
+    requireOrg(),
+  ]);
   if (!session?.user) redirect("/login");
-
-  const activeMembership = session.memberships.find(
-    (membership) => membership.orgId === session.activeOrgId
-  );
-  if (!activeMembership) redirect("/registrieren?schritt=organisation");
-
-  const orgContext = await requireOrg();
   const { organization, membership } = orgContext;
   const now = new Date();
   const [dbUser, consignmentDecision] = await Promise.all([

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { SaleStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
-import { assertFeatureAccess } from "@/lib/feature-access";
+import { assertFeatureAccess, getFeatureAccess } from "@/lib/feature-access";
 import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { writeAuditLog } from "@/lib/audit";
 import {
@@ -465,4 +465,71 @@ function revalidateSalesViews(): void {
   revalidatePath("/lager");
   revalidatePath("/konsignation");
   revalidatePath("/schulden");
+}
+
+export async function loadSellableSaleItemsAction(): Promise<{
+  items?: Array<{
+    ref: string;
+    label: string;
+    source: "Eigenbestand" | "Konsignation";
+    available: number;
+    partner: string | null;
+  }>;
+  error?: string;
+}> {
+  try {
+    const context = await requireOrg("MEMBER");
+    const featureAccess = await getFeatureAccess(
+      context,
+      FEATURE_KEYS.CONSIGNMENT
+    );
+    const positions = await context.db.inventoryPosition.findMany({
+      where: {
+        active: true,
+        quantityAvailable: { gt: 0 },
+        ...(featureAccess.enabled ? {} : { inventoryType: "OWNED" as const }),
+      },
+      select: {
+        id: true,
+        inventoryNumber: true,
+        inventoryType: true,
+        quantityAvailable: true,
+        product: {
+          select: {
+            name: true,
+            variant: true,
+            size: true,
+            ean: true,
+          },
+        },
+        consignmentLot: { select: { partnerCompany: true } },
+      },
+      orderBy: [{ inventoryType: "asc" }, { receivedAt: "asc" }],
+      take: 500,
+    });
+    return {
+      items: positions.map((position) => ({
+        ref: `inventory:${position.id}`,
+        label: [
+          position.inventoryNumber,
+          position.product.name,
+          position.product.variant,
+          position.product.size,
+          position.product.ean,
+          position.consignmentLot?.partnerCompany,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        source: position.inventoryType === "OWNED"
+          ? "Eigenbestand" as const
+          : "Konsignation" as const,
+        available: position.quantityAvailable,
+        partner: position.consignmentLot?.partnerCompany ?? null,
+      })),
+    };
+  } catch {
+    return {
+      error: "Verfügbare Lagerpositionen konnten nicht geladen werden.",
+    };
+  }
 }

@@ -1,5 +1,5 @@
-import { LoadingState } from "@/components/app/states";
+import { OperationalPageLoading } from "@/components/app/operational-page-loading";
 
 export default function ProductsLoading() {
-  return <LoadingState label="Produktkatalog wird geladen" />;
+  return <OperationalPageLoading label="Produktkatalog wird geladen" />;
 }

@@ -20,7 +20,7 @@ import { reserveDocumentNumber } from "@/lib/services/document-number-service";
 import {
   InventoryDomainError,
   receiveOwnedStock,
-  reverseMovement,
+  reverseMovementQuantity,
 } from "@/lib/services/inventory-service";
 import {
   ensurePurchaseDebt,
@@ -46,6 +46,7 @@ export interface OwnedPurchaseLineInput {
   returnEntryStatus: EntryStatus;
   platformIds?: string[];
   imageUrls?: string[];
+  location?: string;
   comment?: string;
   itemCondition?: ItemCondition;
   legacyCondition?: string;
@@ -117,6 +118,7 @@ export interface ReceivePurchaseLineInput {
   returnEntryStatus?: EntryStatus;
   ean?: string;
   imageUrls?: string[];
+  location?: string;
   platformIds?: string[];
   returnDeadline?: Date;
   notes?: string;
@@ -182,6 +184,13 @@ export interface CancelPurchaseResult {
 export interface CancelPurchaseReceiptResult {
   purchase: Purchase;
   alreadyCancelled: boolean;
+}
+
+export interface CancelPurchaseReceiptLineQuantityResult {
+  purchase: Purchase;
+  cancelledQuantity: number;
+  remainingQuantity: number;
+  idempotent: boolean;
 }
 
 export type DerivedOwnedStockStatus =
@@ -485,6 +494,7 @@ async function receivePurchaseInTransaction(
             select: {
               inventoryPositionId: true,
               quantity: true,
+              cancelledQuantity: true,
               purchaseReceipt: { select: { cancelledAt: true } },
             },
           },
@@ -524,7 +534,7 @@ async function receivePurchaseInTransaction(
         orderedQuantity: orderLine.quantity,
         receivedQuantity: effectiveReceivedQuantity({
           receiptQuantities: orderLine.receiptLines.map((item) =>
-            item.purchaseReceipt.cancelledAt ? 0 : item.quantity
+            item.purchaseReceipt.cancelledAt ? 0 : activeReceiptLineQuantity(item)
           ),
           legacyLotQuantities: orderLine.ownedLots.map((item) => item.inventoryPosition.quantityReceived),
           receiptInventoryPositionIds: orderLine.receiptLines.map((item) => item.inventoryPositionId),
@@ -564,6 +574,8 @@ async function receivePurchaseInTransaction(
         inventoryType: "OWNED",
         inventoryNumber,
         itemCondition: request.itemCondition,
+        location: normalizeOptional(request.location),
+        notes: normalizeOptional(request.notes),
         receivedAt: input.receivedAt,
       },
     });
@@ -633,7 +645,7 @@ async function receivePurchaseInTransaction(
   const complete = purchase.lines.every((line) => {
     const before = effectiveReceivedQuantity({
       receiptQuantities: line.receiptLines.map((item) =>
-        item.purchaseReceipt.cancelledAt ? 0 : item.quantity
+        item.purchaseReceipt.cancelledAt ? 0 : activeReceiptLineQuantity(item)
       ),
       legacyLotQuantities: line.ownedLots.map((item) => item.inventoryPosition.quantityReceived),
       receiptInventoryPositionIds: line.receiptLines.map((item) => item.inventoryPositionId),
@@ -788,6 +800,204 @@ export async function updatePurchaseWorkflowStatus(
   });
 }
 
+export async function cancelPurchaseReceiptLineQuantity(input: {
+  organizationId: string;
+  createdById: string;
+  inventoryPositionId: string;
+  quantity: number;
+  idempotencyKey: string;
+  comment?: string;
+  tx?: PurchaseTransaction;
+  prisma?: PurchasePrismaClient;
+}): Promise<CancelPurchaseReceiptLineQuantityResult> {
+  return withPurchaseTransaction(input.organizationId, input, async (tx) => {
+    if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+      throw new Error("Die Stornomenge muss eine positive ganze Zahl sein.");
+    }
+    const target = await tx.purchaseReceiptLine.findFirst({
+      where: {
+        inventoryPositionId: input.inventoryPositionId,
+        organizationId: input.organizationId,
+      },
+      select: {
+        purchaseReceipt: { select: { purchaseId: true } },
+      },
+    });
+    if (!target) throw new Error("Wareneingangsposition wurde nicht gefunden.");
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`storagex:purchase-receipt:${input.organizationId}:${target.purchaseReceipt.purchaseId}`}))`;
+
+    const line = await tx.purchaseReceiptLine.findFirst({
+      where: {
+        inventoryPositionId: input.inventoryPositionId,
+        organizationId: input.organizationId,
+      },
+      include: {
+        inboundMovement: true,
+        purchaseReceipt: {
+          include: {
+            lines: true,
+            purchase: {
+              include: {
+                lines: {
+                  include: {
+                    receiptLines: {
+                      include: {
+                        purchaseReceipt: {
+                          select: { id: true, cancelledAt: true, receivedAt: true },
+                        },
+                      },
+                    },
+                    ownedLots: {
+                      select: {
+                        inventoryPositionId: true,
+                        inventoryPosition: { select: { quantityReceived: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!line) throw new Error("Wareneingangsposition wurde nicht gefunden.");
+
+    const existingCancellation = await tx.inventoryMovement.findUnique({
+      where: {
+        organizationId_idempotencyKey: {
+          organizationId: input.organizationId,
+          idempotencyKey: input.idempotencyKey,
+        },
+      },
+    });
+    if (line.purchaseReceipt.purchase.purchaseStatus === "CANCELLED" && !existingCancellation) {
+      throw new Error("Die Bestellung ist bereits vollständig storniert.");
+    }
+    if (line.purchaseReceipt.cancelledAt && !existingCancellation) {
+      throw new Error("Der Wareneingang ist bereits vollständig storniert.");
+    }
+
+    const remainingBefore = line.quantity - line.cancelledQuantity;
+    if (!existingCancellation && input.quantity > remainingBefore) {
+      throw new Error(`Es können höchstens noch ${Math.max(0, remainingBefore)} Stück storniert werden.`);
+    }
+    const reversal = await reverseMovementQuantity({
+      organizationId: input.organizationId,
+      movementId: line.inboundMovementId,
+      quantity: input.quantity,
+      idempotencyKey: input.idempotencyKey,
+      comment: normalizeOptional(input.comment)
+        ?? `Storno ${line.purchaseReceipt.purchase.purchaseNumber}`,
+      createdById: input.createdById,
+      tx,
+    });
+
+    const cancelledQuantity = line.cancelledQuantity
+      + (reversal.idempotent ? 0 : input.quantity);
+    if (!reversal.idempotent) {
+      await tx.purchaseReceiptLine.update({
+        where: { id: line.id },
+        data: { cancelledQuantity },
+      });
+    }
+    const receiptFullyCancelled = line.purchaseReceipt.lines.every((receiptLine) =>
+      receiptLine.id === line.id
+        ? cancelledQuantity === receiptLine.quantity
+        : receiptLine.cancelledQuantity === receiptLine.quantity
+    );
+    const cancelledAt = receiptFullyCancelled
+      ? line.purchaseReceipt.cancelledAt ?? new Date()
+      : null;
+    if (receiptFullyCancelled && !line.purchaseReceipt.cancelledAt) {
+      await tx.purchaseReceipt.update({
+        where: { id: line.purchaseReceipt.id },
+        data: { cancelledAt },
+      });
+    }
+
+    const purchase = line.purchaseReceipt.purchase;
+    const progressLines = purchase.lines.map((purchaseLine) => ({
+      orderedQuantity: purchaseLine.quantity,
+      receivedQuantity: effectiveReceivedQuantity({
+        receiptQuantities: purchaseLine.receiptLines.map((receiptLine) => {
+          const nextCancelledQuantity = receiptLine.id === line.id
+            ? cancelledQuantity
+            : receiptLine.cancelledQuantity;
+          const targetReceiptCancelled = receiptLine.purchaseReceipt.id === line.purchaseReceipt.id
+            && receiptFullyCancelled;
+          return receiptLine.purchaseReceipt.cancelledAt || targetReceiptCancelled
+            ? 0
+            : Math.max(0, receiptLine.quantity - nextCancelledQuantity);
+        }),
+        legacyLotQuantities: purchaseLine.ownedLots.map((item) =>
+          item.inventoryPosition.quantityReceived
+        ),
+        receiptInventoryPositionIds: purchaseLine.receiptLines.map((item) =>
+          item.inventoryPositionId
+        ),
+        legacyLots: purchaseLine.ownedLots.map((item) => ({
+          inventoryPositionId: item.inventoryPositionId,
+          quantity: item.inventoryPosition.quantityReceived,
+        })),
+      }),
+    }));
+    const progress = derivePurchaseProgress(progressLines);
+    const activeReceiptDates = purchase.lines.flatMap((purchaseLine) =>
+      purchaseLine.receiptLines
+        .filter((receiptLine) => {
+          const nextCancelledQuantity = receiptLine.id === line.id
+            ? cancelledQuantity
+            : receiptLine.cancelledQuantity;
+          const targetReceiptCancelled = receiptLine.purchaseReceipt.id === line.purchaseReceipt.id
+            && receiptFullyCancelled;
+          return !receiptLine.purchaseReceipt.cancelledAt
+            && !targetReceiptCancelled
+            && receiptLine.quantity - nextCancelledQuantity > 0;
+        })
+        .map((receiptLine) => receiptLine.purchaseReceipt.receivedAt)
+    );
+    const updatedPurchase = reversal.idempotent
+      ? purchase
+      : await tx.purchase.update({
+          where: { id: purchase.id },
+          data: {
+            purchaseStatus: progress.purchaseStatus,
+            shippingStatus: progress.purchaseStatus === "ORDERED"
+              ? purchase.trackingNumber ? "SHIPPED" : "NOT_SHIPPED"
+              : progress.shippingStatus,
+            receivedAt: progress.purchaseStatus === "RECEIVED"
+              ? activeReceiptDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? null
+              : null,
+          },
+        });
+    if (!reversal.idempotent) {
+      await tx.auditLog.create({
+        data: {
+          organizationId: input.organizationId,
+          userId: input.createdById,
+          action: "purchase.receipt_line.cancel",
+          entityType: "PurchaseReceiptLine",
+          entityId: line.id,
+          before: { cancelledQuantity: line.cancelledQuantity },
+          after: {
+            cancelledQuantity,
+            quantity: input.quantity,
+            inventoryPositionId: input.inventoryPositionId,
+            movementId: reversal.movement.id,
+          },
+        },
+      });
+    }
+    return {
+      purchase: updatedPurchase,
+      cancelledQuantity,
+      remainingQuantity: Math.max(0, line.quantity - cancelledQuantity),
+      idempotent: reversal.idempotent,
+    };
+  });
+}
+
 export async function cancelPurchaseReceipt(input: {
   organizationId: string;
   createdById: string;
@@ -868,7 +1078,9 @@ async function cancelPurchaseReceiptInTransaction(
     orderedQuantity: line.quantity,
     receivedQuantity: effectiveReceivedQuantity({
       receiptQuantities: line.receiptLines.map((item) =>
-        item.purchaseReceipt.id === receipt.id || item.purchaseReceipt.cancelledAt ? 0 : item.quantity
+        item.purchaseReceipt.id === receipt.id || item.purchaseReceipt.cancelledAt
+          ? 0
+          : activeReceiptLineQuantity(item)
       ),
       legacyLotQuantities: line.ownedLots.map((item) => item.inventoryPosition.quantityReceived),
       receiptInventoryPositionIds: line.receiptLines.map((item) => item.inventoryPositionId),
@@ -1033,20 +1245,34 @@ async function reversePurchaseReceiptLines(
     createdById: string;
     purchaseNumber: string;
     receiptId: string;
-    lines: ReadonlyArray<{ id: string; inboundMovement: { id: string } }>;
+    lines: ReadonlyArray<{
+      id: string;
+      quantity: number;
+      cancelledQuantity: number;
+      inboundMovement: { id: string };
+    }>;
     comment?: string;
   }
 ): Promise<void> {
   try {
     for (const line of input.lines) {
-      await reverseMovement({
+      const remainingQuantity = line.quantity - line.cancelledQuantity;
+      if (remainingQuantity <= 0) continue;
+      const reversal = await reverseMovementQuantity({
         organizationId: input.organizationId,
         movementId: line.inboundMovement.id,
+        quantity: remainingQuantity,
         idempotencyKey: `purchase-receipt:${input.receiptId}:line:${line.id}:cancel`,
         comment: normalizeOptional(input.comment) ?? `Storno Wareneingang ${input.purchaseNumber}`,
         createdById: input.createdById,
         tx,
       });
+      if (!reversal.idempotent) {
+        await tx.purchaseReceiptLine.update({
+          where: { id: line.id },
+          data: { cancelledQuantity: line.quantity },
+        });
+      }
     }
   } catch (error) {
     if (error instanceof InventoryDomainError && error.code === "INSUFFICIENT_STOCK") {
@@ -1054,6 +1280,13 @@ async function reversePurchaseReceiptLines(
     }
     throw error;
   }
+}
+
+function activeReceiptLineQuantity(line: {
+  quantity: number;
+  cancelledQuantity: number;
+}): number {
+  return Math.max(0, line.quantity - line.cancelledQuantity);
 }
 
 export async function createOwnedPurchase(
@@ -1157,6 +1390,8 @@ async function createOwnedPurchaseInTransaction(
         quantityDefective: 0,
         quantitySold: 0,
         itemCondition: line.itemCondition,
+        location: normalizeOptional(line.location),
+        notes: normalizeOptional(line.comment),
         receivedAt: input.purchaseDate,
       },
     });

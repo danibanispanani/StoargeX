@@ -2,12 +2,11 @@ import type { Prisma } from "@prisma/client";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/operational-table";
 import { requireOrg } from "@/lib/org";
 import { PageHeader } from "@/components/app/page-header";
-import { getFeatureAccess } from "@/lib/feature-access";
-import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
 import { getOptions } from "@/lib/options";
 import { formatEuro } from "@/lib/calculations";
-import { SaleDialog, type EditableSale, type SellableItem } from "@/components/sales/sale-dialog";
+import { type EditableSale } from "@/components/sales/sale-dialog";
 import { LazySaleDialog } from "@/components/sales/lazy-sale-dialog";
+import { LazyCreateSaleDialog } from "@/components/sales/lazy-create-sale-dialog";
 import { SaleFilterBar } from "@/components/sales/sale-filter-bar";
 import { InvoiceSelect, SaleStatusSelect } from "@/components/sales/sale-inline-selects";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
@@ -60,10 +59,6 @@ export default async function SalesPage({
 }) {
   const context = await requireOrg();
   const { db, organization, userId } = context;
-  const consignmentAccess = await getFeatureAccess(
-    context,
-    FEATURE_KEYS.CONSIGNMENT
-  );
   const rawParams = await searchParams;
   const normalizedQuery = parseOperationalSearchQuery(rawParams.q);
   const params = { ...rawParams, q: normalizedQuery || undefined };
@@ -152,11 +147,35 @@ export default async function SalesPage({
   };
   const viewWhere = buildSaleViewWhere(requestedView);
   const where: Prisma.SaleWhereInput = { AND: [filterWhere, viewWhere] };
+  const optionsPromise = Promise.all([
+    db.platform.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    getOptions(db, organization.id, "PAYOUT_RECIPIENT"),
+    db.shippingRate.findMany({
+      where: { active: true },
+      orderBy: [{ carrierName: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        carrierName: true,
+        name: true,
+        countries: true,
+        baseCents: true,
+      },
+    }),
+    db.marketplaceAccount.findMany({
+      where: { active: true },
+      include: { defaultFeeSchedule: true },
+      orderBy: { displayName: "asc" },
+    }),
+  ]);
   const totalResults = await db.sale.count({ where });
   const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
   const page = Math.min(requestedPage, totalPages);
 
-  const [sales, platforms, payoutOptions, rates, sellablePositions, marketplaceAccounts] =
+  const [sales, [platforms, payoutOptions, rates, marketplaceAccounts]] =
     await Promise.all([
       db.sale.findMany({
         where,
@@ -191,55 +210,8 @@ export default async function SalesPage({
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      db.platform.findMany({
-        where: { active: true },
-        orderBy: { name: "asc" },
-        select: { id: true, name: true },
-      }),
-      getOptions(db, organization.id, "PAYOUT_RECIPIENT"),
-      db.shippingRate.findMany({
-        where: { active: true },
-        orderBy: [{ carrierName: "asc" }, { name: "asc" }],
-        select: {
-          id: true,
-          carrierName: true,
-          name: true,
-          countries: true,
-          baseCents: true,
-        },
-      }),
-      db.inventoryPosition.findMany({
-        where: {
-          active: true,
-          quantityAvailable: { gt: 0 },
-          ...(consignmentAccess.enabled ? {} : { inventoryType: "OWNED" as const }),
-        },
-        include: {
-          product: true,
-          consignmentLot: true,
-        },
-        orderBy: [{ inventoryType: "asc" }, { receivedAt: "asc" }],
-        take: 500,
-      }),
-      db.marketplaceAccount.findMany({ where: { active: true }, include: { defaultFeeSchedule: true }, orderBy: { displayName: "asc" } }),
+      optionsPromise,
     ]);
-
-  const sellable: SellableItem[] = sellablePositions.map((position) => ({
-    ref: `inventory:${position.id}`,
-    label: [
-      position.inventoryNumber,
-      position.product.name,
-      position.product.variant,
-      position.product.size,
-      position.product.ean,
-      position.consignmentLot?.partnerCompany,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    source: position.inventoryType === "OWNED" ? "Eigenbestand" : "Konsignation",
-    available: position.quantityAvailable,
-    partner: position.consignmentLot?.partnerCompany ?? null,
-  }));
 
   const rows = sales.map((sale) => {
     const hasNewLines = sale.saleLines.length > 0;
@@ -417,7 +389,7 @@ export default async function SalesPage({
         eyebrow="Handel"
         title="Verkauf"
         description="Verkäufe, Zahlungen, Versand und Abschluss in einem Ablauf steuern."
-        actions={<SaleDialog items={sellable} platforms={platforms} marketplaceAccounts={marketplaceAccountOptions} payoutOptions={payoutOptions} shippingRates={rates} />}
+        actions={<LazyCreateSaleDialog platforms={platforms} marketplaceAccounts={marketplaceAccountOptions} payoutOptions={payoutOptions} shippingRates={rates} />}
       />
 
       <SaleFilterBar

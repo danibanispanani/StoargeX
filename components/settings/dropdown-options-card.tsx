@@ -87,7 +87,7 @@ export function OptionListCard({
   readOnly,
   placeholder,
 }: {
-  kind: "PAYMENT_METHOD" | "PAYOUT_RECIPIENT" | "TASK_AREA";
+  kind: "PAYMENT_METHOD" | "PAYOUT_RECIPIENT" | "TASK_AREA" | "STORAGE_LOCATION";
   options: Array<{ id: string; label: string }>;
   readOnly: boolean;
   placeholder: string;

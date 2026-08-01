@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { getOptions } from "@/lib/options";
 import { loadLowStockAlerts, lowStockKey } from "@/lib/reporting";
 import { EntryStatus, StockItemStatus } from "@prisma/client";
-import { StockItemDialog } from "@/components/stock/stock-item-dialog";
+import { LazyStockItemDialog } from "@/components/stock/lazy-stock-item-dialog";
 import { StockFilterBar } from "@/components/stock/stock-filter-bar";
 import { StockTable, type StockRow } from "@/components/stock/stock-table";
 import { deriveOwnedStockStatus } from "@/lib/services/owned-purchase-service";
@@ -63,7 +63,7 @@ export default async function StockPage({
     ...(params.zm ? { paymentMethod: params.zm } : {}),
   };
 
-  const [ownedPositions, items, platforms, zmOptions, products, lowAlerts] = await Promise.all([
+  const [ownedPositions, items, platforms, zmOptions, storageLocations, lowAlerts] = await Promise.all([
     db.inventoryPosition.findMany({
       where: {
         inventoryType: "OWNED",
@@ -114,6 +114,20 @@ export default async function StockPage({
           },
         },
         listings: { select: { platformId: true } },
+        purchaseReceiptLine: {
+          select: {
+            quantity: true,
+            cancelledQuantity: true,
+            inboundMovement: { select: { toBucket: true } },
+            purchaseReceipt: {
+              select: {
+                id: true,
+                cancelledAt: true,
+                _count: { select: { lines: true } },
+              },
+            },
+          },
+        },
         supplierReturnLines: {
           where: {
             outboundMovementId: null,
@@ -128,7 +142,7 @@ export default async function StockPage({
     }),
     db.stockItem.findMany({
       where: {
-        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(statusFilter ? { status: statusFilter } : { status: { not: "CANCELLED" } }),
         ...(view === "stock" ? { quantity: { gt: 0 } } : {}),
         ...(params.alter === "langsam"
           ? {
@@ -177,19 +191,7 @@ export default async function StockPage({
       select: { id: true, name: true },
     }),
     getOptions(db, organization.id, "PAYMENT_METHOD"),
-    db.product.findMany({
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        variant: true,
-        size: true,
-        ean: true,
-        category: true,
-        defaultPriceCents: true,
-      },
-      take: 500,
-    }),
+    getOptions(db, organization.id, "STORAGE_LOCATION"),
     loadLowStockAlerts(db, organization.lowStockThreshold),
   ]);
 
@@ -199,6 +201,7 @@ export default async function StockPage({
     .filter((position) => position.ownedLot)
     .map((position) => {
       const lot = position.ownedLot!;
+      const imageUrls = [...new Set([...lot.imageUrls, ...position.product.imageUrls])];
       return {
         source: "owned",
         id: position.id,
@@ -219,12 +222,12 @@ export default async function StockPage({
         status: "IN_STOCK",
         derivedStatus: deriveOwnedStockStatus(position),
         ean: lot.ean ?? position.product.ean ?? "",
-        imageUrl: lot.imageUrls[0] ?? position.product.imageUrls[0] ?? null,
-        imageUrls: lot.imageUrls,
+        imageUrl: imageUrls[0] ?? null,
+        imageUrls,
         itemCondition: position.itemCondition,
-        location: null,
+        location: position.location,
         listings: position.listings.map((l) => l.platformId),
-        notes: "",
+        notes: position.notes ?? "",
         low: lowKeys.has(lowStockKey(position.product.name, position.product.variant)),
         availableQuantity: position.quantityAvailable,
         originalQuantity: position.quantityReceived,
@@ -233,6 +236,22 @@ export default async function StockPage({
           position.supplierReturnLines
         ),
         purchaseNumber: lot.purchaseLine?.purchase.purchaseNumber ?? null,
+        receiptId: position.purchaseReceiptLine?.purchaseReceipt.id ?? null,
+        receiptCancelled: Boolean(position.purchaseReceiptLine?.purchaseReceipt.cancelledAt),
+        receiptLineCount: position.purchaseReceiptLine?.purchaseReceipt._count.lines ?? 0,
+        cancellableQuantity: position.purchaseReceiptLine
+          ? Math.min(
+              position.purchaseReceiptLine.quantity
+                - position.purchaseReceiptLine.cancelledQuantity,
+              position.purchaseReceiptLine.inboundMovement.toBucket === "AVAILABLE"
+                ? position.quantityAvailable
+                : position.purchaseReceiptLine.inboundMovement.toBucket === "INSPECTION"
+                  ? position.quantityInspection
+                  : position.purchaseReceiptLine.inboundMovement.toBucket === "DEFECTIVE"
+                    ? position.quantityDefective
+                    : 0
+            )
+          : 0,
       };
     });
 
@@ -265,6 +284,10 @@ export default async function StockPage({
     originalQuantity: 1,
     returnableQuantity: 0,
     purchaseNumber: null,
+    receiptId: null,
+    receiptCancelled: false,
+    receiptLineCount: 0,
+    cancellableQuantity: 0,
   }));
 
   const allRows = [...ownedRows, ...legacyRows];
@@ -280,7 +303,7 @@ export default async function StockPage({
         eyebrow="Handel"
         title="Lager"
         description="Bestände, Lagerpositionen und Warenbewegungen zentral nachvollziehen."
-        actions={<StockItemDialog platforms={platforms} zmOptions={zmOptions} products={products} />}
+        actions={<LazyStockItemDialog platforms={platforms} zmOptions={zmOptions} storageLocations={storageLocations} />}
       />
 
       <StockFilterBar
@@ -296,6 +319,7 @@ export default async function StockPage({
       <StockTable
         rows={rows}
         platforms={platforms}
+        storageLocations={storageLocations}
         scope={{ organizationId: organization.id, userId }}
         tableQuery={tableQuery}
         currentQuery={operationalSearchParams({

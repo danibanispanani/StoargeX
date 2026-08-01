@@ -72,6 +72,7 @@ export function SaleDialog({
   shippingRates,
   trigger,
   initialOpen = false,
+  onOpenChange,
 }: {
   sale?: EditableSale;
   items: SellableItem[];
@@ -81,6 +82,7 @@ export function SaleDialog({
   shippingRates: ShippingRateOption[];
   trigger?: React.ReactNode;
   initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(initialOpen);
   const [selected, setSelected] = useState<SelectedSellable[]>([]);
@@ -103,6 +105,7 @@ export function SaleDialog({
     if (state?.success) {
       toast.success(state.success);
       setOpen(false);
+      onOpenChange?.(false);
       if (!sale) {
         setSelected([]);
         setQuery("");
@@ -111,7 +114,12 @@ export function SaleDialog({
         setFeeGross("");
       }
     }
-  }, [state, sale]);
+  }, [state, sale, onOpenChange]);
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  }
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -170,7 +178,7 @@ export function SaleDialog({
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
         {trigger ?? <Button>Verkauf erfassen</Button>}
       </SheetTrigger>

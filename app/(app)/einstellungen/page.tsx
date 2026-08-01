@@ -34,7 +34,7 @@ export default async function SettingsPage() {
   const { organization, membership, db } = context;
   const canEdit = hasMinRole(membership.role, "ADMIN");
 
-  const [taxRates, platforms, zmOptions, payoutOptions, taskAreaOptions, consignmentDecision] = await Promise.all([
+  const [taxRates, platforms, zmOptions, payoutOptions, taskAreaOptions, storageLocationOptions, consignmentDecision] = await Promise.all([
     db.taxRate.findMany({ orderBy: [{ country: "asc" }, { name: "asc" }] }),
     db.platform.findMany({ orderBy: { name: "asc" } }),
     db.selectOption.findMany({
@@ -47,6 +47,10 @@ export default async function SettingsPage() {
     }),
     db.selectOption.findMany({
       where: { kind: "TASK_AREA", active: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    db.selectOption.findMany({
+      where: { kind: "STORAGE_LOCATION", active: true },
       orderBy: { sortOrder: "asc" },
     }),
     getFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT),
@@ -202,6 +206,24 @@ export default async function SettingsPage() {
             options={taskAreaOptions.map((o) => ({ id: o.id, label: o.label }))}
             readOnly={!canEdit}
             placeholder="z.B. Marketing"
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-none border-x-0 shadow-none">
+        <CardHeader>
+          <CardTitle>Lagerstandorte</CardTitle>
+          <CardDescription>
+            Verwaltete Lagerplätze für Wareneingang und Lagerpositionen. Entfernte
+            Werte bleiben bei historischen Positionen lesbar.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OptionListCard
+            kind="STORAGE_LOCATION"
+            options={storageLocationOptions.map((o) => ({ id: o.id, label: o.label }))}
+            readOnly={!canEdit}
+            placeholder="z.B. Halle A · Regal 3"
           />
         </CardContent>
       </Card>

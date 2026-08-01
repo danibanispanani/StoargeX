@@ -102,12 +102,16 @@ export function PurchaseOrderDialog({
   suppliers,
   paymentMethods,
   products,
+  initialOpen = false,
+  onOpenChange,
 }: {
   suppliers: Option[];
   paymentMethods: string[];
   products: ProductOption[];
+  initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [state, action, pending] = useActionState(createPurchaseOrderAction, initialState);
   const [draft, setDraft] = useState<OrderFormDraft>(emptyOrder);
   const [lines, setLines] = useState<OrderLineDraft[]>(() => [emptyLine()]);
@@ -126,9 +130,15 @@ export function PurchaseOrderDialog({
     if (!state.success) return;
     toast.success(state.success);
     setOpen(false);
+    onOpenChange?.(false);
     setDraft(emptyOrder());
     setLines([emptyLine()]);
-  }, [state]);
+  }, [state, onOpenChange]);
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  }
 
   function updateLine(key: string, patch: Partial<OrderLineDraft>) {
     setLines((current) => current.map((line) => line.key === key ? { ...line, ...patch } : line));
@@ -139,7 +149,7 @@ export function PurchaseOrderDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild><Button><PlusIcon /> Einkauf anlegen</Button></DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>

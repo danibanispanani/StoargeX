@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { PackageSearchIcon, RefreshCwIcon, TagsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { bulkCategorizeProductsAction, bulkMapProductsToMarketplaceCategoryAction } from "@/lib/actions/products";
@@ -255,12 +254,11 @@ export function ProductTable({
 }
 
 function PricingRecalculationButton({ productIds, marketplaceCode, label, compact = false, onSuccess }: { productIds: string[]; marketplaceCode: "EBAY_DE" | "KAUFLAND_DE"; label: string; compact?: boolean; onSuccess?: () => void }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   return <Button size="sm" variant="secondary" disabled={pending} title={`${label} berechnen`} aria-label={`${label} berechnen`} onClick={() => startTransition(async () => {
     const result = await recalculateProductPricingAction({ marketplaceCode, productIds });
     if (result.error) toast.error(result.error);
-    else { toast.success(result.success); onSuccess?.(); router.refresh(); }
+    else { toast.success(result.success); onSuccess?.(); }
   })}><RefreshCwIcon className={pending ? "animate-spin" : ""} />{compact ? <span className="sr-only">{label}</span> : label}</Button>;
 }
 
@@ -300,7 +298,6 @@ function ProductDetail({ row }: { row: ProductOperationalRow }) {
 }
 
 function BulkCategoryDialog({ selection, selectedCount, queryString, allResultDigest, categories, clearSelection }: { selection: TableSelection; selectedCount: number; queryString: string; allResultDigest: string | null; categories: string[]; clearSelection: () => void }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState("");
   const [pending, startTransition] = useTransition();
@@ -323,7 +320,6 @@ function BulkCategoryDialog({ selection, selectedCount, queryString, allResultDi
         setOpen(false);
         setCategory("");
         clearSelection();
-        router.refresh();
       } catch {
         toast.error("Die Kategorie konnte nicht zugeordnet werden.");
       }
@@ -359,9 +355,9 @@ function BulkCategoryDialog({ selection, selectedCount, queryString, allResultDi
 }
 
 function BulkMarketplaceCategoryDialog({ selection, selectedCount, queryString, allResultDigest, ebayCategories, kauflandCategories, clearSelection }: { selection: TableSelection; selectedCount: number; queryString: string; allResultDigest: string | null; ebayCategories: Array<{ id: string; label: string }>; kauflandCategories: Array<{ id: string; label: string }>; clearSelection: () => void }) {
-  const router = useRouter(); const [open, setOpen] = useState(false); const [marketplaceCode, setMarketplaceCode] = useState<"EBAY_DE" | "KAUFLAND_DE">("EBAY_DE"); const [feeCategoryId, setFeeCategoryId] = useState(""); const [pending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false); const [marketplaceCode, setMarketplaceCode] = useState<"EBAY_DE" | "KAUFLAND_DE">("EBAY_DE"); const [feeCategoryId, setFeeCategoryId] = useState(""); const [pending, startTransition] = useTransition();
   const options = marketplaceCode === "EBAY_DE" ? ebayCategories : kauflandCategories;
-  function run() { startTransition(async () => { const result = await bulkMapProductsToMarketplaceCategoryAction({ marketplaceCode, feeCategoryId, expectedCount: selectedCount, expectedResultDigest: selection.mode === "all" ? allResultDigest ?? undefined : undefined, selection, query: Object.fromEntries(new URLSearchParams(queryString)) }); if (result?.error) { toast.error(result.error); return; } toast.success(result?.success); setOpen(false); clearSelection(); router.refresh(); }); }
+  function run() { startTransition(async () => { const result = await bulkMapProductsToMarketplaceCategoryAction({ marketplaceCode, feeCategoryId, expectedCount: selectedCount, expectedResultDigest: selection.mode === "all" ? allResultDigest ?? undefined : undefined, selection, query: Object.fromEntries(new URLSearchParams(queryString)) }); if (result?.error) { toast.error(result.error); return; } toast.success(result?.success); setOpen(false); clearSelection(); }); }
   return <Dialog open={open} onOpenChange={(next) => { if (!pending) setOpen(next); }}><DialogTrigger asChild><Button size="sm" variant="secondary"><TagsIcon /> Marktplatzkategorie</Button></DialogTrigger><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>{selectedCount} Produkte zuordnen</DialogTitle><DialogDescription>Die interne StorageX-Kategorie bleibt unverändert.</DialogDescription></DialogHeader><select value={marketplaceCode} onChange={(event) => { const value = event.target.value; if (value === "EBAY_DE" || value === "KAUFLAND_DE") setMarketplaceCode(value); setFeeCategoryId(""); }} className="border-input h-9 border bg-background px-3 text-sm"><option value="EBAY_DE">eBay.de</option><option value="KAUFLAND_DE">Kaufland.de</option></select><select value={feeCategoryId} onChange={(event) => setFeeCategoryId(event.target.value)} className="border-input h-9 border bg-background px-3 text-sm"><option value="">Gebührenkategorie wählen…</option>{options.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select><ConfirmActionDialog trigger={<Button disabled={!feeCategoryId || pending}>Zuordnung prüfen</Button>} title="Gebührenkategorie zuordnen?" description={`${selectedCount} Produkte erhalten eine bestätigte ${marketplaceCode === "EBAY_DE" ? "eBay" : "Kaufland"}-Zuordnung. Bestehende Kalkulationen werden als veraltet markiert.`} confirmLabel="Zuordnen" onConfirm={run} disabled={!feeCategoryId || pending} /></DialogContent></Dialog>;
 }
 

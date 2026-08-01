@@ -27,18 +27,28 @@ export function StockMetadataDialog({
   source,
   positionId,
   inventoryNumber,
+  productName,
+  variant,
+  size,
+  ean,
   itemCondition,
   imageUrls,
   location,
+  storageLocations,
   notes,
   onSaved,
 }: {
   source: "owned" | "legacy";
   positionId: string;
   inventoryNumber: string;
+  productName: string;
+  variant: string;
+  size: string;
+  ean: string;
   itemCondition: ItemCondition | null;
   imageUrls: string[];
   location?: string | null;
+  storageLocations: string[];
   notes?: string | null;
   onSaved?: () => void;
 }) {
@@ -64,14 +74,15 @@ export function StockMetadataDialog({
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <PencilIcon className="size-4" />
-          Metadaten bearbeiten
+          Bearbeiten
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{inventoryNumber} bearbeiten</DialogTitle>
           <DialogDescription>
-            Bestandsmengen, Einkauf, Kosten und Bewegungen bleiben unveränderbar.
+            Produkt- und Lagerdaten bearbeiten. Lagernummer, Zuordnung, Bestandsmengen,
+            Einkauf, Kosten und Bewegungen bleiben unveränderbar.
           </DialogDescription>
         </DialogHeader>
         <form action={formAction} className="space-y-4">
@@ -80,6 +91,54 @@ export function StockMetadataDialog({
               <AlertDescription>{state.error}</AlertDescription>
             </Alert>
           )}
+          <fieldset className="grid gap-4 rounded-md border p-4 sm:grid-cols-2">
+            <legend className="px-1 text-sm font-medium">Produktdaten</legend>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor={`${positionId}-product-name`}>Produktname</Label>
+              <Input
+                id={`${positionId}-product-name`}
+                name="productName"
+                defaultValue={productName}
+                maxLength={300}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${positionId}-variant`}>Variante</Label>
+              <Input
+                id={`${positionId}-variant`}
+                name="variant"
+                defaultValue={variant}
+                maxLength={200}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${positionId}-size`}>Größe</Label>
+              <Input
+                id={`${positionId}-size`}
+                name="size"
+                defaultValue={size}
+                maxLength={50}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor={`${positionId}-ean`}>EAN</Label>
+              <Input
+                id={`${positionId}-ean`}
+                name="ean"
+                defaultValue={ean}
+                maxLength={20}
+                inputMode="numeric"
+              />
+            </div>
+            {source === "owned" && (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Diese Produktstammdaten werden bei allen Lagerpositionen desselben Produkts aktualisiert.
+              </p>
+            )}
+          </fieldset>
+          <fieldset className="space-y-4 rounded-md border p-4">
+            <legend className="px-1 text-sm font-medium">Lagerposition</legend>
           <div className="space-y-2">
             <Label htmlFor={`${positionId}-condition`}>Artikelzustand</Label>
             <select
@@ -96,17 +155,28 @@ export function StockMetadataDialog({
               ))}
             </select>
           </div>
-          {source === "legacy" && (
-            <div className="space-y-2">
-              <Label htmlFor={`${positionId}-location`}>Lagerplatz</Label>
-              <Input
-                id={`${positionId}-location`}
-                name="location"
-                defaultValue={location ?? ""}
-                maxLength={200}
-              />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor={`${positionId}-location`}>Lagerplatz</Label>
+            <select
+              id={`${positionId}-location`}
+              name="location"
+              defaultValue={location ?? ""}
+              className="border-input h-9 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">Nicht festgelegt</option>
+              {location && !storageLocations.includes(location) && (
+                <option value={location}>{location} (historisch)</option>
+              )}
+              {storageLocations.map((storageLocation) => (
+                <option key={storageLocation} value={storageLocation}>
+                  {storageLocation}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Lagerstandorte werden unter Einstellungen → Organisation verwaltet.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor={`${positionId}-images`}>Bildadressen</Label>
             <textarea
@@ -121,19 +191,18 @@ export function StockMetadataDialog({
               Bild öffnen, Rechtsklick auf das Bild und „Bildadresse kopieren“. Die Bilder werden nur verlinkt, nicht hochgeladen.
             </p>
           </div>
-          {source === "legacy" && (
-            <div className="space-y-2">
-              <Label htmlFor={`${positionId}-notes`}>Notiz</Label>
-              <textarea
-                id={`${positionId}-notes`}
-                name="notes"
-                defaultValue={notes ?? ""}
-                rows={3}
-                maxLength={2000}
-                className="border-input w-full rounded-md border bg-background px-3 py-2 text-sm"
-              />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor={`${positionId}-notes`}>Notiz</Label>
+            <textarea
+              id={`${positionId}-notes`}
+              name="notes"
+              defaultValue={notes ?? ""}
+              rows={3}
+              maxLength={2000}
+              className="border-input w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
+          </div>
+          </fieldset>
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? "Speichert…" : "Änderungen speichern"}
           </Button>

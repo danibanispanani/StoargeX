@@ -15,6 +15,7 @@ import {
 import {
   cancelPurchase,
   cancelPurchaseReceipt,
+  cancelPurchaseReceiptLineQuantity,
   createPurchaseOrder,
   receivePurchase,
   updatePurchase,
@@ -352,6 +353,38 @@ export async function cancelPurchaseReceiptAction(
   }
 }
 
+export async function cancelPurchaseReceiptLineQuantityAction(
+  inventoryPositionId: string,
+  quantity: number,
+  idempotencyKey: string
+): Promise<PurchaseActionState> {
+  const { organization, userId } = await requireOrg("MEMBER");
+  const parsed = z.object({
+    inventoryPositionId: z.string().min(1),
+    quantity: z.number().int().positive().max(100000),
+    idempotencyKey: z.string().uuid(),
+  }).safeParse({ inventoryPositionId, quantity, idempotencyKey });
+  if (!parsed.success) return { error: "Die Stornomenge ist ungültig." };
+
+  try {
+    const result = await cancelPurchaseReceiptLineQuantity({
+      organizationId: organization.id,
+      createdById: userId,
+      ...parsed.data,
+    });
+    revalidatePurchasing();
+    return {
+      success: result.idempotent
+        ? "Diese Stornierung wurde bereits gebucht."
+        : result.remainingQuantity === 0
+          ? "Lagerposition vollständig storniert."
+          : `${parsed.data.quantity} Stück storniert; ${result.remainingQuantity} Stück verbleiben.`,
+    };
+  } catch (error) {
+    return { error: actionError(error, "Lagerposition konnte nicht storniert werden.") };
+  }
+}
+
 export async function cancelPurchaseAction(purchaseId: string): Promise<PurchaseActionState> {
   const { organization, userId } = await requireOrg("MEMBER");
   try {
@@ -400,4 +433,26 @@ function purchaseMetadataFromForm(formData: FormData) {
 function actionError(error: unknown, fallback: string): string {
   if (error instanceof z.ZodError) return error.issues[0]?.message ?? fallback;
   return error instanceof Error ? error.message : fallback;
+}
+
+export async function loadPurchaseProductOptionsAction(): Promise<{
+  products?: Array<{
+    id: string;
+    name: string;
+    variant: string | null;
+    imageUrls: string[];
+  }>;
+  error?: string;
+}> {
+  try {
+    const { db } = await requireOrg("MEMBER");
+    const products = await db.product.findMany({
+      select: { id: true, name: true, variant: true, imageUrls: true },
+      orderBy: { name: "asc" },
+      take: 1000,
+    });
+    return { products };
+  } catch {
+    return { error: "Produkte konnten nicht geladen werden." };
+  }
 }

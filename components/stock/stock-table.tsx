@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactTableShell } from "@/components/table/compact-table-shell";
+import { ConfirmActionDialog } from "@/components/table/confirm-action-dialog";
 import { TableSortHeader } from "@/components/table/table-sort-header";
 import {
   DetailDrawer,
@@ -48,6 +49,7 @@ import {
 } from "@/components/ui/table";
 import { StockMetadataDialog } from "@/components/stock/stock-metadata-dialog";
 import { StockSupplierReturnDialog } from "@/components/stock/stock-supplier-return-dialog";
+import { CancelStockQuantityButton } from "@/components/purchases/purchase-cancellation-actions";
 import { OPERATIONAL_MODULES } from "@/lib/operational-modules";
 import type { TablePreferenceScope } from "@/lib/operational-table";
 import type { StockSort, StockTableQuery } from "@/lib/stock/stock-table";
@@ -55,6 +57,7 @@ import {
   inventoryBucketLabel,
   inventoryMovementLabel,
 } from "@/lib/inventory-labels";
+import { ITEM_CONDITION_OPTIONS } from "@/lib/item-condition-options";
 
 export interface StockRow {
   source: "owned" | "legacy";
@@ -87,17 +90,23 @@ export interface StockRow {
   originalQuantity: number;
   returnableQuantity: number;
   purchaseNumber: string | null;
+  receiptId: string | null;
+  receiptCancelled: boolean;
+  receiptLineCount: number;
+  cancellableQuantity: number;
 }
 
 export function StockTable({
   rows,
   platforms,
+  storageLocations,
   scope,
   tableQuery,
   currentQuery,
 }: {
   rows: StockRow[];
   platforms: Array<{ id: string; name: string }>;
+  storageLocations: string[];
   scope: Omit<TablePreferenceScope, "tableKey">;
   tableQuery: StockTableQuery;
   currentQuery: string;
@@ -328,7 +337,7 @@ export function StockTable({
                   </TableCell>
                   <TableCell data-column data-column-key="actions" data-view-standard data-view-purchasing data-view-listings data-view-stock data-view-inspection data-view-all>
                     <div className="flex justify-end gap-1">
-                      <StockDetailDrawer row={row} platforms={platforms} />
+                      <StockDetailDrawer row={row} platforms={platforms} storageLocations={storageLocations} />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -345,9 +354,11 @@ export function StockTable({
 function StockDetailDrawer({
   row,
   platforms,
+  storageLocations,
 }: {
   row: StockRow;
   platforms: Array<{ id: string; name: string }>;
+  storageLocations: string[];
 }) {
   const [history, setHistory] = useState<StockHistoryPayload | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -425,12 +436,39 @@ function StockDetailDrawer({
             { label: "Verfügbar", value: row.availableQuantity },
             { label: "Ursprünglich", value: row.originalQuantity },
             { label: "Status", value: row.derivedStatus ?? STOCK_STATUS[row.status].label },
+            { label: "Artikelzustand", value: itemConditionLabel(row.itemCondition) },
+            { label: "Lagerplatz", value: row.location || "–" },
             { label: "Niedriger Bestand", value: row.low ? "Ja" : "Nein" },
           ]}
         />
+        {row.notes && <p className="mt-3 whitespace-pre-wrap text-sm">{row.notes}</p>}
       </DetailSection>
       <DetailSection title="Listings">
         <p>{listingNames.length ? listingNames.join(" · ") : "Keine Listings"}</p>
+      </DetailSection>
+      <DetailSection title="Bilder">
+        {row.imageUrls.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {row.imageUrls.map((imageUrl, index) => (
+              <a
+                key={imageUrl}
+                href={imageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="overflow-hidden rounded-md border bg-muted"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageUrl}
+                  alt={`${row.title} – Bild ${index + 1}`}
+                  className="aspect-square w-full object-cover"
+                />
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p>Keine Bilder hinterlegt.</p>
+        )}
       </DetailSection>
       <DetailSection title="Aktionen">
         <div className="flex flex-wrap gap-2">
@@ -438,9 +476,14 @@ function StockDetailDrawer({
             source={row.source}
             positionId={row.id}
             inventoryNumber={row.sku}
+            productName={row.title}
+            variant={row.variant}
+            size={row.size}
+            ean={row.ean}
             itemCondition={row.itemCondition}
             imageUrls={row.imageUrls}
             location={row.location}
+            storageLocations={storageLocations}
             notes={row.notes}
             onSaved={refreshHistory}
           />
@@ -454,7 +497,27 @@ function StockDetailDrawer({
               returnableQuantity={row.returnableQuantity}
             />
           )}
+          {row.source === "owned" && row.receiptId && !row.receiptCancelled && row.cancellableQuantity > 0 && (
+            <CancelStockQuantityButton
+              inventoryPositionId={row.id}
+              inventoryNumber={row.sku}
+              maxQuantity={row.cancellableQuantity}
+            />
+          )}
+          {row.source === "legacy" && row.status !== "CANCELLED" && (
+            <CancelLegacyStockItemButton
+              stockItemId={row.id}
+              inventoryNumber={row.sku}
+              onCancelled={refreshHistory}
+            />
+          )}
         </div>
+        {row.source === "owned" && row.receiptId && !row.receiptCancelled && row.cancellableQuantity > 0 && (
+          <p className="mt-2 text-xs">
+            Teil- und Vollstorno werden über die bestehende Bewegungshistorie zurückgebucht.
+            Bereits verkaufte, reservierte oder verschobene Mengen sind nicht auswählbar.
+          </p>
+        )}
         {row.source === "owned" && !row.purchaseNumber && (
           <p className="text-xs">Keine Lieferantenretoure möglich: Der historischen Position fehlt die Verknüpfung zu einem Einkauf.</p>
         )}
@@ -517,6 +580,42 @@ function StockDetailDrawer({
         </DetailSection>
       )}
     </DetailDrawer>
+  );
+}
+
+function CancelLegacyStockItemButton({
+  stockItemId,
+  inventoryNumber,
+  onCancelled,
+}: {
+  stockItemId: string;
+  inventoryNumber: string;
+  onCancelled: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <ConfirmActionDialog
+      trigger={(
+        <Button type="button" size="sm" variant="destructive" disabled={pending}>
+          {pending ? "Storniert…" : "Stornieren"}
+        </Button>
+      )}
+      title={`${inventoryNumber} stornieren?`}
+      description="Diese historische Importposition wird nachvollziehbar als storniert markiert. Es wird keine erfundene Inventarbewegung erzeugt."
+      confirmLabel="Lagerposition stornieren"
+      disabled={pending}
+      onConfirm={() => {
+        startTransition(async () => {
+          const result = await updateStockItemStatusAction(stockItemId, "CANCELLED");
+          if (result?.error) toast.error(result.error);
+          if (result?.success) {
+            toast.success(result.success);
+            onCancelled();
+          }
+        });
+      }}
+    />
   );
 }
 
@@ -599,16 +698,29 @@ function Sort({
 function metadataLabel(value: string): string {
   return {
     itemCondition: "Artikelzustand",
+    productName: "Produktname",
+    variant: "Variante",
+    size: "Größe",
+    ean: "EAN",
     imageUrls: "Bilder",
     location: "Lagerplatz",
     notes: "Notiz",
+    status: "Bestandsstatus",
   }[value] ?? value;
 }
 
 function metadataValue(value: unknown): string {
   if (Array.isArray(value)) return value.length ? value.join(", ") : "–";
   if (value === null || value === undefined || value === "") return "–";
+  if (typeof value === "string" && value in STOCK_STATUS) {
+    return STOCK_STATUS[value as StockItemStatus].label;
+  }
   return String(value);
+}
+
+function itemConditionLabel(value: ItemCondition | null): string {
+  if (!value) return "Nicht festgelegt";
+  return ITEM_CONDITION_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
 
 function ColoredSelect({

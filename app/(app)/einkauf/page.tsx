@@ -1,7 +1,7 @@
 import { requireOrg } from "@/lib/org";
 import { getOptions } from "@/lib/options";
 import { PageHeader } from "@/components/app/page-header";
-import { PurchaseOrderDialog } from "@/components/purchases/purchase-dialogs";
+import { LazyPurchaseOrderDialog } from "@/components/purchases/lazy-purchase-order-dialog";
 import { PurchaseFilterBar } from "@/components/purchases/purchase-filter-bar";
 import { PurchaseTable, type PurchaseOperationalRow } from "@/components/purchases/purchase-table";
 import {
@@ -24,15 +24,12 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
       select: { id: true, displayName: true },
       orderBy: { displayName: "asc" },
     }),
-    db.product.findMany({
-      select: { id: true, name: true, variant: true, imageUrls: true }, orderBy: { name: "asc" }, take: 1000,
-    }),
     getOptions(db, organization.id, "PAYMENT_METHOD"),
   ]);
   const totalResults = await db.purchase.count({ where });
   const totalPages = Math.max(1, Math.ceil(totalResults / requested.pageSize));
   const query = { ...requested, page: Math.min(requested.page, totalPages) };
-  const [purchases, [suppliers, products, paymentMethods]] = await Promise.all([
+  const [purchases, [suppliers, paymentMethods]] = await Promise.all([
     db.purchase.findMany({
       where,
       orderBy: buildPurchaseOrderBy(query),
@@ -160,7 +157,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
       eyebrow="Handel / Beschaffung"
       title="Einkauf"
       description="Bestellungen vom Einkauf über den Versand bis zum Wareneingang steuern."
-      actions={<PurchaseOrderDialog suppliers={supplierOptions} paymentMethods={paymentMethods} products={products.map((item) => ({ id: item.id, name: item.name, imageUrl: item.imageUrls[0] ?? "", label: [item.name, item.variant].filter(Boolean).join(" · ") }))} />}
+      actions={<LazyPurchaseOrderDialog suppliers={supplierOptions} paymentMethods={paymentMethods} />}
     />
     <PurchaseFilterBar query={query} suppliers={supplierOptions} />
     <PurchaseTable rows={rows} totalResults={totalResults} query={query} queryString={purchaseQueryToSearchParams(query).toString()} scope={{ organizationId: organization.id, userId, tableKey: "purchases" }} nowIso={new Date().toISOString()} suppliers={supplierOptions} paymentMethods={paymentMethods} />

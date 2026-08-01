@@ -3,6 +3,7 @@ import type { TenantDb } from "@/lib/tenant-db";
 import {
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_PAYOUT_RECIPIENTS,
+  DEFAULT_STORAGE_LOCATIONS,
   DEFAULT_TASK_AREAS,
 } from "@/lib/constants";
 
@@ -10,6 +11,7 @@ const DEFAULTS: Record<OptionKind, string[]> = {
   PAYMENT_METHOD: DEFAULT_PAYMENT_METHODS,
   PAYOUT_RECIPIENT: DEFAULT_PAYOUT_RECIPIENTS,
   TASK_AREA: DEFAULT_TASK_AREAS,
+  STORAGE_LOCATION: DEFAULT_STORAGE_LOCATIONS,
 };
 
 /**
@@ -28,15 +30,18 @@ export async function getOptions(
   });
 
   if (options.length === 0) {
-    await db.selectOption.createMany({
-      data: DEFAULTS[kind].map((label, index) => ({
-        organizationId,
-        kind,
-        label,
-        sortOrder: index,
-      })),
-      skipDuplicates: true,
-    });
+    const defaults = DEFAULTS[kind];
+    if (defaults.length > 0) {
+      await db.selectOption.createMany({
+        data: defaults.map((label, index) => ({
+          organizationId,
+          kind,
+          label,
+          sortOrder: index,
+        })),
+        skipDuplicates: true,
+      });
+    }
     options = await db.selectOption.findMany({
       where: { kind, active: true },
       orderBy: { sortOrder: "asc" },

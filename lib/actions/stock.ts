@@ -36,6 +36,11 @@ const stockItemSchema = z.object({
   paymentMethod: z.string().min(1, "Zahlungsmethode (ZM) fehlt.").max(100),
   ean: z.string().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional().or(z.literal("")),
   quantity: z.coerce.number().int().min(1).max(500).default(1),
+  itemCondition: z.preprocess(
+    (value) => value === "" ? undefined : value,
+    z.nativeEnum(ItemCondition).optional()
+  ),
+  location: z.string().trim().max(100).optional().or(z.literal("")),
   notes: z.string().max(2000).optional().or(z.literal("")),
   imageUrl: httpImageUrlSchema.optional().or(z.literal("")),
   platformIds: z.array(z.string().min(1)).default([]),
@@ -55,6 +60,8 @@ function parseStockForm(formData: FormData) {
     paymentMethod: formData.get("paymentMethod"),
     ean: formData.get("ean"),
     quantity: formData.get("quantity") || 1,
+    itemCondition: formData.get("itemCondition") ?? "",
+    location: formData.get("location") ?? "",
     notes: formData.get("notes"),
     imageUrl: formData.get("imageUrl") || "",
     platformIds: formData.getAll("platformIds").map(String),
@@ -94,6 +101,13 @@ export async function createStockItemAction(
   if (platforms.length !== data.platformIds.length) {
     return { error: "Mindestens eine gewÃ¤hlte Plattform ist ungÃ¼ltig." };
   }
+  if (data.location) {
+    const location = await db.selectOption.findFirst({
+      where: { kind: "STORAGE_LOCATION", label: data.location, active: true },
+      select: { id: true },
+    });
+    if (!location) return { error: "Der gewählte Lagerstandort ist nicht mehr verfügbar." };
+  }
 
   const netCents = calcPurchaseNetCents(
     grossCents,
@@ -125,6 +139,8 @@ export async function createStockItemAction(
           returnEntryStatus: "NN",
           platformIds: platforms.map((p) => p.id),
           imageUrls,
+          itemCondition: data.itemCondition,
+          location: data.location || undefined,
           comment: data.notes || undefined,
         },
       ],
@@ -260,6 +276,10 @@ export async function toggleInventoryPositionListingAction(
 }
 
 const stockMetadataSchema = z.object({
+  productName: z.string().trim().min(1, "Produktname fehlt.").max(300),
+  variant: z.string().trim().max(200).optional(),
+  size: z.string().trim().max(50).optional(),
+  ean: z.string().trim().max(20).regex(/^\d*$/, "EAN darf nur Ziffern enthalten.").optional(),
   itemCondition: z.preprocess(
     (value) => value === "" ? null : value,
     z.nativeEnum(ItemCondition).nullable()
@@ -271,6 +291,10 @@ const stockMetadataSchema = z.object({
 
 function parseStockMetadata(formData: FormData) {
   const parsed = stockMetadataSchema.safeParse({
+    productName: formData.get("productName"),
+    variant: String(formData.get("variant") ?? ""),
+    size: String(formData.get("size") ?? ""),
+    ean: String(formData.get("ean") ?? ""),
     itemCondition: formData.get("itemCondition") ?? "",
     imageUrls: String(formData.get("imageUrls") ?? ""),
     location: String(formData.get("location") ?? ""),
@@ -305,43 +329,26 @@ export async function updateInventoryPositionMetadataAction(
   _previous: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { organization, userId } = await requireOrg("MEMBER");
+  const { db, organization, userId } = await requireOrg("MEMBER");
   const parsed = parseStockMetadata(formData);
   if ("error" in parsed) return { error: parsed.error };
+  if (parsed.data.location) {
+    const location = await db.selectOption.findFirst({
+      where: { kind: "STORAGE_LOCATION", label: parsed.data.location },
+      select: { id: true },
+    });
+    if (!location) return { error: "Der gewählte Lagerstandort ist ungültig." };
+  }
 
   try {
     const result = await updateInventoryPositionMetadata({
       organizationId: organization.id,
       inventoryPositionId,
       userId,
-      itemCondition: parsed.data.itemCondition,
-      imageUrls: parsed.data.imageUrls,
-    });
-    if (result.changed) revalidatePath("/lager");
-    return {
-      success: result.changed ? "Lagerposition gespeichert ✓" : "Keine Änderungen vorhanden.",
-    };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Lagerposition konnte nicht gespeichert werden.",
-    };
-  }
-}
-
-export async function updateLegacyStockItemMetadataAction(
-  stockItemId: string,
-  _previous: ActionState,
-  formData: FormData
-): Promise<ActionState> {
-  const { organization, userId } = await requireOrg("MEMBER");
-  const parsed = parseStockMetadata(formData);
-  if ("error" in parsed) return { error: parsed.error };
-
-  try {
-    const result = await updateLegacyStockItemMetadata({
-      organizationId: organization.id,
-      stockItemId,
-      userId,
+      productName: parsed.data.productName,
+      variant: parsed.data.variant || null,
+      size: parsed.data.size || null,
+      ean: parsed.data.ean || null,
       itemCondition: parsed.data.itemCondition,
       imageUrls: parsed.data.imageUrls,
       location: parsed.data.location || null,
@@ -353,9 +360,56 @@ export async function updateLegacyStockItemMetadataAction(
     };
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : "Lagerposition konnte nicht gespeichert werden.",
+      error: stockMetadataError(error),
     };
   }
+}
+
+export async function updateLegacyStockItemMetadataAction(
+  stockItemId: string,
+  _previous: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { db, organization, userId } = await requireOrg("MEMBER");
+  const parsed = parseStockMetadata(formData);
+  if ("error" in parsed) return { error: parsed.error };
+  if (parsed.data.location) {
+    const location = await db.selectOption.findFirst({
+      where: { kind: "STORAGE_LOCATION", label: parsed.data.location },
+      select: { id: true },
+    });
+    if (!location) return { error: "Der gewählte Lagerstandort ist ungültig." };
+  }
+
+  try {
+    const result = await updateLegacyStockItemMetadata({
+      organizationId: organization.id,
+      stockItemId,
+      userId,
+      productName: parsed.data.productName,
+      variant: parsed.data.variant || null,
+      size: parsed.data.size || null,
+      ean: parsed.data.ean || null,
+      itemCondition: parsed.data.itemCondition,
+      imageUrls: parsed.data.imageUrls,
+      location: parsed.data.location || null,
+      notes: parsed.data.notes || null,
+    });
+    if (result.changed) revalidatePath("/lager");
+    return {
+      success: result.changed ? "Lagerposition gespeichert ✓" : "Keine Änderungen vorhanden.",
+    };
+  } catch (error) {
+    return {
+      error: stockMetadataError(error),
+    };
+  }
+}
+
+function stockMetadataError(error: unknown): string {
+  return error instanceof Error && error.name === "StockMetadataDomainError"
+    ? error.message
+    : "Lagerposition konnte nicht gespeichert werden.";
 }
 
 export interface StockHistoryPayload {
@@ -412,7 +466,9 @@ export async function loadStockHistoryAction(
         organizationId: organization.id,
         entityType,
         entityId: positionId,
-        action: "inventory_position.updated",
+        action: source === "owned"
+          ? "inventory_position.updated"
+          : { in: ["inventory_position.updated", "stock_item.status_change"] },
       },
       include: { user: { select: { name: true, email: true } } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -607,5 +663,38 @@ export async function bulkUpdateStockAction(
 
   revalidatePath("/lager");
   return { success: `${itemIds.length} Artikel aktualisiert âœ“` };
+}
+
+export async function loadStockReceiptProductOptionsAction(): Promise<{
+  products?: Array<{
+    id: string;
+    name: string;
+    variant: string | null;
+    size: string | null;
+    ean: string | null;
+    category: string | null;
+    defaultPriceCents: number | null;
+  }>;
+  error?: string;
+}> {
+  try {
+    const { db } = await requireOrg("MEMBER");
+    const products = await db.product.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        variant: true,
+        size: true,
+        ean: true,
+        category: true,
+        defaultPriceCents: true,
+      },
+      take: 500,
+    });
+    return { products };
+  } catch {
+    return { error: "Produkte konnten nicht geladen werden." };
+  }
 }
 

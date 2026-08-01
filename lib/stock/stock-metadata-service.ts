@@ -8,7 +8,10 @@ type MetadataRecord = Record<string, MetadataValue>;
 
 export class StockMetadataDomainError extends Error {
   constructor(
-    public readonly code: "POSITION_NOT_FOUND" | "INVENTORY_TYPE_MISMATCH",
+    public readonly code:
+      | "POSITION_NOT_FOUND"
+      | "INVENTORY_TYPE_MISMATCH"
+      | "PRODUCT_CONFLICT",
     message: string
   ) {
     super(message);
@@ -37,18 +40,27 @@ export async function updateInventoryPositionMetadata(input: {
   organizationId: string;
   inventoryPositionId: string;
   userId: string;
+  productName: string;
+  variant: string | null;
+  size: string | null;
+  ean: string | null;
   itemCondition: ItemCondition | null;
   imageUrls: string[];
+  location: string | null;
+  notes: string | null;
   tx?: StockMetadataTransaction;
   prisma?: StockMetadataPrismaClient;
 }): Promise<{ changed: boolean }> {
   return withStockMetadataTransaction(input.organizationId, input, async (tx) => {
     await tx.$queryRaw`
-      SELECT "id"
-      FROM "inventory_positions"
-      WHERE "id" = ${input.inventoryPositionId}
-        AND "organization_id" = ${input.organizationId}
-      FOR UPDATE
+      SELECT ip."id"
+      FROM "inventory_positions" ip
+      INNER JOIN "products" p
+        ON p."id" = ip."product_id"
+        AND p."organization_id" = ip."organization_id"
+      WHERE ip."id" = ${input.inventoryPositionId}
+        AND ip."organization_id" = ${input.organizationId}
+      FOR UPDATE OF ip, p
     `;
     const position = await tx.inventoryPosition.findFirst({
       where: {
@@ -59,7 +71,19 @@ export async function updateInventoryPositionMetadata(input: {
         id: true,
         inventoryType: true,
         itemCondition: true,
-        ownedLot: { select: { imageUrls: true } },
+        location: true,
+        notes: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            variant: true,
+            size: true,
+            ean: true,
+            imageUrls: true,
+          },
+        },
+        ownedLot: { select: { imageUrls: true, ean: true } },
       },
     });
     if (!position) {
@@ -77,26 +101,89 @@ export async function updateInventoryPositionMetadata(input: {
 
     const changes = getStockMetadataChanges(
       {
+        productName: position.product.name,
+        variant: position.product.variant,
+        size: position.product.size,
+        ean: position.ownedLot.ean ?? position.product.ean,
         itemCondition: position.itemCondition,
-        imageUrls: position.ownedLot.imageUrls,
+        imageUrls: position.ownedLot.imageUrls.length > 0
+          ? position.ownedLot.imageUrls
+          : position.product.imageUrls,
+        location: position.location,
+        notes: position.notes,
       },
       {
+        productName: input.productName,
+        variant: input.variant,
+        size: input.size,
+        ean: input.ean,
         itemCondition: input.itemCondition,
         imageUrls: input.imageUrls,
+        location: input.location,
+        notes: input.notes,
       }
     );
     if (Object.keys(changes.after).length === 0) return { changed: false };
 
-    if ("itemCondition" in changes.after) {
-      await tx.inventoryPosition.update({
-        where: { id: position.id },
-        data: { itemCondition: input.itemCondition },
+    if (
+      input.variant !== null
+      && ("productName" in changes.after || "variant" in changes.after)
+    ) {
+      const duplicate = await tx.product.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          id: { not: position.product.id },
+          name: input.productName,
+          variant: input.variant,
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new StockMetadataDomainError(
+          "PRODUCT_CONFLICT",
+          "Ein Produkt mit diesem Namen und dieser Variante ist bereits vorhanden."
+        );
+      }
+    }
+    if (
+      "productName" in changes.after
+      || "variant" in changes.after
+      || "size" in changes.after
+      || "ean" in changes.after
+      || "imageUrls" in changes.after
+    ) {
+      await tx.product.update({
+        where: { id: position.product.id },
+        data: {
+          ...("productName" in changes.after ? { name: input.productName } : {}),
+          ...("variant" in changes.after ? { variant: input.variant } : {}),
+          ...("size" in changes.after ? { size: input.size } : {}),
+          ...("ean" in changes.after ? { ean: input.ean } : {}),
+          ...("imageUrls" in changes.after ? { imageUrls: input.imageUrls } : {}),
+        },
       });
     }
-    if ("imageUrls" in changes.after) {
+    if (
+      "itemCondition" in changes.after
+      || "location" in changes.after
+      || "notes" in changes.after
+    ) {
+      await tx.inventoryPosition.update({
+        where: { id: position.id },
+        data: {
+          ...("itemCondition" in changes.after ? { itemCondition: input.itemCondition } : {}),
+          ...("location" in changes.after ? { location: input.location } : {}),
+          ...("notes" in changes.after ? { notes: input.notes } : {}),
+        },
+      });
+    }
+    if ("imageUrls" in changes.after || "ean" in changes.after) {
       await tx.ownedStockLot.update({
         where: { inventoryPositionId: position.id },
-        data: { imageUrls: input.imageUrls },
+        data: {
+          ...("imageUrls" in changes.after ? { imageUrls: input.imageUrls } : {}),
+          ...("ean" in changes.after ? { ean: input.ean } : {}),
+        },
       });
     }
     await tx.auditLog.create({
@@ -118,6 +205,10 @@ export async function updateLegacyStockItemMetadata(input: {
   organizationId: string;
   stockItemId: string;
   userId: string;
+  productName: string;
+  variant: string | null;
+  size: string | null;
+  ean: string | null;
   itemCondition: ItemCondition | null;
   imageUrls: string[];
   location: string | null;
@@ -137,6 +228,10 @@ export async function updateLegacyStockItemMetadata(input: {
       where: { id: input.stockItemId, organizationId: input.organizationId },
       select: {
         id: true,
+        title: true,
+        variant: true,
+        size: true,
+        ean: true,
         itemCondition: true,
         imageUrls: true,
         location: true,
@@ -151,19 +246,42 @@ export async function updateLegacyStockItemMetadata(input: {
     }
 
     const next = {
+      productName: input.productName,
+      variant: input.variant,
+      size: input.size,
+      ean: input.ean,
       itemCondition: input.itemCondition,
       imageUrls: input.imageUrls,
       location: input.location,
       notes: input.notes,
     };
-    const changes = getStockMetadataChanges(item, next);
+    const changes = getStockMetadataChanges(
+      {
+        productName: item.title,
+        variant: item.variant,
+        size: item.size,
+        ean: item.ean,
+        itemCondition: item.itemCondition,
+        imageUrls: item.imageUrls,
+        location: item.location,
+        notes: item.notes,
+      },
+      next
+    );
     if (Object.keys(changes.after).length === 0) return { changed: false };
 
     await tx.stockItem.update({
       where: { id: item.id },
-      data: Object.fromEntries(
-        Object.keys(changes.after).map((field) => [field, next[field as keyof typeof next]])
-      ),
+      data: {
+        ...("productName" in changes.after ? { title: input.productName } : {}),
+        ...("variant" in changes.after ? { variant: input.variant } : {}),
+        ...("size" in changes.after ? { size: input.size } : {}),
+        ...("ean" in changes.after ? { ean: input.ean } : {}),
+        ...("itemCondition" in changes.after ? { itemCondition: input.itemCondition } : {}),
+        ...("imageUrls" in changes.after ? { imageUrls: input.imageUrls } : {}),
+        ...("location" in changes.after ? { location: input.location } : {}),
+        ...("notes" in changes.after ? { notes: input.notes } : {}),
+      },
     });
     await tx.auditLog.create({
       data: {

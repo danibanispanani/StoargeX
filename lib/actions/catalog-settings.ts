@@ -90,6 +90,7 @@ export async function addSelectOptionAction(
         data: { active: true },
       });
       revalidatePath("/einstellungen");
+      revalidatePath("/lager");
       return { success: `"${parsed.data.label}" reaktiviert ✓` };
     }
     return { error: "Dieser Wert existiert bereits." };
@@ -113,6 +114,7 @@ export async function addSelectOptionAction(
   });
 
   revalidatePath("/einstellungen");
+  revalidatePath("/lager");
   return { success: `"${parsed.data.label}" hinzugefügt ✓` };
 }
 
@@ -129,5 +131,6 @@ export async function removeSelectOptionAction(optionId: string): Promise<Action
   });
 
   revalidatePath("/einstellungen");
+  revalidatePath("/lager");
   return { success: `"${option.label}" entfernt ✓` };
 }
