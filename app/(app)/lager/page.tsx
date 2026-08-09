@@ -44,7 +44,7 @@ export default async function StockPage({
   const view = parseStockView(params.view);
   const tableQuery = parseStockTableQuery(params);
 
-  const { ownedPositions, items, platforms, zmOptions, storageLocations, lowAlerts } =
+  const { ownedPositions, imageThumbnailsByPositionId, items, platforms, zmOptions, storageLocations, lowAlerts } =
     await loadLagerInitialQueries({
       db,
       organizationId: organization.id,
@@ -62,7 +62,7 @@ export default async function StockPage({
   const ownedRows: StockRow[] = trace.measureSync("transform.inventory_positions", () =>
     ownedPositions.filter((position) => position.ownedLot).map((position) => {
       const lot = position.ownedLot!;
-      const imageUrls = [...new Set([...lot.imageUrls, ...position.product.imageUrls])];
+      const imageUrl = imageThumbnailsByPositionId[position.id] ?? null;
       return {
         source: "owned",
         id: position.id,
@@ -83,8 +83,8 @@ export default async function StockPage({
         status: "IN_STOCK",
         derivedStatus: deriveOwnedStockStatus(position),
         ean: lot.ean ?? position.product.ean ?? "",
-        imageUrl: imageUrls[0] ?? null,
-        imageUrls,
+        imageUrl,
+        imageUrls: imageUrl ? [imageUrl] : [],
         itemCondition: position.itemCondition,
         location: position.location,
         listings: position.listings.map((l) => l.platformId),

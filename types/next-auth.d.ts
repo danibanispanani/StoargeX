@@ -10,6 +10,14 @@ export interface SessionMembership {
   tier: SubscriptionTier;
 }
 
+export interface SessionReadOrgSnapshot {
+  userId: string;
+  orgId: string;
+  role: Role;
+  issuedAtMs: number;
+  expiresAtMs: number;
+}
+
 declare module "next-auth" {
   interface Session {
     user: {
@@ -20,6 +28,7 @@ declare module "next-auth" {
     activeOrgId: string | null;
     activeRole: Role | null;
     activeTier: SubscriptionTier | null;
+    readOrgSnapshot: SessionReadOrgSnapshot | null;
   }
 }
 
@@ -29,5 +38,6 @@ declare module "next-auth/jwt" {
     memberships: SessionMembership[];
     activeOrgId: string | null;
     totpEnabled: boolean;
+    readOrgSnapshot: SessionReadOrgSnapshot | null;
   }
 }

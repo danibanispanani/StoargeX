@@ -2,6 +2,8 @@
 
 Stand: 17. Juli 2026
 
+> **Historische Messbasis:** Dieses Dokument ist kein aktuelles Release-Gate und keine Beta-Freigabe. Insbesondere KL-01 wird durch den laufenden Sales-Read-Performance-Pilot neu gemessen. Die weiterhin relevanten Sicherheits- und Betriebsrisiken bleiben bis zu einer erneuten Verifikation offen.
+
 Es bestehen keine bekannten P0- oder P1-Blocker. Die folgenden Punkte müssen im Beta-Betrieb sichtbar bleiben.
 
 ## KL-01 – Verkaufsseite bleibt bei großen Ergebnismengen CPU-lastig

@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -30,3 +31,18 @@ export function tenantDb(organizationId: string) {
 }
 
 export type TenantDb = ReturnType<typeof tenantDb>;
+export type TenantReadTransactionDb = Prisma.TransactionClient;
+
+/**
+ * Eng begrenzter Kandidat fuer normale Read-Vertraege, die mehrere Abfragen
+ * im selben RLS-Kontext ausfuehren. Nicht fuer Writes oder sensitive Pfade.
+ */
+export async function withTenantReadTransaction<T>(
+  organizationId: string,
+  task: (db: TenantReadTransactionDb) => Promise<T>
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organizationId}, TRUE)`;
+    return task(tx);
+  });
+}

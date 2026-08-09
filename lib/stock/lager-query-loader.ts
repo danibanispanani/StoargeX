@@ -1,5 +1,6 @@
-import { EntryStatus, StockItemStatus } from "@prisma/client";
+import { EntryStatus, Prisma, StockItemStatus } from "@prisma/client";
 import type { TenantDb } from "@/lib/tenant-db";
+import { withTenantReadTransaction } from "@/lib/tenant-db";
 import { getOptionsForKinds } from "@/lib/options";
 import { loadLowStockAlerts } from "@/lib/reporting";
 import type { StockView } from "@/lib/stock/stock-views";
@@ -19,6 +20,11 @@ export interface LagerQueryParams {
   bis?: string;
   alter?: string;
 }
+
+type InventoryThumbnailRow = {
+  positionId: string;
+  imageUrl: string | null;
+};
 
 export async function loadLagerInitialQueries(input: {
   db: TenantDb;
@@ -100,9 +106,40 @@ export async function loadLagerInitialQueries(input: {
             ? { ownedLot: { is: ownedLotWhere } }
             : {}),
         },
-        include: {
-          product: true,
-          ownedLot: true,
+        select: {
+          id: true,
+          inventoryNumber: true,
+          itemCondition: true,
+          location: true,
+          notes: true,
+          quantityReceived: true,
+          quantityAvailable: true,
+          quantityReserved: true,
+          quantityInspection: true,
+          quantityDefective: true,
+          quantitySold: true,
+          product: {
+            select: {
+              name: true,
+              variant: true,
+              size: true,
+              ean: true,
+            },
+          },
+          ownedLot: {
+            select: {
+              id: true,
+              purchaseDate: true,
+              vendor: true,
+              unitPriceGross: true,
+              unitPriceNet: true,
+              vatDeductible: true,
+              paymentMethod: true,
+              purchaseEntryStatus: true,
+              returnEntryStatus: true,
+              ean: true,
+            },
+          },
           listings: { select: { platformId: true } },
         },
         orderBy: { inventoryNumber: "desc" },
@@ -149,7 +186,29 @@ export async function loadLagerInitialQueries(input: {
               }
             : {}),
         },
-        include: { listings: { select: { platformId: true } } },
+        select: {
+          id: true,
+          sku: true,
+          purchaseDate: true,
+          supplier: true,
+          title: true,
+          variant: true,
+          size: true,
+          purchasePriceCents: true,
+          purchaseNetCents: true,
+          inputTaxDeductible: true,
+          paymentMethod: true,
+          kaufStatus: true,
+          retoureStatus: true,
+          status: true,
+          ean: true,
+          imageUrls: true,
+          itemCondition: true,
+          location: true,
+          notes: true,
+          quantity: true,
+          listings: { select: { platformId: true } },
+        },
         orderBy: { sku: "desc" },
         take: 500,
       })),
@@ -172,13 +231,47 @@ export async function loadLagerInitialQueries(input: {
         2
       ),
     ]);
+  const shouldLoadThumbnails = view === "listings" || view === "all";
+  const thumbnailRows = ownedPositions.length && shouldLoadThumbnails
+    ? await measureDb(
+        "query.inventory_image_thumbnails",
+        () =>
+          loadInventoryImageThumbnails(
+            organizationId,
+            ownedPositions.map((position) => position.id)
+          ),
+        1
+      )
+    : [];
 
   return {
     ownedPositions,
+    imageThumbnailsByPositionId: Object.fromEntries(
+      thumbnailRows.map((row) => [row.positionId, row.imageUrl])
+    ),
     items,
     platforms,
     zmOptions: stockOptions.PAYMENT_METHOD,
     storageLocations: stockOptions.STORAGE_LOCATION,
     lowAlerts,
   };
+}
+
+async function loadInventoryImageThumbnails(
+  organizationId: string,
+  positionIds: string[]
+): Promise<InventoryThumbnailRow[]> {
+  if (positionIds.length === 0) return [];
+  return withTenantReadTransaction(organizationId, (tx) =>
+    tx.$queryRaw<InventoryThumbnailRow[]>`
+      SELECT
+        position."id" AS "positionId",
+        COALESCE(lot."image_urls"[1], product."image_urls"[1]) AS "imageUrl"
+      FROM "inventory_positions" position
+      JOIN "products" product ON product."id" = position."product_id"
+      LEFT JOIN "owned_stock_lots" lot ON lot."inventory_position_id" = position."id"
+      WHERE position."organization_id" = ${organizationId}
+        AND position."id" IN (${Prisma.join(positionIds)})
+    `
+  );
 }

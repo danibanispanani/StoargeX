@@ -5,6 +5,10 @@ import argon2 from "argon2";
 import { z } from "zod";
 import { authConfig } from "@/auth.config";
 import { prisma, bypassDb } from "@/lib/prisma";
+import {
+  createReadOrgSnapshot,
+  isReadOrgSnapshotUsable,
+} from "@/lib/read-org-snapshot";
 import { verifyTotpCode } from "@/lib/totp";
 import type { SessionMembership } from "@/types/next-auth";
 
@@ -175,6 +179,22 @@ export const {
       }
       if (!token.activeOrgId && token.memberships?.length) {
         token.activeOrgId = token.memberships[0].orgId;
+      }
+
+      if (user?.id || trigger === "update") {
+        token.readOrgSnapshot = createReadOrgSnapshot({
+          userId: token.userId,
+          activeOrgId: token.activeOrgId,
+          memberships: token.memberships,
+        });
+      } else if (
+        !isReadOrgSnapshotUsable(token.readOrgSnapshot, {
+          userId: token.userId,
+          activeOrgId: token.activeOrgId,
+          minRole: "READONLY",
+        })
+      ) {
+        token.readOrgSnapshot = null;
       }
 
       return token;

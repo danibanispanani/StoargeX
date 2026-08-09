@@ -1,8 +1,7 @@
-import type { Prisma } from "@prisma/client";
+import { redirect } from "next/navigation";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/operational-table";
-import { requireOrg } from "@/lib/org";
+import { resolveReadOrgContext } from "@/lib/org";
 import { PageHeader } from "@/components/app/page-header";
-import { getOptions } from "@/lib/options";
 import { formatEuro } from "@/lib/calculations";
 import { type EditableSale } from "@/components/sales/sale-dialog";
 import { LazySaleDialog } from "@/components/sales/lazy-sale-dialog";
@@ -34,10 +33,8 @@ import {
   parseOperationalSearchQuery,
   parseOperationalModuleView,
 } from "@/lib/operational-modules";
-import {
-  buildSaleViewWhere,
-  parseSalePagination,
-} from "@/lib/sales/sale-table";
+import { loadSalesInitialRead } from "@/lib/sales/sales-read-loader";
+import { createSalesPerformanceTrace } from "@/lib/sales/sales-performance";
 
 export default async function SalesPage({
   searchParams,
@@ -57,206 +54,33 @@ export default async function SalesPage({
     pageSize?: string;
   }>;
 }) {
-  const context = await requireOrg();
-  const { db, organization, userId } = context;
+  const trace = await createSalesPerformanceTrace("sales.page");
+  const readContextStartedAt = performance.now();
+  const access = await resolveReadOrgContext();
+  trace.record("read_org.resolve", performance.now() - readContextStartedAt);
+  if (!access.ok) {
+    if (access.status === 401) redirect("/login");
+    throw new Error("Keine Berechtigung fuer diese Aktion.");
+  }
+  const { db, organizationId, userId, source: readContextSource } = access.context;
   const rawParams = await searchParams;
   const normalizedQuery = parseOperationalSearchQuery(rawParams.q);
   const params = { ...rawParams, q: normalizedQuery || undefined };
   const requestedView = parseOperationalModuleView(OPERATIONAL_MODULES.sales, params.preset);
-  const { page: requestedPage, pageSize } = parseSalePagination(params);
-
-  const filterWhere: Prisma.SaleWhereInput = {
-    ...(params.status === "PENDING"
-      ? { status: { in: ["PENDING", "PAID", "SHIPPED"] } }
-      : params.status === "COMPLETED"
-        ? { status: "COMPLETED" as const }
-        : {}),
-    ...(params.rechnung === "offen"
-      ? { invoiceCreated: false }
-      : params.rechnung === "erledigt"
-        ? { invoiceCreated: true }
-        : {}),
-    ...(params.buchung === "fehlt"
-      ? {
-          status: { not: "CANCELLED" },
-          AND: [{ OR: [{ invoiceCreated: false }, { feesBooked: false }] }],
-        }
-      : {}),
-    ...(params.porto === "offen"
-      ? {
-          status: { in: ["PAID", "SHIPPED"] },
-          postageBooked: false,
-        }
-      : {}),
-    ...(params.platform ? { platformId: params.platform } : {}),
-    ...(params.versandart ? { shippingMethod: params.versandart } : {}),
-    ...(params.von || params.bis
-      ? {
-          soldAt: {
-            ...(params.von ? { gte: new Date(params.von) } : {}),
-            ...(params.bis ? { lte: new Date(`${params.bis}T23:59:59`) } : {}),
-          },
-        }
-      : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { orderNumber: { contains: params.q, mode: "insensitive" as const } },
-            { notes: { contains: params.q, mode: "insensitive" as const } },
-            {
-              saleLines: {
-                some: {
-                  OR: [
-                    {
-                      descriptionSnapshot: {
-                        contains: params.q,
-                        mode: "insensitive" as const,
-                      },
-                    },
-                    {
-                      allocations: {
-                        some: {
-                          inventoryPosition: {
-                            inventoryNumber: {
-                              contains: params.q,
-                              mode: "insensitive" as const,
-                            },
-                          },
-                        },
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-            {
-              items: {
-                some: {
-                  stockItem: {
-                    OR: [
-                      { title: { contains: params.q, mode: "insensitive" as const } },
-                      { sku: { contains: params.q, mode: "insensitive" as const } },
-                    ],
-                  },
-                },
-              },
-            },
-          ],
-        }
-      : {}),
-  };
-  const viewWhere = buildSaleViewWhere(requestedView);
-  const where: Prisma.SaleWhereInput = { AND: [filterWhere, viewWhere] };
-  const optionsPromise = Promise.all([
-    db.platform.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    getOptions(db, organization.id, "PAYOUT_RECIPIENT"),
-    db.shippingRate.findMany({
-      where: { active: true },
-      orderBy: [{ carrierName: "asc" }, { name: "asc" }],
-      select: {
-        id: true,
-        carrierName: true,
-        name: true,
-        countries: true,
-        baseCents: true,
-      },
-    }),
-    db.marketplaceAccount.findMany({
-      where: { active: true },
-      include: { defaultFeeSchedule: true },
-      orderBy: { displayName: "asc" },
-    }),
-  ]);
-  const totalResults = await db.sale.count({ where });
-  const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
-  const page = Math.min(requestedPage, totalPages);
-
-  const [sales, [platforms, payoutOptions, rates, marketplaceAccounts]] =
-    await Promise.all([
-      db.sale.findMany({
-        where,
-        include: {
-          platform: { select: { name: true } },
-          debtLinks: {
-            include: {
-              debt: { select: { debtNumber: true, status: true } },
-            },
-          },
-          saleLines: {
-            include: {
-              allocations: {
-                include: {
-                  inventoryPosition: {
-                    include: {
-                      consignmentLot: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          items: {
-            include: {
-              stockItem: { select: { sku: true, title: true, variant: true, size: true } },
-              consignment: { select: { sku: true, itemTitle: true } },
-            },
-          },
-        },
-        orderBy: { soldAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      optionsPromise,
-    ]);
-
-  const rows = sales.map((sale) => {
-    const hasNewLines = sale.saleLines.length > 0;
-    const itemInfos = hasNewLines
-      ? sale.saleLines.map((line) => ({
-          sku: line.allocations
-            .map((allocation) => allocation.inventoryPosition.inventoryNumber)
-            .join(", "),
-          model: line.descriptionSnapshot,
-          variant: line.variantSnapshot ?? "",
-          size: line.sizeSnapshot ?? "",
-          quantity: line.quantity,
-        }))
-      : sale.items.map((item) =>
-          item.stockItem
-            ? {
-                sku: item.stockItem.sku,
-                model: item.stockItem.title,
-                variant: item.stockItem.variant ?? "",
-                size: item.stockItem.size ?? "",
-                quantity: 1,
-              }
-            : {
-                sku: item.consignment?.sku ?? "?",
-                model: item.consignment?.itemTitle ?? "?",
-                variant: "",
-                size: "",
-                quantity: 1,
-              }
-        );
-    const ekNetCents = hasNewLines
-      ? sale.saleLines.reduce(
-          (sum, line) =>
-            sum +
-            line.allocations.reduce(
-              (lineSum, allocation) =>
-                lineSum +
-                allocation.quantity *
-                  Math.round(Number(allocation.unitCostNetSnapshot) * 100),
-              0
-            ),
-          0
-        )
-      : sale.items.reduce((sum, item) => sum + item.ekNetCents, 0);
-    return { sale, itemInfos, ekNetCents, hasNewLines };
+  const {
+    rows,
+    platforms,
+    shippingMethodOptions,
+    totalResults,
+    page,
+    pageSize,
+    rowCounts,
+  } = await loadSalesInitialRead({
+    db,
+    organizationId,
+    params,
+    view: requestedView,
+    trace,
   });
 
   const sum = rows.reduce(
@@ -267,26 +91,18 @@ export default async function SalesPage({
     }),
     { gross: 0, profit: 0, qty: 0 }
   );
-  const shippingMethodOptions = [
-    ...new Set([
-      ...rates.map((rate) => `${rate.carrierName} ${rate.name}`),
-      "Abholung",
-      "Vinted",
-      "Sonstiges",
-    ]),
-  ];
   const currentQuery = operationalSearchParams({
     ...params,
     preset: requestedView === "standard" ? undefined : requestedView,
     page: page > 1 ? String(page) : undefined,
     pageSize: pageSize === DEFAULT_TABLE_PAGE_SIZE ? undefined : String(pageSize),
   });
-  const marketplaceAccountOptions = marketplaceAccounts.map((account) => ({
-    id: account.id,
-    platformId: account.platformId,
-    displayName: account.displayName,
-    catalogVersion: account.defaultFeeSchedule?.version ?? null,
-  }));
+  trace.finish({
+    readContextSource,
+    salesRows: rowCounts.sales,
+    platformOptions: rowCounts.platforms,
+    shippingMethods: rowCounts.shippingMethods,
+  });
 
   function toEditable(row: (typeof rows)[number]): EditableSale {
     const { sale } = row;
@@ -389,7 +205,7 @@ export default async function SalesPage({
         eyebrow="Handel"
         title="Verkauf"
         description="Verkäufe, Zahlungen, Versand und Abschluss in einem Ablauf steuern."
-        actions={<LazyCreateSaleDialog platforms={platforms} marketplaceAccounts={marketplaceAccountOptions} payoutOptions={payoutOptions} shippingRates={rates} />}
+        actions={<LazyCreateSaleDialog />}
       />
 
       <SaleFilterBar
@@ -411,7 +227,7 @@ export default async function SalesPage({
       <CompactTableShell
         definition={OPERATIONAL_MODULES.sales}
         clientPagination={false}
-        scope={{ organizationId: organization.id, userId }}
+        scope={{ organizationId, userId }}
         currentQuery={currentQuery}
         totalResults={totalResults}
       >
@@ -543,10 +359,6 @@ export default async function SalesPage({
                       <SaleDetailDrawer row={row} />
                       <LazySaleDialog
                         sale={toEditable(row)}
-                        platforms={platforms}
-                        marketplaceAccounts={marketplaceAccountOptions}
-                        payoutOptions={payoutOptions}
-                        shippingRates={rates}
                       />
                       {row.hasNewLines && row.sale.status !== "CANCELLED" && (
                         <CancelSaleButton saleId={row.sale.id} />

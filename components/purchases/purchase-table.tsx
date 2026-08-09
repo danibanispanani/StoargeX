@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 import type { PurchaseShippingStatus, PurchaseStatus } from "@prisma/client";
+import { loadPurchaseDetailsAction } from "@/lib/actions/purchases";
 import { formatEuro } from "@/lib/calculations";
 import { classifyReturnDeadline } from "@/lib/services/owned-purchase-service";
 import { PURCHASE_TABLE_DEFINITION, type PurchaseTableQuery } from "@/lib/purchases/purchase-table";
@@ -116,7 +119,23 @@ export function PurchaseTable({ rows, totalResults, query, queryString, scope, n
 }
 
 function PurchaseDetails({ row, nowIso }: { row: PurchaseOperationalRow; nowIso: string }) {
-  return <DetailDrawer title={row.purchaseNumber} description={`${row.supplier} · ${date(row.purchaseDate)}`}>
+  const [details, setDetails] = useState<Pick<PurchaseOperationalRow, "receipts" | "lots"> | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function loadDetails(open: boolean) {
+    if (!open || details || pending) return;
+    startTransition(async () => {
+      const result = await loadPurchaseDetailsAction(row.id);
+      if (result.error || !result.details) {
+        toast.error(result.error ?? "Einkaufsdetails konnten nicht geladen werden.");
+        return;
+      }
+      setDetails(result.details);
+    });
+  }
+
+  const detailRow = details ? { ...row, ...details } : row;
+  return <DetailDrawer title={row.purchaseNumber} description={`${row.supplier} · ${date(row.purchaseDate)}`} onOpenChange={loadDetails}>
     <DetailGrid items={[
       { label: "Lieferanten-Bestellnr.", value: row.supplierOrderNumber || "–" },
       { label: "Versanddienstleister", value: row.shippingCarrier || "–" },
@@ -144,8 +163,8 @@ function PurchaseDetails({ row, nowIso }: { row: PurchaseOperationalRow; nowIso:
         </div>
       ))}
     </DetailSection>
-    <DetailSection title="Wareneingänge"><ReceiptList row={row} /></DetailSection>
-    <DetailSection title="Lots und Bewegungen">{row.lots.length ? row.lots.map((lot) => <p key={lot.inventoryNumber} className={lot.cancelled ? "text-muted-foreground line-through" : undefined}><span className="font-mono">{lot.inventoryNumber}</span> · {lot.quantity} Stk. · {date(lot.receivedAt)} · Movement {lot.movementId}</p>) : <p>Noch kein Wareneingang.</p>}</DetailSection>
+    <DetailSection title="Wareneingänge">{pending && !details ? <p>Details werden geladen…</p> : <ReceiptList row={detailRow} />}</DetailSection>
+    <DetailSection title="Lots und Bewegungen">{pending && !details ? <p>Details werden geladen…</p> : detailRow.lots.length ? detailRow.lots.map((lot) => <p key={lot.inventoryNumber} className={lot.cancelled ? "text-muted-foreground line-through" : undefined}><span className="font-mono">{lot.inventoryNumber}</span> · {lot.quantity} Stk. · {date(lot.receivedAt)} · Movement {lot.movementId}</p>) : <p>Noch kein Wareneingang.</p>}</DetailSection>
     {row.status !== "CANCELLED" ? <DetailSection title="Bestellung stornieren"><p className="mb-2 text-sm text-muted-foreground">Storniert die gesamte Bestellung. Noch vollständig vorhandene Wareneingänge werden dabei aus dem Lager zurückgebucht.</p><CancelPurchaseButton purchaseId={row.id} /></DetailSection> : null}
   </DetailDrawer>;
 }

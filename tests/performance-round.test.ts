@@ -6,7 +6,7 @@ function source(path: string) {
 }
 
 describe("erste Performance-Runde", () => {
-  it("lädt große Formularoptionen nicht mehr mit den Haupttabellen", () => {
+  it("laedt grosse Formularoptionen nicht mehr mit den Haupttabellen", () => {
     const stockPage = source("app/(app)/lager/page.tsx");
     const purchasePage = source("app/(app)/einkauf/page.tsx");
     const salesPage = source("app/(app)/verkauf/page.tsx");
@@ -20,7 +20,7 @@ describe("erste Performance-Runde", () => {
     expect(salesPage).not.toContain("getFeatureAccess");
   });
 
-  it("löst verzögert geladene Optionen tenant- und rollensicher auf", () => {
+  it("loest verzoegert geladene Optionen tenant- und rollensicher auf", () => {
     const stockActions = source("lib/actions/stock.ts");
     const purchaseActions = source("lib/actions/purchases.ts");
     const salesActions = source("lib/actions/sales.ts");
@@ -39,15 +39,24 @@ describe("erste Performance-Runde", () => {
     );
   });
 
-  it("startet unabhängige Verkaufsoptionen bereits parallel zur Zählung", () => {
+  it("laedt Verkaufsformularoptionen erst beim Oeffnen des Dialogs", () => {
     const salesPage = source("app/(app)/verkauf/page.tsx");
-    expect(salesPage.indexOf("const optionsPromise = Promise.all")).toBeGreaterThan(-1);
-    expect(salesPage.indexOf("const optionsPromise = Promise.all")).toBeLessThan(
-      salesPage.indexOf("const totalResults = await db.sale.count")
+    const salesActions = source("lib/actions/sales.ts");
+    const createDialog = source("components/sales/lazy-create-sale-dialog.tsx");
+    const editDialog = source("components/sales/lazy-sale-dialog.tsx");
+
+    expect(salesPage).toContain("loadSalesInitialRead");
+    expect(salesPage).not.toContain("marketplaceAccount.findMany");
+    expect(salesPage).not.toContain("getOptions(db");
+    expect(salesActions).toContain("loadSaleDialogOptionsAction");
+    expect(salesActions).toMatch(
+      /loadSaleDialogOptionsAction[\s\S]*requireOrg\("MEMBER"\)/
     );
+    expect(createDialog).toContain("loadSaleDialogOptionsAction({ includeItems: true })");
+    expect(editDialog).toContain("loadSaleDialogOptionsAction()");
   });
 
-  it("verwendet die request-lokal gecachte Sitzung in Layout und Org-Auflösung", () => {
+  it("verwendet die request-lokal gecachte Sitzung in Layout und Org-Aufloesung", () => {
     const org = source("lib/org.ts");
     const layout = source("app/(app)/layout.tsx");
     expect(org).toContain("export const getRequestSession = cache(auth)");
@@ -56,7 +65,7 @@ describe("erste Performance-Runde", () => {
     expect(layout).not.toContain('from "@/auth"');
   });
 
-  it("besitzt layoutnahe Ladezustände für alle fünf Haupttabs", () => {
+  it("besitzt layoutnahe Ladezustaende fuer alle fuenf Haupttabs", () => {
     for (const tab of ["dashboard", "lager", "einkauf", "verkauf", "produkte"]) {
       expect(source(`app/(app)/${tab}/loading.tsx`)).toContain(
         "OperationalPageLoading"
@@ -64,7 +73,7 @@ describe("erste Performance-Runde", () => {
     }
   });
 
-  it("löst Produktaktionen nicht zusätzlich per router.refresh aus", () => {
+  it("loest Produktaktionen nicht zusaetzlich per router.refresh aus", () => {
     const table = source("components/products/product-table.tsx");
     expect(table).not.toContain("router.refresh()");
     expect(table).not.toContain("useRouter");

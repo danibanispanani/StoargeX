@@ -10,6 +10,8 @@ owners:
 
 # Hybrid-SPA-Performancearchitektur
 
+> **Teilweise abgelöst (2026-08-09):** Die allgemeine Hybrid-SPA-Architektur und das bereits umgesetzte Fundament bleiben gültig. Die darin genannte Pilot-Reihenfolge mit `/lager` als erstem Fach-Tab ist jedoch durch [Sales-Read-Performance-Pilot](2026-08-09-002-sales-read-performance-pilot-plan.md) ersetzt. Der Lager-Prompt bleibt als bewusst aufgeschobene Folgearbeit erhalten.
+
 ## Ergebnisentscheidung
 
 Die geschützte Anwendung wird schrittweise zu einer **hybriden SPA innerhalb des bestehenden Next.js App Routers** weiterentwickelt. Es findet kein Frameworkwechsel statt. Die bestehende App Shell bleibt persistent; operative Module erhalten einen organisationsgebundenen Client-Cache, schlanke Datenverträge und gezielte Hintergrundaktualisierungen.

@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { cache } from "react";
 import { bypassDb } from "@/lib/prisma";
 import { tenantDb, type TenantDb } from "@/lib/tenant-db";
+import { isReadOrgSnapshotUsable } from "@/lib/read-org-snapshot";
 import { hasMinRole } from "@/lib/roles";
 import type { Membership, Organization, Role } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -21,6 +22,14 @@ export interface OrgContext {
   organization: Organization;
   membership: Membership;
   /** RLS-gescoppter Prisma-Client – ausschließlich diesen für Geschäftsdaten verwenden. */
+  db: TenantDb;
+}
+
+export interface ReadOrgContext {
+  userId: string;
+  organizationId: string;
+  role: Role;
+  source: "snapshot" | "fresh";
   db: TenantDb;
 }
 
@@ -115,4 +124,53 @@ export async function resolveApiOrgContext(
     return { ok: false, status: 403 };
   }
   return { ok: true, context: access.context };
+}
+
+/**
+ * Nur fuer normale, nicht-sensitive Reads. Writes, Bestands-, Finanz-, Export-,
+ * Sicherheits-, Entitlement- und Admin-Pfade muessen weiter requireOrg/
+ * resolveApiOrgContext verwenden.
+ */
+export async function resolveReadOrgContext(
+  minRole: Role = "READONLY"
+): Promise<{ ok: true; context: ReadOrgContext } | { ok: false; status: 401 | 403 }> {
+  const session = await getRequestSession();
+  if (!session?.user?.id) return { ok: false, status: 401 };
+
+  if (
+    isReadOrgSnapshotUsable(session.readOrgSnapshot, {
+      userId: session.user.id,
+      activeOrgId: session.activeOrgId,
+      minRole,
+    })
+  ) {
+    return {
+      ok: true,
+      context: {
+        userId: session.user.id,
+        organizationId: session.readOrgSnapshot.orgId,
+        role: session.readOrgSnapshot.role,
+        source: "snapshot",
+        db: tenantDb(session.readOrgSnapshot.orgId),
+      },
+    };
+  }
+
+  const fresh = await loadActiveOrgContext();
+  if (!fresh.ok) {
+    return { ok: false, status: fresh.reason === "no-membership" ? 403 : 401 };
+  }
+  if (!hasMinRole(fresh.context.membership.role, minRole)) {
+    return { ok: false, status: 403 };
+  }
+  return {
+    ok: true,
+    context: {
+      userId: fresh.context.userId,
+      organizationId: fresh.context.organization.id,
+      role: fresh.context.membership.role,
+      source: "fresh",
+      db: fresh.context.db,
+    },
+  };
 }

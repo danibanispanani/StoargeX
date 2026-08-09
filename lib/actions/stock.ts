@@ -473,6 +473,17 @@ function stockMetadataError(error: unknown): string {
 }
 
 export interface StockHistoryPayload {
+  metadata: {
+    title: string;
+    variant: string;
+    size: string;
+    ean: string;
+    itemCondition: ItemCondition | null;
+    imageUrls: string[];
+    imageUrl: string | null;
+    location: string | null;
+    notes: string;
+  };
   ownedDetails?: {
     purchaseNumber: string | null;
     returnableQuantity: number;
@@ -511,11 +522,26 @@ export async function loadStockHistoryAction(
         where: { id: positionId, organizationId: organization.id },
         select: {
           id: true,
+          inventoryNumber: true,
+          itemCondition: true,
+          location: true,
+          notes: true,
+          product: {
+            select: {
+              name: true,
+              variant: true,
+              size: true,
+              ean: true,
+              imageUrls: true,
+            },
+          },
           quantityAvailable: true,
           quantityInspection: true,
           quantityDefective: true,
           ownedLot: {
             select: {
+              ean: true,
+              imageUrls: true,
               purchaseLine: {
                 select: { purchase: { select: { purchaseNumber: true } } },
               },
@@ -549,7 +575,17 @@ export async function loadStockHistoryAction(
   const legacyItem = source === "legacy"
     ? await db.stockItem.findFirst({
         where: { id: positionId, organizationId: organization.id },
-        select: { id: true },
+        select: {
+          id: true,
+          title: true,
+          variant: true,
+          size: true,
+          ean: true,
+          imageUrls: true,
+          itemCondition: true,
+          location: true,
+          notes: true,
+        },
       })
     : null;
   if (!ownedPosition && !legacyItem) return { error: "Lagerposition wurde nicht gefunden." };
@@ -583,6 +619,9 @@ export async function loadStockHistoryAction(
 
   return {
     data: {
+      metadata: ownedPosition
+        ? ownedStockMetadata(ownedPosition)
+        : legacyStockMetadata(legacyItem!),
       ...(ownedPosition
         ? { ownedDetails: ownedStockDetails(ownedPosition) }
         : {}),
@@ -607,11 +646,82 @@ export async function loadStockHistoryAction(
   };
 }
 
+function ownedStockMetadata(position: {
+  inventoryNumber: string;
+  itemCondition: ItemCondition | null;
+  location: string | null;
+  notes: string | null;
+  product: {
+    name: string;
+    variant: string | null;
+    size: string | null;
+    ean: string | null;
+    imageUrls: string[];
+  };
+  ownedLot: { ean: string | null; imageUrls: string[] } | null;
+}): StockHistoryPayload["metadata"] {
+  const imageUrls = [
+    ...new Set([
+      ...(position.ownedLot?.imageUrls ?? []),
+      ...position.product.imageUrls,
+    ]),
+  ];
+  return {
+    title: position.product.name,
+    variant: position.product.variant ?? "",
+    size: position.product.size ?? "",
+    ean: position.ownedLot?.ean ?? position.product.ean ?? "",
+    itemCondition: position.itemCondition,
+    imageUrls,
+    imageUrl: imageUrls[0] ?? null,
+    location: position.location,
+    notes: position.notes ?? "",
+  };
+}
+
+function legacyStockMetadata(item: {
+  title: string;
+  variant: string | null;
+  size: string | null;
+  ean: string | null;
+  imageUrls: string[];
+  itemCondition: ItemCondition | null;
+  location: string | null;
+  notes: string | null;
+}): StockHistoryPayload["metadata"] {
+  return {
+    title: item.title,
+    variant: item.variant ?? "",
+    size: item.size ?? "",
+    ean: item.ean ?? "",
+    itemCondition: item.itemCondition,
+    imageUrls: item.imageUrls,
+    imageUrl: item.imageUrls[0] ?? null,
+    location: item.location,
+    notes: item.notes ?? "",
+  };
+}
+
 function ownedStockDetails(position: {
+  inventoryNumber: string;
+  itemCondition: ItemCondition | null;
+  location: string | null;
+  notes: string | null;
+  product: {
+    name: string;
+    variant: string | null;
+    size: string | null;
+    ean: string | null;
+    imageUrls: string[];
+  };
   quantityAvailable: number;
   quantityInspection: number;
   quantityDefective: number;
-  ownedLot: { purchaseLine: { purchase: { purchaseNumber: string } } | null } | null;
+  ownedLot: {
+    ean: string | null;
+    imageUrls: string[];
+    purchaseLine: { purchase: { purchaseNumber: string } } | null;
+  } | null;
   purchaseReceiptLine: {
     quantity: number;
     cancelledQuantity: number;

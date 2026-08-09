@@ -12,6 +12,7 @@ import {
   PURCHASE_STATUS_VALUES,
   RETURN_WINDOW_DAYS,
 } from "@/lib/purchases/purchase-workflow";
+import { loadPurchaseDetailRead } from "@/lib/purchases/purchase-read-loader";
 import {
   cancelPurchase,
   cancelPurchaseReceipt,
@@ -454,5 +455,19 @@ export async function loadPurchaseProductOptionsAction(): Promise<{
     return { products };
   } catch {
     return { error: "Produkte konnten nicht geladen werden." };
+  }
+}
+
+export async function loadPurchaseDetailsAction(purchaseId: string): Promise<{
+  details?: Awaited<ReturnType<typeof loadPurchaseDetailRead>>;
+  error?: string;
+}> {
+  try {
+    const { db } = await requireOrg("MEMBER");
+    const details = await loadPurchaseDetailRead({ db, purchaseId });
+    if (!details) return { error: "Einkauf wurde nicht gefunden." };
+    return { details };
+  } catch {
+    return { error: "Einkaufsdetails konnten nicht geladen werden." };
   }
 }

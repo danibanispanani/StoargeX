@@ -31,6 +31,7 @@ export const authConfig = {
       );
       session.activeRole = active?.role ?? null;
       session.activeTier = active?.tier ?? null;
+      session.readOrgSnapshot = token.readOrgSnapshot ?? null;
       return session;
     },
   },

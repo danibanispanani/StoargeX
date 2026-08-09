@@ -6,6 +6,7 @@ import { SaleStatus } from "@prisma/client";
 import { requireOrg } from "@/lib/org";
 import { assertFeatureAccess, getFeatureAccess } from "@/lib/feature-access";
 import { FEATURE_KEYS } from "@/lib/services/feature-entitlement-service";
+import { loadSaleDialogOptions } from "@/lib/sales/sales-read-loader";
 import { writeAuditLog } from "@/lib/audit";
 import {
   calcSale,
@@ -532,4 +533,107 @@ export async function loadSellableSaleItemsAction(): Promise<{
       error: "Verfügbare Lagerpositionen konnten nicht geladen werden.",
     };
   }
+}
+
+export async function loadSaleDialogOptionsAction(input: {
+  includeItems?: boolean;
+} = {}): Promise<{
+  platforms?: Array<{ id: string; name: string }>;
+  marketplaceAccounts?: Array<{
+    id: string;
+    platformId: string;
+    displayName: string;
+    catalogVersion: string | null;
+  }>;
+  payoutOptions?: string[];
+  shippingRates?: Array<{
+    id: string;
+    carrierName: string;
+    name: string;
+    countries: string[];
+    baseCents: number;
+  }>;
+  items?: Array<{
+    ref: string;
+    label: string;
+    source: "Eigenbestand" | "Konsignation";
+    available: number;
+    partner: string | null;
+  }>;
+  error?: string;
+}> {
+  try {
+    const context = await requireOrg("MEMBER");
+    const [options, featureAccess] = await Promise.all([
+      loadSaleDialogOptions({
+        db: context.db,
+        organizationId: context.organization.id,
+      }),
+      input.includeItems
+        ? getFeatureAccess(context, FEATURE_KEYS.CONSIGNMENT)
+        : Promise.resolve(null),
+    ]);
+    const items = input.includeItems
+      ? await loadSellableSaleItemsForContext(context, Boolean(featureAccess?.enabled))
+      : undefined;
+
+    return {
+      platforms: options.platforms,
+      marketplaceAccounts: options.marketplaceAccountOptions,
+      payoutOptions: options.payoutOptions,
+      shippingRates: options.shippingRates,
+      items,
+    };
+  } catch {
+    return { error: "Verkaufsformular konnte nicht geladen werden." };
+  }
+}
+
+async function loadSellableSaleItemsForContext(
+  context: Awaited<ReturnType<typeof requireOrg>>,
+  consignmentEnabled: boolean
+) {
+  const positions = await context.db.inventoryPosition.findMany({
+    where: {
+      active: true,
+      quantityAvailable: { gt: 0 },
+      ...(consignmentEnabled ? {} : { inventoryType: "OWNED" as const }),
+    },
+    select: {
+      id: true,
+      inventoryNumber: true,
+      inventoryType: true,
+      quantityAvailable: true,
+      product: {
+        select: {
+          name: true,
+          variant: true,
+          size: true,
+          ean: true,
+        },
+      },
+      consignmentLot: { select: { partnerCompany: true } },
+    },
+    orderBy: [{ inventoryType: "asc" }, { receivedAt: "asc" }],
+    take: 500,
+  });
+
+  return positions.map((position) => ({
+    ref: `inventory:${position.id}`,
+    label: [
+      position.inventoryNumber,
+      position.product.name,
+      position.product.variant,
+      position.product.size,
+      position.product.ean,
+      position.consignmentLot?.partnerCompany,
+    ]
+      .filter(Boolean)
+      .join(" Â· "),
+    source: position.inventoryType === "OWNED"
+      ? "Eigenbestand" as const
+      : "Konsignation" as const,
+    available: position.quantityAvailable,
+    partner: position.consignmentLot?.partnerCompany ?? null,
+  }));
 }

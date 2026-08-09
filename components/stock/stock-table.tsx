@@ -385,6 +385,17 @@ function StockDetailDrawer({
   const [historyPending, startHistoryTransition] = useTransition();
   const historyRequestPending = useRef(false);
   const historyRefreshQueued = useRef(false);
+  const detailMetadata = history?.metadata ?? {
+    title: row.title,
+    variant: row.variant,
+    size: row.size,
+    ean: row.ean,
+    itemCondition: row.itemCondition,
+    imageUrls: row.imageUrls,
+    imageUrl: row.imageUrl,
+    location: row.location,
+    notes: row.notes,
+  };
   const listingNames = platforms
     .filter((platform) => row.listings.includes(platform.id))
     .map((platform) => platform.name);
@@ -414,6 +425,24 @@ function StockDetailDrawer({
   }, [row.id, row.source]);
   const handleMetadataSaved = useCallback((patch: StockMetadataPatch) => {
     onMetadataSaved(patch);
+    setHistory((current) =>
+      current
+        ? {
+            ...current,
+            metadata: {
+              title: patch.title,
+              variant: patch.variant,
+              size: patch.size,
+              ean: patch.ean,
+              itemCondition: patch.itemCondition,
+              imageUrls: patch.imageUrls,
+              imageUrl: patch.imageUrl,
+              location: patch.location,
+              notes: patch.notes,
+            },
+          }
+        : current
+    );
     refreshHistory();
   }, [onMetadataSaved, refreshHistory]);
 
@@ -472,9 +501,11 @@ function StockDetailDrawer({
         <p>{listingNames.length ? listingNames.join(" · ") : "Keine Listings"}</p>
       </DetailSection>
       <DetailSection title="Bilder">
-        {row.imageUrls.length > 0 ? (
+        {historyPending && !history?.metadata ? (
+          <p>Bilder werden geladenâ€¦</p>
+        ) : detailMetadata.imageUrls.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {row.imageUrls.map((imageUrl, index) => (
+            {detailMetadata.imageUrls.map((imageUrl, index) => (
               <a
                 key={imageUrl}
                 href={imageUrl}
@@ -497,21 +528,27 @@ function StockDetailDrawer({
       </DetailSection>
       <DetailSection title="Aktionen">
         <div className="flex flex-wrap gap-2">
-          <StockMetadataDialog
-            source={row.source}
-            positionId={row.id}
-            inventoryNumber={row.sku}
-            productName={row.title}
-            variant={row.variant}
-            size={row.size}
-            ean={row.ean}
-            itemCondition={row.itemCondition}
-            imageUrls={row.imageUrls}
-            location={row.location}
-            storageLocations={storageLocations}
-            notes={row.notes}
-            onSaved={handleMetadataSaved}
-          />
+          {history?.metadata ? (
+            <StockMetadataDialog
+              source={row.source}
+              positionId={row.id}
+              inventoryNumber={row.sku}
+              productName={detailMetadata.title}
+              variant={detailMetadata.variant}
+              size={detailMetadata.size}
+              ean={detailMetadata.ean}
+              itemCondition={detailMetadata.itemCondition}
+              imageUrls={detailMetadata.imageUrls}
+              location={detailMetadata.location}
+              storageLocations={storageLocations}
+              notes={detailMetadata.notes}
+              onSaved={handleMetadataSaved}
+            />
+          ) : (
+            <Button type="button" variant="outline" size="sm" disabled>
+              Bearbeiten
+            </Button>
+          )}
           {row.source === "owned" && ownedDetails?.purchaseNumber && (
             <StockSupplierReturnDialog
               inventoryPositionId={row.id}

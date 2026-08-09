@@ -1,18 +1,10 @@
-import { createHash } from "crypto";
-import { requireOrg } from "@/lib/org";
-import {
-  buildProductOrderBy,
-  buildProductWhere,
-  parseProductTableQuery,
-  productQueryToSearchParams,
-} from "@/lib/products/product-table";
+import { redirect } from "next/navigation";
+import { resolveReadOrgContext } from "@/lib/org";
+import { loadProductInitialRead } from "@/lib/products/product-read-loader";
 import { PageHeader } from "@/components/app/page-header";
 import { ProductDialog } from "@/components/products/product-dialog";
 import { ProductFilterBar } from "@/components/products/product-filter-bar";
-import {
-  ProductTable,
-  type ProductOperationalRow,
-} from "@/components/products/product-table";
+import { ProductTable } from "@/components/products/product-table";
 
 type ProductSearchParams = Record<string, string | string[] | undefined>;
 
@@ -21,105 +13,28 @@ export default async function ProductsPage({
 }: {
   searchParams: Promise<ProductSearchParams>;
 }) {
-  const { db, organization, userId } = await requireOrg();
+  const access = await resolveReadOrgContext();
+  if (!access.ok) {
+    if (access.status === 401) redirect("/login");
+    throw new Error("Keine Berechtigung fuer diese Aktion.");
+  }
+  const { db, organizationId, userId } = access.context;
   const rawParams = await searchParams;
-  const requestedQuery = parseProductTableQuery(rawParams);
-  const where = buildProductWhere(requestedQuery, organization.lowStockThreshold);
-
-  const [totalResults, categoryRows, feeCategoryRows, brandRows] = await Promise.all([
-    db.product.count({ where }),
-    db.product.findMany({
-      where: { category: { not: null } },
-      select: { category: true },
-      distinct: ["category"],
-      orderBy: { category: "asc" },
-    }),
-    db.feeCategory.findMany({
-      where: { marketplaceCode: { in: ["EBAY_DE", "KAUFLAND_DE"] }, externalCategoryId: { not: null }, feeSchedule: { status: "ACTIVE" }, active: true },
-      select: { id: true, marketplaceCode: true, officialName: true, externalCategoryId: true },
-      orderBy: [{ marketplaceCode: "asc" }, { officialName: "asc" }],
-    }),
-    db.product.findMany({
-      where: { brand: { not: null } },
-      select: { brand: true },
-      distinct: ["brand"],
-      orderBy: { brand: "asc" },
-    }),
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil(totalResults / requestedQuery.pageSize));
-  const query = {
-    ...requestedQuery,
-    page: Math.min(requestedQuery.page, totalPages),
-  };
-  const [products, selectionRows] = await Promise.all([
-    db.product.findMany({
-      where,
-      orderBy: buildProductOrderBy(query),
-      skip: (query.page - 1) * query.pageSize,
-      take: query.pageSize,
-      include: {
-        marketplaceMappings: { include: { feeCategory: true } },
-        pricingCalculations: { orderBy: { calculatedAt: "desc" }, take: 10 },
-        _count: {
-          select: {
-            purchaseLines: true,
-            inventoryPositions: true,
-            saleLines: true,
-          },
-        },
-      },
-    }),
-    totalResults <= 5000
-      ? db.product.findMany({ where, select: { id: true }, orderBy: { id: "asc" } })
-      : Promise.resolve([]),
-  ]);
-
-  const rows: ProductOperationalRow[] = products.map((product) => {
-    const ebayMapping = product.marketplaceMappings.find((item) => item.marketplaceCode === "EBAY_DE");
-    const kauflandMapping = product.marketplaceMappings.find((item) => item.marketplaceCode === "KAUFLAND_DE");
-    const ebayCalculation = product.pricingCalculations.find((item) => item.marketplaceCode === "EBAY_DE");
-    const kauflandCalculation = product.pricingCalculations.find((item) => item.marketplaceCode === "KAUFLAND_DE");
-    return ({
-    id: product.id,
-    name: product.name,
-    variant: product.variant ?? "",
-    brand: product.brand ?? "",
-    category: product.category ?? "",
-    ean: product.ean ?? "",
-    size: product.size ?? "",
-    defaultPriceCents: product.defaultPriceCents,
-    defaultCondition: product.defaultCondition,
-    defaultShippingCostCents: product.defaultShippingCostCents,
-    defaultPackagingCostCents: product.defaultPackagingCostCents,
-    ebayMapping: ebayMapping ? { feeCategoryId: ebayMapping.feeCategoryId, label: ebayMapping.feeCategory.officialName } : null,
-    kauflandMapping: kauflandMapping ? { feeCategoryId: kauflandMapping.feeCategoryId, label: kauflandMapping.feeCategory.officialName } : null,
-    ebayCalculation: ebayCalculation ? { breakEvenCents: ebayCalculation.breakEvenCents, profitCents: ebayCalculation.profitCents, status: ebayCalculation.status, stale: ebayCalculation.stale } : null,
-    kauflandCalculation: kauflandCalculation ? { breakEvenCents: kauflandCalculation.breakEvenCents, profitCents: kauflandCalculation.profitCents, status: kauflandCalculation.status, stale: kauflandCalculation.stale } : null,
-    imageUrls: product.imageUrls,
-    createdAt: product.createdAt.toISOString(),
-    updatedAt: product.updatedAt.toISOString(),
-    usage: {
-      purchases: product._count.purchaseLines,
-      inventory: product._count.inventoryPositions,
-      sales: product._count.saleLines,
-    },
-  }); });
-  const categories = categoryRows
-    .map((row) => row.category)
-    .filter((value): value is string => Boolean(value));
-  const brands = brandRows
-    .map((row) => row.brand)
-    .filter((value): value is string => Boolean(value));
-  const queryString = productQueryToSearchParams(query).toString();
-  const ebayCategories = feeCategoryRows.filter((item) => item.marketplaceCode === "EBAY_DE").map((item) => ({ id: item.id, label: item.officialName, externalId: item.externalCategoryId ?? "" }));
-  const kauflandCategories = feeCategoryRows.filter((item) => item.marketplaceCode === "KAUFLAND_DE").map((item) => ({ id: item.id, label: item.officialName, externalId: item.externalCategoryId ?? "" }));
-  const allResultDigest =
-    totalResults <= 5000
-      ? createHash("sha256")
-          .update(selectionRows.map((row) => row.id).join("\n"))
-          .digest("hex")
-      : null;
+  const {
+    rows,
+    totalResults,
+    query,
+    queryString,
+    allResultDigest,
+    categories,
+    brands,
+    ebayCategories,
+    kauflandCategories,
+  } = await loadProductInitialRead({
+    db,
+    organizationId,
+    params: rawParams,
+  });
 
   return (
     <div className="space-y-4">
@@ -142,7 +57,7 @@ export default async function ProductsPage({
         ebayCategories={ebayCategories}
         kauflandCategories={kauflandCategories}
         scope={{
-          organizationId: organization.id,
+          organizationId,
           userId,
           tableKey: "products",
         }}

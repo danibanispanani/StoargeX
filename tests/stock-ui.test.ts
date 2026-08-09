@@ -43,7 +43,8 @@ describe("stock UI simplification", () => {
 
   it("renders linked product images in the stock details", () => {
     expect(table).toContain('<DetailSection title="Bilder">');
-    expect(table).toContain("row.imageUrls.map");
+    expect(table).toContain("detailMetadata.imageUrls.map");
+    expect(table).toContain("Bilder werden geladen");
   });
 
   it("manages storage locations in organization settings", () => {

@@ -1,0 +1,65 @@
+
+> storagex@0.1.0 dev
+> next dev --turbopack --port 3000
+
+   ▲ Next.js 15.5.20 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://10.0.2.153:3000
+   - Environments: .env
+
+ ✓ Starting...
+Creating turbopack project { dir: 'C:\\dev\\StoargeX', testMode: true }
+ ✓ Compiled middleware in 393ms
+ ✓ Ready in 4s
+ ○ Compiling / ...
+ ✓ Compiled / in 15.3s
+ ○ Compiling /login ...
+ ✓ Compiled /login in 996ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 1690ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 528ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 595ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 615ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 538ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 553ms
+ GET /login?callbackUrl=%2Flager 200 in 547ms
+ GET /login?callbackUrl=%2Flager 200 in 522ms
+ GET /login?callbackUrl=%2Flager 200 in 638ms
+ GET /login?callbackUrl=%2Flager 200 in 550ms
+ GET /login?callbackUrl=%2Flager 200 in 568ms
+ GET /login?callbackUrl=%2Flager 200 in 454ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 452ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 406ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 507ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 484ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 532ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 460ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 401ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 332ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 346ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 421ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 578ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 447ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 502ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 464ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 377ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 358ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 452ms
+ GET /login?callbackUrl=%2Fverkauf 200 in 558ms
+ GET /login?callbackUrl=%2Flager 200 in 600ms
+ GET /login?callbackUrl=%2Flager 200 in 500ms
+ GET /login?callbackUrl=%2Flager 200 in 538ms
+ GET /login?callbackUrl=%2Flager 200 in 605ms
+ GET /login?callbackUrl=%2Flager 200 in 623ms
+ GET /login?callbackUrl=%2Flager 200 in 545ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 352ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 391ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 520ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 614ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 559ms
+ GET /login?callbackUrl=%2Feinkauf 200 in 479ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 512ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 498ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 739ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 450ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 470ms
+ GET /login?callbackUrl=%2Fprodukte 200 in 459ms

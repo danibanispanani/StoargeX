@@ -186,7 +186,19 @@ describe("stock actions", () => {
       quantityAvailable: 1,
       quantityInspection: 0,
       quantityDefective: 0,
+      itemCondition: "NEW",
+      location: "Regal A",
+      notes: "Notiz",
+      product: {
+        name: "Produkt",
+        variant: "Blau",
+        size: "L",
+        ean: "123",
+        imageUrls: ["https://example.test/product.jpg"],
+      },
       ownedLot: {
+        ean: null,
+        imageUrls: ["https://example.test/lot.jpg"],
         purchaseLine: { purchase: { purchaseNumber: "E-26-0001" } },
       },
       purchaseReceiptLine: null,
@@ -214,6 +226,13 @@ describe("stock actions", () => {
       })
     );
     expect(result.data).toEqual({
+      metadata: expect.objectContaining({
+        title: "Produkt",
+        imageUrls: [
+          "https://example.test/lot.jpg",
+          "https://example.test/product.jpg",
+        ],
+      }),
       ownedDetails: expect.objectContaining({
         purchaseNumber: "E-26-0001",
         returnableQuantity: 1,

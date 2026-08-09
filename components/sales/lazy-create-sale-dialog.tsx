@@ -1,43 +1,52 @@
 "use client";
 
-import { useState, useTransition, type ComponentProps } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { loadSellableSaleItemsAction } from "@/lib/actions/sales";
+import { loadSaleDialogOptionsAction } from "@/lib/actions/sales";
 import { SaleDialog } from "@/components/sales/sale-dialog";
 import { Button } from "@/components/ui/button";
 
-type SaleDialogOptions = Omit<
-  ComponentProps<typeof SaleDialog>,
-  "items" | "sale" | "trigger" | "initialOpen" | "onOpenChange"
->;
+type SaleDialogOptions = Awaited<ReturnType<typeof loadSaleDialogOptionsAction>>;
 
-export function LazyCreateSaleDialog(props: SaleDialogOptions) {
-  const [items, setItems] = useState<
-    Awaited<ReturnType<typeof loadSellableSaleItemsAction>>["items"]
-  >(undefined);
+export function LazyCreateSaleDialog() {
+  const [options, setOptions] = useState<SaleDialogOptions | undefined>(undefined);
   const [pending, startTransition] = useTransition();
 
   function open() {
     startTransition(async () => {
-      const result = await loadSellableSaleItemsAction();
-      if (result.error || !result.items) {
-        toast.error(
-          result.error ?? "Verfügbare Lagerpositionen konnten nicht geladen werden."
-        );
+      const result = await loadSaleDialogOptionsAction({ includeItems: true });
+      if (
+        result.error ||
+        !result.items ||
+        !result.platforms ||
+        !result.marketplaceAccounts ||
+        !result.payoutOptions ||
+        !result.shippingRates
+      ) {
+        toast.error(result.error ?? "Verkaufsformular konnte nicht geladen werden.");
         return;
       }
-      setItems(result.items);
+      setOptions(result);
     });
   }
 
-  if (items) {
+  if (
+    options?.items &&
+    options.platforms &&
+    options.marketplaceAccounts &&
+    options.payoutOptions &&
+    options.shippingRates
+  ) {
     return (
       <SaleDialog
-        {...props}
-        items={items}
+        items={options.items}
+        platforms={options.platforms}
+        marketplaceAccounts={options.marketplaceAccounts}
+        payoutOptions={options.payoutOptions}
+        shippingRates={options.shippingRates}
         initialOpen
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) setItems(undefined);
+          if (!nextOpen) setOptions(undefined);
         }}
       />
     );
@@ -45,7 +54,7 @@ export function LazyCreateSaleDialog(props: SaleDialogOptions) {
 
   return (
     <Button onClick={open} disabled={pending} aria-busy={pending}>
-      {pending ? "Formular wird geladen…" : "Verkauf erfassen"}
+      {pending ? "Formular wird geladen..." : "Verkauf erfassen"}
     </Button>
   );
 }
